@@ -1,16 +1,65 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from 'react';
+import { Header } from '@/components/layout/Header';
+import { BottomNav } from '@/components/layout/BottomNav';
+import { AppSidebar } from '@/components/layout/AppSidebar';
+import { CatalogPage } from '@/components/catalog/CatalogPage';
+import { PlaceholderTab } from '@/components/PlaceholderTab';
+import { useProducts, useSuppliers, useNotifications, useTheme } from '@/hooks/useStore';
+import { TabId } from '@/types';
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
+const Index = () => {
+  const [activeTab, setActiveTab] = useState<TabId>('catalog');
+  const { theme, toggleTheme } = useTheme();
+  const { products, activeProducts, deletedProducts, addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct, moveProduct, copyProduct } = useProducts();
+  const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSuppliers();
+  const { notifications, addNotification, markRead, markAllRead, unreadCount } = useNotifications();
+
+  const renderTab = () => {
+    switch (activeTab) {
+      case 'catalog':
+        return (
+          <CatalogPage
+            products={products}
+            activeProducts={activeProducts}
+            deletedProducts={deletedProducts}
+            suppliers={suppliers}
+            addProduct={addProduct}
+            updateProduct={updateProduct}
+            softDeleteProduct={softDeleteProduct}
+            restoreProduct={restoreProduct}
+            permanentDeleteProduct={permanentDeleteProduct}
+            moveProduct={moveProduct}
+            copyProduct={copyProduct}
+            addSupplier={addSupplier}
+            updateSupplier={updateSupplier}
+            deleteSupplier={deleteSupplier}
+            addNotification={addNotification}
+          />
+        );
+      default:
+        return <PlaceholderTab tabId={activeTab as Exclude<TabId, 'catalog'>} />;
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
+    <div className="flex h-screen w-full flex-col bg-background">
+      <Header
+        theme={theme}
+        toggleTheme={toggleTheme}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkRead={markRead}
+        onMarkAllRead={markAllRead}
+      />
+      <div className="flex flex-1 overflow-hidden">
+        <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {renderTab()}
+        </main>
+      </div>
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 };
-
-const Index = PlaceholderIndex;
 
 export default Index;
