@@ -1,4 +1,4 @@
-import { Product, Supplier, Notification, QuarterData } from '@/types';
+import { Product, Supplier, Notification, QuarterData, ImportOrder, SaleOrder, InventoryBatch } from '@/types';
 
 const KEYS = {
   products: 'scp_products',
@@ -6,6 +6,9 @@ const KEYS = {
   quarters: 'scp_quarters',
   notifications: 'scp_notifications',
   theme: 'scp_theme',
+  importOrders: 'scp_import_orders',
+  salesOrders: 'scp_sales_orders',
+  inventoryBatches: 'scp_inventory_batches',
 } as const;
 
 function load<T>(key: string, fallback: T): T {
@@ -53,6 +56,18 @@ export const saveNotifications = (data: Notification[]) => save(KEYS.notificatio
 export const loadTheme = () => load<'light' | 'dark'>(KEYS.theme, 'light');
 export const saveTheme = (theme: 'light' | 'dark') => save(KEYS.theme, theme);
 
+// Import Orders
+export const loadImportOrders = () => load<ImportOrder[]>(KEYS.importOrders, []);
+export const saveImportOrders = (data: ImportOrder[]) => save(KEYS.importOrders, data);
+
+// Sales Orders
+export const loadSalesOrders = () => load<SaleOrder[]>(KEYS.salesOrders, []);
+export const saveSalesOrders = (data: SaleOrder[]) => save(KEYS.salesOrders, data);
+
+// Inventory Batches
+export const loadInventoryBatches = () => load<InventoryBatch[]>(KEYS.inventoryBatches, []);
+export const saveInventoryBatches = (data: InventoryBatch[]) => save(KEYS.inventoryBatches, data);
+
 // Backup / Restore
 export function exportBackup(): string {
   return JSON.stringify({
@@ -60,8 +75,11 @@ export function exportBackup(): string {
     suppliers: loadSuppliers(),
     quarters: loadQuarters(),
     notifications: loadNotifications(),
+    importOrders: loadImportOrders(),
+    salesOrders: loadSalesOrders(),
+    inventoryBatches: loadInventoryBatches(),
     exportedAt: new Date().toISOString(),
-    version: '1.0',
+    version: '2.0',
   }, null, 2);
 }
 
@@ -72,6 +90,9 @@ export function importBackup(json: string): boolean {
     if (data.suppliers) saveSuppliers(data.suppliers);
     if (data.quarters) saveQuarters(data.quarters);
     if (data.notifications) saveNotifications(data.notifications);
+    if (data.importOrders) saveImportOrders(data.importOrders);
+    if (data.salesOrders) saveSalesOrders(data.salesOrders);
+    if (data.inventoryBatches) saveInventoryBatches(data.inventoryBatches);
     return true;
   } catch {
     return false;
