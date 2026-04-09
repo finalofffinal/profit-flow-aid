@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X } from 'lucide-react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter } from 'lucide-react';
 import { ImportOrder, Supplier, Product, OrderTag } from '@/types';
 import { formatVND } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
@@ -26,88 +26,152 @@ const TAG_LABELS: Record<OrderTag, string> = { auto: 'Tự động', special: '�
 const TAG_COLORS: Record<OrderTag, string> = {
   auto: 'bg-secondary text-secondary-foreground',
   special: 'bg-destructive/20 text-destructive border-destructive/30',
-  temporary: 'bg-gold/20 text-foreground border-gold/50',
+  temporary: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
 };
+
+type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
 export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification }: ImportPageProps) {
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [tagFilter, setTagFilter] = useState<string>('all');
+  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+
+  const timeFiltered = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    
+    return activeOrders.filter(o => {
+      const day = o.date.split('T')[0];
+      switch (timeRange) {
+        case 'today': return day === todayStr;
+        case 'week': {
+          const d = new Date(day);
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - now.getDay() + 1);
+          weekStart.setHours(0, 0, 0, 0);
+          return d >= weekStart && d <= now;
+        }
+        case 'month': {
+          const d = new Date(day);
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        case 'quarter': {
+          const d = new Date(day);
+          const q = Math.ceil((now.getMonth() + 1) / 3);
+          const dq = Math.ceil((d.getMonth() + 1) / 3);
+          return dq === q && d.getFullYear() === now.getFullYear();
+        }
+        case 'custom': {
+          if (!customFrom || !customTo) return true;
+          return day >= customFrom && day <= customTo;
+        }
+        default: return true;
+      }
+    });
+  }, [activeOrders, timeRange, customFrom, customTo]);
 
   const filteredOrders = useMemo(() => {
-    if (!search.trim()) return activeOrders;
+    let list = timeFiltered;
+    if (tagFilter !== 'all') list = list.filter(o => o.tag === tagFilter);
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return activeOrders.filter(o =>
+    return list.filter(o =>
       o.supplierName.toLowerCase().includes(q) ||
       o.items.some(it => it.productName.toLowerCase().includes(q)) ||
       o.date.includes(q)
     );
-  }, [activeOrders, search]);
+  }, [timeFiltered, search, tagFilter]);
 
-  // Group by date
-  const groupedByDate = useMemo(() => {
+  // Group by quarter
+  const groupedByQuarter = useMemo(() => {
     const map = new Map<string, ImportOrder[]>();
-    const sorted = [...filteredOrders].sort((a, b) => b.date.localeCompare(a.date));
+    const sorted = [...filteredOrders].sort((a, b) => a.date.localeCompare(b.date));
     sorted.forEach(o => {
-      const day = o.date.split('T')[0];
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(o);
+      const d = new Date(o.date);
+      const q = Math.ceil((d.getMonth() + 1) / 3);
+      const key = `Q${q}/${d.getFullYear()}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(o);
     });
     return map;
   }, [filteredOrders]);
 
   const toggleExpand = (id: string) => {
-    setExpandedOrders(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setExpandedOrders(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Sticky toolbar */}
-      <div className="sticky top-0 z-20 glass-toolbar border-b border-border p-3 space-y-2">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-base font-bold">Nhập hàng</h2>
+          <div className="flex-1" />
+          <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
+            {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
+          </Button>
+          <Button size="sm" className="h-8 text-xs" onClick={() => setShowAdd(true)}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Thêm đơn nhập
+          </Button>
+        </div>
+
+        {/* Time range pills */}
+        <div className="flex gap-1.5 overflow-x-auto">
+          {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
+            <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
+              onClick={() => setTimeRange(r)}>
+              {{ today: 'Hôm nay', week: 'Tuần', month: 'Tháng', quarter: 'Quý', all: 'Tất cả', custom: 'Tùy chọn' }[r]}
+            </Button>
+          ))}
+        </div>
+
+        {timeRange === 'custom' && (
+          <div className="flex gap-2">
+            <Input type="date" className="h-8 text-xs" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+            <Input type="date" className="h-8 text-xs" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8" placeholder="Tìm NCC, sản phẩm, ngày..." value={search} onChange={e => setSearch(e.target.value)} />
+            <Input className="pl-8 h-8" placeholder="Tìm NCC, sản phẩm, ngày..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <Button variant="outline" size="icon" onClick={() => setShowTrash(true)} className="relative shrink-0">
-            <Trash2 className="h-4 w-4" />
-            {deletedOrders.length > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                {deletedOrders.length}
-              </span>
-            )}
-          </Button>
-          <Button size="sm" onClick={() => setShowAdd(true)}>
-            <Plus className="mr-1 h-4 w-4" /> Thêm
-          </Button>
+          <Select value={tagFilter} onValueChange={setTagFilter}>
+            <SelectTrigger className="w-28 h-8"><Filter className="mr-1 h-3 w-3" /><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả</SelectItem>
+              <SelectItem value="auto">Tự động</SelectItem>
+              <SelectItem value="special">Đặc biệt</SelectItem>
+              <SelectItem value="temporary">Tạm thời</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{activeOrders.length} đơn</Badge>
-          <span>Tổng: <span className="font-bold text-foreground">{formatVND(activeOrders.reduce((s, o) => s + o.total, 0))}</span></span>
+          <Badge variant="outline">{filteredOrders.length} đơn</Badge>
+          <span>Tổng: <span className="font-bold text-foreground">{formatVND(filteredOrders.reduce((s, o) => s + o.total, 0))}</span></span>
         </div>
       </div>
 
-      {/* Orders list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-4 safe-bottom">
-        {Array.from(groupedByDate.entries()).map(([date, orders]) => (
-          <div key={date}>
-            <p className="text-xs font-bold text-muted-foreground mb-2">
-              {new Date(date).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
-            </p>
+      <div className="flex-1 overflow-y-auto p-3 space-y-4 pb-20 lg:pb-4">
+        {Array.from(groupedByQuarter.entries()).map(([qLabel, orders]) => (
+          <div key={qLabel}>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="outline" className="font-bold">{qLabel}</Badge>
+              <span className="text-xs text-muted-foreground">{orders.length} đơn · {formatVND(orders.reduce((s, o) => s + o.total, 0))}</span>
+            </div>
             <div className="space-y-2">
               {orders.map(order => {
                 const isExpanded = expandedOrders.has(order.id);
                 return (
-                  <div key={order.id} className="rounded-xl border border-border glass card-shadow overflow-hidden">
-                    <button
-                      className="flex w-full items-center gap-2 p-3 text-left"
-                      onClick={() => toggleExpand(order.id)}
-                    >
+                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'special' ? 'border-destructive/30' : order.tag === 'temporary' ? 'border-amber-500/30' : 'border-border'}`}>
+                    <button className="flex w-full items-center gap-2 p-3 text-left hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(order.id)}>
                       {isExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -115,20 +179,21 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
                           <Badge className={`text-[10px] ${TAG_COLORS[order.tag]}`}>{TAG_LABELS[order.tag]}</Badge>
                           {order.locked && <Lock className="h-3 w-3 text-muted-foreground" />}
                         </div>
-                        <p className="text-xs text-muted-foreground">{order.items.length} SP · {formatVND(order.total)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(order.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} · {order.items.length} SP · {formatVND(order.total)}
+                        </p>
                       </div>
                       <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={e => { e.stopPropagation(); deleteOrder(order.id); }}>
                         <Trash className="h-3.5 w-3.5 text-destructive" />
                       </Button>
                     </button>
-
                     {isExpanded && (
                       <div className="border-t border-border p-3 space-y-1.5 animate-in slide-in-from-top-1">
                         {order.items.map((item, i) => (
                           <div key={i} className="flex items-center justify-between text-xs">
                             <div className="min-w-0">
                               <span className="font-medium">{item.productName}</span>
-                              <span className="text-muted-foreground ml-1">×{item.quantity} {item.parentUnit}</span>
+                              <span className="text-muted-foreground ml-1">×{item.quantity} {item.unit}</span>
                             </div>
                             <span className="font-semibold shrink-0 ml-2">{formatVND(item.total)}</span>
                           </div>
@@ -170,12 +235,8 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
                     <p className="text-xs text-muted-foreground">{formatVND(o.total)} · {new Date(o.date).toLocaleDateString('vi-VN')}</p>
                   </div>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => restoreOrder(o.id)}>
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => permanentDeleteOrder(o.id)}>
-                      <Trash className="h-3.5 w-3.5" />
-                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => restoreOrder(o.id)}><RotateCcw className="h-3.5 w-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => permanentDeleteOrder(o.id)}><Trash className="h-3.5 w-3.5" /></Button>
                   </div>
                 </div>
               ))}
@@ -184,17 +245,8 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
         </DialogContent>
       </Dialog>
 
-      {/* Add Order Dialog */}
-      <AddImportDialog
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        suppliers={suppliers}
-        products={products}
-        onSubmit={(order) => {
-          addOrder(order);
-          addNotification(`Đã thêm đơn nhập từ ${order.supplierName}`, 'info');
-        }}
-      />
+      {/* Add Import Dialog */}
+      <AddImportDialog open={showAdd} onClose={() => setShowAdd(false)} suppliers={suppliers.filter(s => !s.deletedAt)} products={products} onSubmit={(order) => { addOrder(order); addNotification(`Đã thêm đơn nhập từ ${order.supplierName}`, 'info'); }} />
     </div>
   );
 }
@@ -209,10 +261,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
   const [tag, setTag] = useState<OrderTag>('special');
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; quantity: number }[]>([]);
 
-  const supplierProducts = useMemo(() =>
-    products.filter(p => !p.deletedAt && p.supplierId === supplierId),
-    [products, supplierId]
-  );
+  const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
   const addItem = () => setSelectedProducts(prev => [...prev, { productId: '', quantity: 1 }]);
   const removeItem = (i: number) => setSelectedProducts(prev => prev.filter((_, idx) => idx !== i));
@@ -220,36 +269,21 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
   const handleSubmit = () => {
     const supplier = suppliers.find(s => s.id === supplierId);
     if (!supplier) return;
-
     const items: ImportOrder['items'] = selectedProducts
       .filter(sp => sp.productId && sp.quantity > 0)
       .map(sp => {
         const product = products.find(p => p.id === sp.productId)!;
         return {
-          productId: product.id,
-          productName: product.name,
-          supplierId: product.supplierId,
-          supplierName: supplier.name,
-          parentUnit: product.parentUnit,
-          childUnit: product.childUnit || product.parentUnit,
+          productId: product.id, productName: product.name,
+          supplierId: product.supplierId, supplierName: supplier.name,
+          unit: product.unit, conversionUnit: product.conversionUnit || product.unit,
           conversionRate: product.conversionRate || 1,
-          quantity: sp.quantity,
-          buyPrice: product.buyPrice,
+          quantity: sp.quantity, buyPrice: product.buyPrice,
           total: product.buyPrice * sp.quantity,
         };
       });
-
     if (items.length === 0) return;
-
-    onSubmit({
-      supplierId,
-      supplierName: supplier.name,
-      date,
-      items,
-      total: items.reduce((s, it) => s + it.total, 0),
-      tag,
-      locked: false,
-    });
+    onSubmit({ supplierId, supplierName: supplier.name, date, items, total: items.reduce((s, it) => s + it.total, 0), tag, locked: false });
     onClose();
     setSupplierId('');
     setSelectedProducts([]);
@@ -260,7 +294,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm đơn nhập hàng</DialogTitle>
-          <DialogDescription>Chọn NCC và sản phẩm</DialogDescription>
+          <DialogDescription>Chọn NCC và sản phẩm từ danh mục</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -268,9 +302,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
               <Label className="text-xs">Nhà cung cấp</Label>
               <Select value={supplierId} onValueChange={setSupplierId}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
-                <SelectContent>
-                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
@@ -278,7 +310,6 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
               <Input className="mt-1" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-
           <div>
             <Label className="text-xs">Tag</Label>
             <Select value={tag} onValueChange={v => setTag(v as OrderTag)}>
@@ -289,35 +320,19 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
               </SelectContent>
             </Select>
           </div>
-
-          {/* Product items */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold">Sản phẩm</Label>
-              <Button variant="outline" size="sm" onClick={addItem} disabled={!supplierId}>
-                <Plus className="mr-1 h-3 w-3" /> Thêm SP
-              </Button>
+              <Button variant="outline" size="sm" onClick={addItem} disabled={!supplierId}><Plus className="mr-1 h-3 w-3" /> Thêm SP</Button>
             </div>
             {selectedProducts.map((sp, i) => (
               <div key={i} className="flex items-center gap-2">
-                <Select value={sp.productId} onValueChange={v => {
-                  const updated = [...selectedProducts];
-                  updated[i].productId = v;
-                  setSelectedProducts(updated);
-                }}>
+                <Select value={sp.productId} onValueChange={v => { const u = [...selectedProducts]; u[i].productId = v; setSelectedProducts(u); }}>
                   <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                  <SelectContent>
-                    {supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                 </Select>
-                <Input className="w-20" type="number" min={1} value={sp.quantity} onChange={e => {
-                  const updated = [...selectedProducts];
-                  updated[i].quantity = parseInt(e.target.value) || 1;
-                  setSelectedProducts(updated);
-                }} />
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                <Input className="w-20" type="number" min={1} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = parseInt(e.target.value) || 1; setSelectedProducts(u); }} />
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
               </div>
             ))}
           </div>
