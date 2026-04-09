@@ -16,18 +16,16 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<TabId>('catalog');
   const { theme, toggleTheme } = useTheme();
   const { products, activeProducts, deletedProducts, addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct, moveProduct, copyProduct, setProducts } = useProducts();
-  const { suppliers, addSupplier, updateSupplier, deleteSupplier, setSuppliers } = useSuppliers();
+  const { suppliers, activeSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier, setSuppliers } = useSuppliers();
   const { notifications, addNotification, markRead, markAllRead, unreadCount } = useNotifications();
   const { quarters, setQuarterTarget, setQuarters } = useQuarters();
   const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, setOrders: setImportOrders } = useImportOrders();
   const { orders: salesOrders, activeOrders: activeSalesOrders, addOrder: addSaleOrder, deleteOrder: deleteSaleOrder, setOrders: setSalesOrders } = useSalesOrders();
   const { batches: inventoryBatches, setBatches: setInventoryBatches } = useInventoryBatches();
 
-  // Auto-generate data when quarters change and products exist
   useEffect(() => {
     if (quarters.length === 0 || activeProducts.length === 0) return;
 
-    // Only generate auto orders (don't override manual ones)
     const manualImports = importOrders.filter(o => o.tag !== 'auto');
     const manualSales = salesOrders.filter(o => o.tag !== 'auto');
 
@@ -46,22 +44,19 @@ const Index = () => {
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
       });
 
-      const generated = generateQuarterData(q, activeProducts, suppliers, qManualImports, qManualSales);
+      const generated = generateQuarterData(q, activeProducts, activeSuppliers, qManualImports, qManualSales);
       allAutoImports.push(...generated.importOrders);
       allAutoSales.push(...generated.salesOrders);
       allAutoBatches.push(...generated.inventoryBatches);
     }
 
-    // Merge: manual + auto
     setImportOrders([...manualImports, ...allAutoImports]);
     setSalesOrders([...manualSales, ...allAutoSales]);
     setInventoryBatches(allAutoBatches);
-  // Only regenerate when quarters or active products change (by count/ids)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}`).join(','), activeProducts.length]);
 
   const handleDataRestore = useCallback(() => {
-    // Reload all data from storage
     window.location.reload();
   }, []);
 
@@ -84,7 +79,7 @@ const Index = () => {
             importOrders={importOrders}
             activeOrders={activeImportOrders}
             deletedOrders={deletedImportOrders}
-            suppliers={suppliers}
+            suppliers={activeSuppliers}
             products={activeProducts}
             addOrder={addImportOrder}
             deleteOrder={deleteImportOrder}
@@ -94,9 +89,7 @@ const Index = () => {
           />
         );
       case 'inventory':
-        return (
-          <InventoryPage batches={inventoryBatches} suppliers={suppliers} />
-        );
+        return <InventoryPage batches={inventoryBatches} suppliers={activeSuppliers} />;
       case 'sales':
         return <SalesPage salesOrders={salesOrders} />;
       case 'catalog':
@@ -116,6 +109,8 @@ const Index = () => {
             addSupplier={addSupplier}
             updateSupplier={updateSupplier}
             deleteSupplier={deleteSupplier}
+            restoreSupplier={restoreSupplier}
+            permanentDeleteSupplier={permanentDeleteSupplier}
             addNotification={addNotification}
           />
         );

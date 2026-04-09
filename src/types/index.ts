@@ -1,31 +1,28 @@
 export interface Supplier {
   id: string;
   name: string;
+  deletedAt: string | null;
   createdAt: string;
 }
 
 export interface PriceHistoryEntry {
   buyPrice: number;
   sellPrice: number;
-  date: string;
+  date: string; // user-selected date, NOT auto
 }
 
 export interface Product {
   id: string;
   name: string;
+  brand: string;
   supplierId: string;
-  parentUnit: string;
+  unit: string; // parent unit: Thùng, Lốc, Kg...
   buyPrice: number;
   sellPrice: number;
+  conversionRate: number; // child units per parent (default 1)
+  conversionUnit: string; // child unit name
   netWeights: string[];
   notes: string;
-  hasChildUnit: boolean;
-  childUnit: string;
-  conversionRate: number;
-  childBuyPrice?: number;
-  childSellPrice?: number;
-  childProfit?: number;
-  childProfitPercent?: number;
   stock: number;
   priceHistory: PriceHistoryEntry[];
   deletedAt: string | null;
@@ -36,7 +33,7 @@ export interface Product {
 export interface Notification {
   id: string;
   message: string;
-  type: 'product_add' | 'product_delete' | 'price_update' | 'quarter_update' | 'info';
+  type: 'product_add' | 'product_delete' | 'price_update' | 'quarter_update' | 'info' | 'warning' | 'success';
   read: boolean;
   createdAt: string;
 }
@@ -50,20 +47,20 @@ export interface QuarterData {
 
 export type TabId = 'dashboard' | 'import' | 'inventory' | 'sales' | 'catalog';
 
-// ─── Data Engine Types ───────────────────────────────────────
-
+// ─── Orders ───────────────────────────────────────
 export type OrderTag = 'auto' | 'special' | 'temporary';
+export type PaymentMethod = 'cash' | 'transfer';
 
 export interface ImportOrderItem {
   productId: string;
   productName: string;
   supplierId: string;
   supplierName: string;
-  parentUnit: string;
-  childUnit: string;
+  unit: string;
+  conversionUnit: string;
   conversionRate: number;
-  quantity: number; // in parent units
-  buyPrice: number; // snapshot price per parent unit
+  quantity: number; // parent units
+  buyPrice: number; // per parent unit snapshot
   total: number;
 }
 
@@ -71,7 +68,7 @@ export interface ImportOrder {
   id: string;
   supplierId: string;
   supplierName: string;
-  date: string; // ISO date
+  date: string;
   items: ImportOrderItem[];
   total: number;
   tag: OrderTag;
@@ -80,31 +77,14 @@ export interface ImportOrder {
   createdAt: string;
 }
 
-export interface InventoryBatch {
-  id: string;
-  importOrderId: string;
-  productId: string;
-  productName: string;
-  supplierId: string;
-  supplierName: string;
-  parentUnit: string;
-  quantity: number; // remaining in parent units
-  originalQuantity: number;
-  buyPrice: number; // snapshot
-  date: string; // date entered inventory
-  quarter: number;
-  year: number;
-}
-
 export interface SaleItem {
   productId: string;
   productName: string;
   supplierId: string;
-  childUnit: string;
-  conversionRate: number;
-  quantitySmall: number; // in smallest unit
-  sellPrice: number; // per small unit (snapshot)
-  buyPrice: number; // per small unit (COGS snapshot)
+  unit: string; // sell unit (child or parent)
+  quantity: number;
+  sellPrice: number; // per unit snapshot
+  buyPrice: number; // per unit snapshot (cost)
   total: number;
   profit: number;
   profitPercent: number;
@@ -112,14 +92,14 @@ export interface SaleItem {
 
 export interface SaleOrder {
   id: string;
-  date: string; // ISO date
+  date: string;
   items: SaleItem[];
   totalRevenue: number;
   totalProfit: number;
   profitPercent: number;
   tag: OrderTag;
-  paymentMethod: 'cash' | 'transfer';
-  transferImages: string[]; // base64 compressed
+  paymentMethod: PaymentMethod;
+  transferImages: string[];
   deletedAt: string | null;
   createdAt: string;
 }
@@ -130,4 +110,20 @@ export interface DailySales {
   totalRevenue: number;
   totalProfit: number;
   profitPercent: number;
+}
+
+export interface InventoryBatch {
+  id: string;
+  importOrderId: string;
+  productId: string;
+  productName: string;
+  supplierId: string;
+  supplierName: string;
+  unit: string;
+  quantity: number;
+  originalQuantity: number;
+  buyPrice: number;
+  date: string;
+  quarter: number;
+  year: number;
 }

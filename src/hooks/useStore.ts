@@ -91,8 +91,10 @@ export function useSuppliers() {
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => storage.loadSuppliers());
   useEffect(() => { storage.saveSuppliers(suppliers); }, [suppliers]);
 
+  const activeSuppliers = useMemo(() => suppliers.filter(s => !s.deletedAt), [suppliers]);
+
   const addSupplier = useCallback((name: string) => {
-    const supplier: Supplier = { id: generateId(), name, createdAt: new Date().toISOString() };
+    const supplier: Supplier = { id: generateId(), name, deletedAt: null, createdAt: new Date().toISOString() };
     setSuppliers(prev => [...prev, supplier]);
     return supplier;
   }, []);
@@ -102,11 +104,20 @@ export function useSuppliers() {
   }, []);
 
   const deleteSupplier = useCallback((id: string) => {
-    if (id === 'default') return;
+    if (id === 'default-khac') return;
+    setSuppliers(prev => prev.map(s => s.id === id ? { ...s, deletedAt: new Date().toISOString() } : s));
+  }, []);
+
+  const restoreSupplier = useCallback((id: string) => {
+    setSuppliers(prev => prev.map(s => s.id === id ? { ...s, deletedAt: null } : s));
+  }, []);
+
+  const permanentDeleteSupplier = useCallback((id: string) => {
+    if (id === 'default-khac') return;
     setSuppliers(prev => prev.filter(s => s.id !== id));
   }, []);
 
-  return { suppliers, addSupplier, updateSupplier, deleteSupplier, setSuppliers };
+  return { suppliers, activeSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier, setSuppliers };
 }
 
 export function useNotifications() {

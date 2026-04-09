@@ -34,10 +34,10 @@ export const loadProducts = () => load<Product[]>(KEYS.products, []);
 export const saveProducts = (data: Product[]) => save(KEYS.products, data);
 
 // Suppliers
-const DEFAULT_SUPPLIER: Supplier = { id: 'default', name: 'Khác', createdAt: new Date().toISOString() };
+const DEFAULT_SUPPLIER: Supplier = { id: 'default-khac', name: 'Khác', deletedAt: null, createdAt: new Date().toISOString() };
 export const loadSuppliers = () => {
   const suppliers = load<Supplier[]>(KEYS.suppliers, [DEFAULT_SUPPLIER]);
-  if (!suppliers.find(s => s.id === 'default')) {
+  if (!suppliers.find(s => s.id === 'default-khac')) {
     suppliers.unshift(DEFAULT_SUPPLIER);
   }
   return suppliers;
@@ -68,6 +68,17 @@ export const saveSalesOrders = (data: SaleOrder[]) => save(KEYS.salesOrders, dat
 export const loadInventoryBatches = () => load<InventoryBatch[]>(KEYS.inventoryBatches, []);
 export const saveInventoryBatches = (data: InventoryBatch[]) => save(KEYS.inventoryBatches, data);
 
+// Storage usage
+export function getStorageUsage(): { used: number; total: number; percent: number } {
+  let used = 0;
+  for (const key of Object.values(KEYS)) {
+    const item = localStorage.getItem(key);
+    if (item) used += item.length * 2; // UTF-16
+  }
+  const total = 5 * 1024 * 1024; // 5MB typical
+  return { used, total, percent: Math.round((used / total) * 100) };
+}
+
 // Backup / Restore
 export function exportBackup(): string {
   return JSON.stringify({
@@ -79,7 +90,7 @@ export function exportBackup(): string {
     salesOrders: loadSalesOrders(),
     inventoryBatches: loadInventoryBatches(),
     exportedAt: new Date().toISOString(),
-    version: '2.0',
+    version: '3.0',
   }, null, 2);
 }
 

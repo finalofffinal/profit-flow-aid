@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Eye, EyeOff, Download, Upload, TrendingUp, Wallet, Package, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Eye, EyeOff, Download, Upload, TrendingUp, Wallet, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { QuarterData, SaleOrder, ImportOrder } from '@/types';
 import { formatVND, formatCompactVND, parsePriceInput } from '@/lib/currency';
-import { exportBackup, importBackup } from '@/lib/storage';
+import { exportBackup, importBackup, getStorageUsage } from '@/lib/storage';
+import { MAX_YEARLY_REVENUE } from '@/lib/constants';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface DashboardPageProps {
@@ -19,42 +20,77 @@ interface DashboardPageProps {
   onDataRestore: () => void;
 }
 
+type TimeRange = 'today' | 'week' | 'month' | 'quarter' | 'custom';
+
 export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importOrders, addNotification, onDataRestore }: DashboardPageProps) {
   const [showNumbers, setShowNumbers] = useState(true);
   const [editingQ, setEditingQ] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
-  const year = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [showStorage, setShowStorage] = useState(false);
 
-  // Get quarter data
-  const getQ = (q: number) => quarters.find(qd => qd.quarter === q && qd.year === year);
+  const now = new Date();
+  const currentQ = Math.ceil((now.getMonth() + 1) / 3);
 
-  // Compute actuals from sales orders
+  const getQ = (q: number) => quarters.find(qd => qd.quarter === q && qd.year === selectedYear);
+
+  // Filter sales by time range for KPI cards
+  const filteredSales = useMemo(() => {
+    const todayStr = now.toISOString().split('T')[0];
+    return salesOrders.filter(o => {
+      if (o.deletedAt) return false;
+      const d = new Date(o.date);
+      if (d.getFullYear() !== selectedYear) return false;
+      const day = o.date.split('T')[0];
+      switch (timeRange) {
+        case 'today': return day === todayStr;
+        case 'week': {
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - now.getDay() + 1);
+          weekStart.setHours(0, 0, 0, 0);
+          return d >= weekStart && d <= now;
+        }
+        case 'month': return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        case 'quarter': {
+          const dq = Math.ceil((d.getMonth() + 1) / 3);
+          return dq === currentQ;
+        }
+        case 'custom': {
+          if (!customFrom || !customTo) return true;
+          return day >= customFrom && day <= customTo;
+        }
+        default: return true;
+      }
+    });
+  }, [salesOrders, timeRange, selectedYear, customFrom, customTo, now, currentQ]);
+
+  const totalRevenue = filteredSales.reduce((s, o) => s + o.totalRevenue, 0);
+  const totalProfit = filteredSales.reduce((s, o) => s + o.totalProfit, 0);
+  const profitPercent = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
+  const totalCOGS = totalRevenue - totalProfit;
+
+  // Quarter actuals for the selected year
   const quarterActuals = useMemo(() => {
     const result: Record<number, { revenue: number; profit: number }> = { 1: { revenue: 0, profit: 0 }, 2: { revenue: 0, profit: 0 }, 3: { revenue: 0, profit: 0 }, 4: { revenue: 0, profit: 0 } };
     salesOrders.filter(o => !o.deletedAt).forEach(o => {
       const d = new Date(o.date);
-      if (d.getFullYear() !== year) return;
+      if (d.getFullYear() !== selectedYear) return;
       const q = Math.ceil((d.getMonth() + 1) / 3);
       result[q].revenue += o.totalRevenue;
       result[q].profit += o.totalProfit;
     });
     return result;
-  }, [salesOrders, year]);
+  }, [salesOrders, selectedYear]);
 
-  const totalRevenue = Object.values(quarterActuals).reduce((s, v) => s + v.revenue, 0);
-  const totalProfit = Object.values(quarterActuals).reduce((s, v) => s + v.profit, 0);
   const totalTarget = [1, 2, 3, 4].reduce((s, q) => s + (getQ(q)?.targetRevenue || 0), 0);
-  const totalCOGS = totalRevenue - totalProfit;
 
-  // Chart data: daily revenue for current quarter
-  const currentQ = Math.ceil((new Date().getMonth() + 1) / 3);
+  // Chart data
   const chartData = useMemo(() => {
     const dailyMap = new Map<string, number>();
-    salesOrders.filter(o => !o.deletedAt).forEach(o => {
-      const d = new Date(o.date);
-      if (d.getFullYear() !== year) return;
-      const q = Math.ceil((d.getMonth() + 1) / 3);
-      if (q !== currentQ) return;
+    filteredSales.forEach(o => {
       const key = o.date.split('T')[0];
       dailyMap.set(key, (dailyMap.get(key) || 0) + o.totalRevenue);
     });
@@ -64,100 +100,118 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
         date: new Date(date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
         revenue: Math.round(revenue / 1000),
       }));
-  }, [salesOrders, year, currentQ]);
+  }, [filteredSales]);
 
   const mask = (v: string) => showNumbers ? v : '********';
+  const storage = getStorageUsage();
 
   const handleBackup = () => {
     const data = exportBackup();
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `sdt_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `sdt_backup_${selectedYear}_${new Date().toISOString().split('T')[0]}.json`;
+    a.click(); URL.revokeObjectURL(url);
     addNotification('Đã sao lưu dữ liệu', 'info');
   };
 
   const handleRestore = () => {
     const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
+    input.type = 'file'; input.accept = '.json';
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        const success = importBackup(reader.result as string);
-        if (success) {
-          addNotification('Đã khôi phục dữ liệu', 'info');
-          onDataRestore();
-        }
-      };
+      reader.onload = () => { if (importBackup(reader.result as string)) { addNotification('Đã khôi phục dữ liệu', 'info'); onDataRestore(); } };
       reader.readAsText(file);
     };
     input.click();
   };
 
+  const handleRandomize = () => {
+    const weights = [0.28, 0.18, 0.20, 0.34];
+    for (let q = 1; q <= 4; q++) {
+      const base = MAX_YEARLY_REVENUE * weights[q - 1];
+      const variance = base * 0.1 * (Math.random() - 0.5);
+      const rev = Math.round((base + variance) / 1000000) * 1000000;
+      const pct = 12 + Math.round(Math.random() * 6);
+      setQuarterTarget(q, selectedYear, rev, pct);
+    }
+    addNotification(`Đã tạo ngẫu nhiên mục tiêu ${selectedYear}`, 'quarter_update');
+  };
+
   return (
-    <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 safe-bottom">
-      {/* Top row: title + eye toggle */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-foreground">Tổng quan</h2>
-        <Button variant="ghost" size="icon" onClick={() => setShowNumbers(!showNumbers)}>
-          {showNumbers ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-        </Button>
+    <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 pb-20 lg:pb-4">
+      {/* Time range selector */}
+      <div className="flex gap-1.5 overflow-x-auto">
+        {(['today', 'week', 'month', 'quarter', 'custom'] as TimeRange[]).map(r => (
+          <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
+            onClick={() => setTimeRange(r)}>
+            {{ today: `Hôm nay ${now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`, week: 'Tuần này', month: 'Tháng này', quarter: `Quý ${currentQ}`, custom: 'Tùy chọn' }[r]}
+          </Button>
+        ))}
       </div>
 
-      {/* Finance Cards */}
+      {timeRange === 'custom' && (
+        <div className="flex gap-2">
+          <Input type="date" className="h-8 text-xs" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+          <Input type="date" className="h-8 text-xs" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+        </div>
+      )}
+
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="glass card-shadow">
+        <Card className="shadow-sm">
           <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Doanh thu</div>
-            <p className="mt-1 text-financial">{mask(formatCompactVND(totalRevenue))}</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Doanh thu tích lũy</div>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowNumbers(!showNumbers)}>
+                {showNumbers ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+              </Button>
+            </div>
+            <p className="mt-1 text-xl font-bold text-primary">{mask(formatCompactVND(totalRevenue))}</p>
           </CardContent>
         </Card>
-        <Card className="glass card-shadow">
+        <Card className="shadow-sm">
           <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Wallet className="h-3.5 w-3.5" /> Lợi nhuận</div>
-            <p className="mt-1 text-financial">{mask(formatCompactVND(totalProfit))}</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Wallet className="h-3.5 w-3.5" /> Lợi nhuận tích lũy</div>
+            <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(totalProfit))}</p>
           </CardContent>
         </Card>
-        <Card className="glass card-shadow">
+        <Card className="shadow-sm">
           <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn nhập</div>
-            <p className="mt-1 text-lg font-bold text-foreground">{mask(formatCompactVND(totalCOGS))}</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> % Lợi nhuận</div>
+            <p className="mt-1 text-xl font-bold">{mask(`${profitPercent}%`)}</p>
           </CardContent>
         </Card>
-        <Card className="glass card-shadow">
+        <Card className="shadow-sm">
           <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Mục tiêu</div>
-            <p className="mt-1 text-lg font-bold text-foreground">{mask(formatCompactVND(totalTarget))}</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn hàng</div>
+            <p className="mt-1 text-xl font-bold">{mask(formatCompactVND(totalCOGS))}</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Revenue Chart */}
       {chartData.length > 0 && (
-        <Card className="glass card-shadow">
+        <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Doanh thu Q{currentQ} theo ngày (nghìn VND)</CardTitle>
+            <CardTitle className="text-sm">Doanh thu theo ngày (nghìn VND)</CardTitle>
           </CardHeader>
           <CardContent className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(152, 69%, 40%)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(152, 69%, 40%)" stopOpacity={0} />
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
-                <Area type="monotone" dataKey="revenue" stroke="hsl(152, 69%, 40%)" fill="url(#colorRevenue)" strokeWidth={2} />
+                <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fill="url(#colorRevenue)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -165,15 +219,32 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
       )}
 
       {/* Quarter Targets */}
-      <Card className="glass card-shadow">
+      <Card className="shadow-sm">
         <CardHeader className="pb-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">Định mức doanh thu {year}</CardTitle>
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm">Định mức doanh thu (1 tỷ)</CardTitle>
+              <select className="text-xs border rounded px-2 py-1 bg-background" value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} onClick={e => e.stopPropagation()}>
+                {[2026, 2027, 2028, 2029, 2030].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>🎲 Ngẫu nhiên</Button>
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
           </div>
         </CardHeader>
         {expanded && (
           <CardContent className="space-y-3">
+            {/* Total progress */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Tổng mục tiêu</span>
+                <span className="font-bold">{formatCompactVND(totalTarget)} / {formatCompactVND(MAX_YEARLY_REVENUE)}</span>
+              </div>
+              <Progress value={Math.min(100, (totalTarget / MAX_YEARLY_REVENUE) * 100)} className="h-2" />
+            </div>
+
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {[1, 2, 3, 4].map(q => {
                 const qData = getQ(q);
@@ -183,46 +254,50 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
                 const isEditing = editingQ === q;
 
                 return (
-                  <QuarterCard
-                    key={q}
-                    quarter={q}
-                    year={year}
-                    target={target}
+                  <QuarterCard key={q} quarter={q} year={selectedYear} target={target}
                     profitPercent={qData?.targetProfitPercent || 15}
-                    actualRevenue={actual.revenue}
-                    actualProfit={actual.profit}
-                    progress={progress}
-                    showNumbers={showNumbers}
+                    actualRevenue={actual.revenue} actualProfit={actual.profit}
+                    progress={progress} showNumbers={showNumbers}
                     isEditing={isEditing}
                     onEdit={() => setEditingQ(isEditing ? null : q)}
-                    onSave={(rev, pct) => {
-                      setQuarterTarget(q, year, rev, pct);
-                      setEditingQ(null);
-                      addNotification(`Đã cập nhật mục tiêu Q${q}/${year}`, 'quarter_update');
-                    }}
+                    onSave={(rev, pct) => { setQuarterTarget(q, selectedYear, rev, pct); setEditingQ(null); addNotification(`Đã cập nhật Q${q}/${selectedYear}`, 'quarter_update'); }}
                   />
                 );
               })}
             </div>
 
-            {/* Warnings */}
-            {totalTarget > 1_000_000_000 && (
+            {totalTarget > MAX_YEARLY_REVENUE && (
               <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
-                <AlertTriangle className="h-4 w-4" /> Tổng mục tiêu vượt 1 tỷ VND — cần cân nhắc!
+                <AlertTriangle className="h-4 w-4" /> Tổng mục tiêu vượt 1 tỷ VND!
               </div>
             )}
           </CardContent>
         )}
       </Card>
 
-      {/* Backup / Restore */}
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={handleBackup} className="flex-1">
+      {/* Export + Backup */}
+      <div className="flex gap-2 flex-wrap">
+        <Button variant="outline" size="sm" className="flex-1" onClick={handleBackup}>
           <Download className="mr-2 h-4 w-4" /> Sao lưu JSON
         </Button>
-        <Button variant="outline" size="sm" onClick={handleRestore} className="flex-1">
-          <Upload className="mr-2 h-4 w-4" /> Khôi phục JSON
+        <Button variant="outline" size="sm" className="flex-1" onClick={handleRestore}>
+          <Upload className="mr-2 h-4 w-4" /> Khôi phục
         </Button>
+      </div>
+
+      {/* Storage indicator */}
+      <div className="rounded-lg border p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setShowStorage(!showStorage)}>
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2"><HardDrive className="h-3.5 w-3.5 text-muted-foreground" /> Dữ liệu lưu trữ</div>
+          <span className={`font-bold ${storage.percent > 80 ? 'text-destructive' : 'text-muted-foreground'}`}>{storage.percent}%</span>
+        </div>
+        <Progress value={storage.percent} className="h-1.5 mt-1" />
+        {showStorage && (
+          <div className="mt-2 text-[10px] text-muted-foreground space-y-0.5 animate-in slide-in-from-top-1">
+            <p>Đã dùng: {(storage.used / 1024).toFixed(1)} KB / {(storage.total / 1024 / 1024).toFixed(1)} MB</p>
+            {storage.percent > 80 && <p className="text-destructive font-semibold">⚠️ Sắp hết dung lượng! Hãy sao lưu và xuất dữ liệu.</p>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -246,7 +321,6 @@ function QuarterCard({ quarter, year, target, profitPercent, actualRevenue, actu
           {isEditing ? 'Đóng' : 'Sửa'}
         </Button>
       </div>
-
       {isEditing ? (
         <div className="space-y-2">
           <div>
@@ -263,8 +337,8 @@ function QuarterCard({ quarter, year, target, profitPercent, actualRevenue, actu
         <>
           <div className="text-xs space-y-0.5">
             <p>Mục tiêu: <span className="font-bold">{mask(formatVND(target))}</span></p>
-            <p>Thực tế: <span className="font-bold text-emerald">{mask(formatCompactVND(actualRevenue))}</span></p>
-            <p>Lợi nhuận: <span className="font-bold text-emerald">{mask(formatCompactVND(actualProfit))}</span></p>
+            <p>Thực tế: <span className="font-bold text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(actualRevenue))}</span></p>
+            <p>Lợi nhuận: <span className="font-bold text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(actualProfit))}</span></p>
           </div>
           <Progress value={progress} className="h-2" />
           <p className="text-[10px] text-muted-foreground">{progress.toFixed(1)}% hoàn thành</p>
