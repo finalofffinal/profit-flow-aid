@@ -47,9 +47,13 @@ export interface QuarterData {
 
 export type TabId = 'dashboard' | 'import' | 'inventory' | 'sales' | 'catalog';
 
-// ─── Orders ───────────────────────────────────────
-export type OrderTag = 'auto' | 'special' | 'temporary';
+// ─── Unified Tag System ───────────────────────────────────
+// Import tags: auto (tự động), special (đặc biệt), supplementary (bổ sung), upgraded (nâng cấp)
+// Sale payment: cash (tiền mặt), transfer (chuyển khoản)
+export type ImportTag = 'auto' | 'special' | 'supplementary' | 'upgraded';
 export type PaymentMethod = 'cash' | 'transfer';
+// Keep backward compat
+export type OrderTag = ImportTag;
 
 export interface ImportOrderItem {
   productId: string;
@@ -71,8 +75,9 @@ export interface ImportOrder {
   date: string;
   items: ImportOrderItem[];
   total: number;
-  tag: OrderTag;
+  tag: ImportTag;
   locked: boolean;
+  images: string[]; // base64 compressed images for supplementary tag
   deletedAt: string | null;
   createdAt: string;
 }
@@ -97,7 +102,7 @@ export interface SaleOrder {
   totalRevenue: number;
   totalProfit: number;
   profitPercent: number;
-  tag: OrderTag;
+  tag: ImportTag;
   paymentMethod: PaymentMethod;
   transferImages: string[];
   deletedAt: string | null;

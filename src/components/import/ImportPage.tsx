@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter } from 'lucide-react';
-import { ImportOrder, Supplier, Product, OrderTag } from '@/types';
-import { formatVND } from '@/lib/currency';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Shuffle, Camera } from 'lucide-react';
+import { ImportOrder, Supplier, Product, ImportTag } from '@/types';
+import { formatVND, formatCompactVND } from '@/lib/currency';
+import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -22,13 +23,6 @@ interface ImportPageProps {
   addNotification: (msg: string, type?: any) => void;
 }
 
-const TAG_LABELS: Record<OrderTag, string> = { auto: 'Tự động', special: 'Đặc biệt', temporary: 'Tạm thời' };
-const TAG_COLORS: Record<OrderTag, string> = {
-  auto: 'bg-secondary text-secondary-foreground',
-  special: 'bg-destructive/20 text-destructive border-destructive/30',
-  temporary: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
-};
-
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
 export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification }: ImportPageProps) {
@@ -37,9 +31,11 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
   const [showAdd, setShowAdd] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string>('all');
+  const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
 
   const timeFiltered = useMemo(() => {
     const now = new Date();
@@ -78,6 +74,7 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
   const filteredOrders = useMemo(() => {
     let list = timeFiltered;
     if (tagFilter !== 'all') list = list.filter(o => o.tag === tagFilter);
+    if (supplierFilter !== 'all') list = list.filter(o => o.supplierId === supplierFilter);
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter(o =>
@@ -85,7 +82,7 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
       o.items.some(it => it.productName.toLowerCase().includes(q)) ||
       o.date.includes(q)
     );
-  }, [timeFiltered, search, tagFilter]);
+  }, [timeFiltered, search, tagFilter, supplierFilter]);
 
   // Group by quarter
   const groupedByQuarter = useMemo(() => {
@@ -105,12 +102,39 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
     setExpandedOrders(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
+  const handleDeleteOrder = (id: string) => {
+    const order = activeOrders.find(o => o.id === id);
+    deleteOrder(id);
+    if (order) {
+      setUndoStack(prev => [...prev, { action: 'delete_order', data: id }]);
+      addNotification(`Đã xóa đơn nhập ${order.supplierName}`, 'info');
+    }
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    if (last.action === 'delete_order') {
+      restoreOrder(last.data);
+    }
+    setUndoStack(prev => prev.slice(0, -1));
+    addNotification('Đã hoàn tác', 'info');
+  };
+
+  const totalImport = filteredOrders.reduce((s, o) => s + o.total, 0);
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border p-3 space-y-2">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-base font-bold">Nhập hàng</h2>
+          <Badge variant="outline" className="font-bold">{filteredOrders.length} đơn</Badge>
           <div className="flex-1" />
+          {undoStack.length > 0 && (
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo}>
+              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
@@ -145,17 +169,24 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
           <Select value={tagFilter} onValueChange={setTagFilter}>
             <SelectTrigger className="w-28 h-8"><Filter className="mr-1 h-3 w-3" /><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả</SelectItem>
-              <SelectItem value="auto">Tự động</SelectItem>
-              <SelectItem value="special">Đặc biệt</SelectItem>
-              <SelectItem value="temporary">Tạm thời</SelectItem>
+              <SelectItem value="all">Tất cả tag</SelectItem>
+              <SelectItem value="auto">⚪ Tự động</SelectItem>
+              <SelectItem value="special">🔴 Đặc biệt</SelectItem>
+              <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+              <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+            <SelectTrigger className="w-28 h-8"><SelectValue placeholder="NCC" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả NCC</SelectItem>
+              {suppliers.filter(s => !s.deletedAt).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{filteredOrders.length} đơn</Badge>
-          <span>Tổng: <span className="font-bold text-foreground">{formatVND(filteredOrders.reduce((s, o) => s + o.total, 0))}</span></span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>Tổng nhập: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
         </div>
       </div>
 
@@ -163,29 +194,33 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
         {Array.from(groupedByQuarter.entries()).map(([qLabel, orders]) => (
           <div key={qLabel}>
             <div className="flex items-center gap-2 mb-2">
-              <Badge variant="outline" className="font-bold">{qLabel}</Badge>
+              <Badge variant="outline" className="font-bold text-sm">{qLabel}</Badge>
               <span className="text-xs text-muted-foreground">{orders.length} đơn · {formatVND(orders.reduce((s, o) => s + o.total, 0))}</span>
             </div>
             <div className="space-y-2">
               {orders.map(order => {
                 const isExpanded = expandedOrders.has(order.id);
+                const tagColor = IMPORT_TAG_COLORS[order.tag] || IMPORT_TAG_COLORS.auto;
+                const tagLabel = IMPORT_TAG_LABELS[order.tag] || 'Tự động';
                 return (
-                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'special' ? 'border-destructive/30' : order.tag === 'temporary' ? 'border-amber-500/30' : 'border-border'}`}>
+                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'special' ? 'border-destructive/30' : order.tag === 'supplementary' ? 'border-amber-500/30' : order.tag === 'upgraded' ? 'border-blue-600/30' : 'border-border'}`}>
                     <button className="flex w-full items-center gap-2 p-3 text-left hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(order.id)}>
                       {isExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-sm truncate">{order.supplierName}</span>
-                          <Badge className={`text-[10px] ${TAG_COLORS[order.tag]}`}>{TAG_LABELS[order.tag]}</Badge>
+                          <Badge className={`text-[10px] ${tagColor}`}>{tagLabel}</Badge>
                           {order.locked && <Lock className="h-3 w-3 text-muted-foreground" />}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {new Date(order.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} · {order.items.length} SP · {formatVND(order.total)}
                         </p>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={e => { e.stopPropagation(); deleteOrder(order.id); }}>
-                        <Trash className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
+                      {order.tag !== 'auto' && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }}>
+                          <Trash className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      )}
                     </button>
                     {isExpanded && (
                       <div className="border-t border-border p-3 space-y-1.5 animate-in slide-in-from-top-1">
@@ -258,13 +293,27 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
 }) {
   const [supplierId, setSupplierId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [tag, setTag] = useState<OrderTag>('special');
+  const [tag, setTag] = useState<ImportTag>('special');
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; quantity: number }[]>([]);
+  const [images, setImages] = useState<string[]>([]);
 
   const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
   const addItem = () => setSelectedProducts(prev => [...prev, { productId: '', quantity: 1 }]);
   const removeItem = (i: number) => setSelectedProducts(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).slice(0, 5 - images.length).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        setImages(prev => [...prev.slice(0, 4), result]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
 
   const handleSubmit = () => {
     const supplier = suppliers.find(s => s.id === supplierId);
@@ -283,10 +332,15 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
         };
       });
     if (items.length === 0) return;
-    onSubmit({ supplierId, supplierName: supplier.name, date, items, total: items.reduce((s, it) => s + it.total, 0), tag, locked: false });
+    onSubmit({
+      supplierId, supplierName: supplier.name, date, items,
+      total: items.reduce((s, it) => s + it.total, 0),
+      tag, locked: false, images,
+    });
     onClose();
     setSupplierId('');
     setSelectedProducts([]);
+    setImages([]);
   };
 
   return (
@@ -311,15 +365,40 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
             </div>
           </div>
           <div>
-            <Label className="text-xs">Tag</Label>
-            <Select value={tag} onValueChange={v => setTag(v as OrderTag)}>
+            <Label className="text-xs">Tag đơn hàng</Label>
+            <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-                <SelectItem value="temporary">🟡 Tạm thời</SelectItem>
+                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {/* Image upload for supplementary */}
+          {tag === 'supplementary' && (
+            <div className="space-y-2">
+              <Label className="text-xs">Ảnh đính kèm (tối đa 5)</Label>
+              <div className="flex gap-2 flex-wrap">
+                {images.map((img, i) => (
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border">
+                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <button className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-bl p-0.5" onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {images.length < 5 && (
+                  <label className="w-16 h-16 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors">
+                    <Camera className="h-5 w-5 text-muted-foreground" />
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold">Sản phẩm</Label>

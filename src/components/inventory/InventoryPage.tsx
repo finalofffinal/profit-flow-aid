@@ -1,27 +1,43 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Package, AlertTriangle } from 'lucide-react';
-import { InventoryBatch, Supplier } from '@/types';
-import { formatVND } from '@/lib/currency';
+import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { InventoryBatch, Supplier, SaleOrder, ImportOrder } from '@/types';
+import { formatVND, formatCompactVND } from '@/lib/currency';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface InventoryPageProps {
   batches: InventoryBatch[];
   suppliers: Supplier[];
+  importOrders: ImportOrder[];
+  salesOrders: SaleOrder[];
 }
 
-export function InventoryPage({ batches, suppliers }: InventoryPageProps) {
+export function InventoryPage({ batches, suppliers, importOrders, salesOrders }: InventoryPageProps) {
   const [search, setSearch] = useState('');
   const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('all');
+
+  // Calculate quarterly inventory summary
+  const quarterOptions = useMemo(() => {
+    const qs = new Set<string>();
+    batches.forEach(b => qs.add(`Q${b.quarter}/${b.year}`));
+    return Array.from(qs).sort();
+  }, [batches]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return batches;
+    let result = batches;
+    if (selectedQuarter !== 'all') {
+      const [qStr, yStr] = selectedQuarter.replace('Q', '').split('/');
+      result = result.filter(b => b.quarter === parseInt(qStr) && b.year === parseInt(yStr));
+    }
+    if (!search.trim()) return result;
     const q = search.toLowerCase();
-    return batches.filter(b =>
+    return result.filter(b =>
       b.productName.toLowerCase().includes(q) ||
       b.supplierName.toLowerCase().includes(q)
     );
-  }, [batches, search]);
+  }, [batches, search, selectedQuarter]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, InventoryBatch[]>();
@@ -31,6 +47,31 @@ export function InventoryPage({ batches, suppliers }: InventoryPageProps) {
     });
     return map;
   }, [filtered]);
+
+  // Calculate import vs sales totals for selected quarter
+  const quarterSummary = useMemo(() => {
+    if (selectedQuarter === 'all') return null;
+    const [qStr, yStr] = selectedQuarter.replace('Q', '').split('/');
+    const q = parseInt(qStr);
+    const y = parseInt(yStr);
+
+    const qImports = importOrders.filter(o => {
+      if (o.deletedAt) return false;
+      const d = new Date(o.date);
+      return Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+    });
+    const qSales = salesOrders.filter(o => {
+      if (o.deletedAt) return false;
+      const d = new Date(o.date);
+      return Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+    });
+
+    const totalImport = qImports.reduce((s, o) => s + o.total, 0);
+    const totalSales = qSales.reduce((s, o) => s + o.totalRevenue, 0);
+    const remaining = totalImport - (totalSales * 0.85); // approximate remaining stock value
+
+    return { totalImport, totalSales, remaining };
+  }, [selectedQuarter, importOrders, salesOrders]);
 
   const toggleSupplier = (id: string) => {
     setCollapsedSuppliers(prev => {
@@ -42,16 +83,47 @@ export function InventoryPage({ batches, suppliers }: InventoryPageProps) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border p-3 space-y-2">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-bold">Kho hàng</h2>
           <div className="flex-1" />
-          <Badge variant="outline">{batches.length} lô</Badge>
+          <Badge variant="outline" className="font-bold">{filtered.length} lô</Badge>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-8 h-9" placeholder="Tìm sản phẩm, NCC..." value={search} onChange={e => setSearch(e.target.value)} />
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-8 h-9" placeholder="Tìm sản phẩm, NCC..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+            <SelectTrigger className="w-28 h-9"><SelectValue placeholder="Quý" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả</SelectItem>
+              {quarterOptions.map(q => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
+
+        {/* Quarter summary */}
+        {quarterSummary && (
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2 text-center">
+              <TrendingUp className="h-3.5 w-3.5 mx-auto text-emerald-600 dark:text-emerald-400 mb-0.5" />
+              <p className="text-muted-foreground">Nhập</p>
+              <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(quarterSummary.totalImport)}</p>
+            </div>
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-2 text-center">
+              <TrendingDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" />
+              <p className="text-muted-foreground">Bán</p>
+              <p className="font-bold text-destructive">{formatCompactVND(quarterSummary.totalSales)}</p>
+            </div>
+            <div className="rounded-lg bg-primary/10 border border-primary/20 p-2 text-center">
+              <Package className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
+              <p className="text-muted-foreground">Tồn kho</p>
+              <p className="font-bold text-primary">{formatCompactVND(Math.max(0, quarterSummary.remaining))}</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3 pb-20 lg:pb-4">

@@ -2,12 +2,12 @@
  * Currency utilities for VND
  * Input convention: user types "10.5" meaning 10,500 VND (x1000)
  * Display: "10.500 VND" with dot as thousands separator
+ * ALL amounts rounded to nearest 1,000 VND
  */
 
 /** Parse user input (x1000 convention): "10.5" → 10500, "150" → 150000 */
 export function parsePriceInput(input: string): number {
   if (!input || input.trim() === '') return 0;
-  // Replace comma with dot for decimal parsing
   const normalized = input.replace(/,/g, '.');
   const value = parseFloat(normalized);
   if (isNaN(value)) return 0;
@@ -17,29 +17,36 @@ export function parsePriceInput(input: string): number {
 /** Format VND with dot separator: 10500 → "10.500 VND" */
 export function formatVND(amount: number): string {
   if (amount === 0) return '0 VND';
-  const formatted = Math.round(amount)
+  const rounded = Math.round(amount / 1000) * 1000;
+  const formatted = rounded
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${formatted} VND`;
 }
 
-/** Compact format: 150000000 → "150 tr", 1500000 → "1,5 tr", 500000 → "500k" */
+/** Compact format showing full thousands: 1525000 → "1.525.000", 500000 → "500.000" */
 export function formatCompactVND(amount: number): string {
   if (amount === 0) return '0';
-  const abs = Math.abs(amount);
+  const rounded = Math.round(amount / 1000) * 1000;
+  const abs = Math.abs(rounded);
   const sign = amount < 0 ? '-' : '';
-  
+
   if (abs >= 1_000_000_000) {
-    const val = abs / 1_000_000_000;
-    return `${sign}${val % 1 === 0 ? val.toString() : val.toFixed(1).replace('.', ',')} tỷ`;
+    // Show as "X tỷ YYY tr" for very large
+    const ty = Math.floor(abs / 1_000_000_000);
+    const remainder = abs % 1_000_000_000;
+    if (remainder === 0) return `${sign}${ty} tỷ`;
+    const tr = Math.floor(remainder / 1_000_000);
+    return `${sign}${ty} tỷ ${tr} tr`;
   }
   if (abs >= 1_000_000) {
-    const val = abs / 1_000_000;
-    return `${sign}${val % 1 === 0 ? val.toString() : val.toFixed(1).replace('.', ',')} tr`;
+    // Show full thousands: 1.525.000
+    const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${sign}${formatted}`;
   }
   if (abs >= 1_000) {
-    const val = abs / 1_000;
-    return `${sign}${val % 1 === 0 ? val.toString() : val.toFixed(1).replace('.', ',')}k`;
+    const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${sign}${formatted}`;
   }
   return `${sign}${abs}`;
 }
@@ -52,7 +59,7 @@ export function formatPriceForInput(amount: number): string {
   return val.toFixed(1);
 }
 
-/** Round to nearest 500 or 1000 VND */
-export function roundVND(amount: number, step: 500 | 1000 = 500): number {
-  return Math.round(amount / step) * step;
+/** Round to nearest 1000 VND */
+export function roundVND(amount: number): number {
+  return Math.round(amount / 1000) * 1000;
 }
