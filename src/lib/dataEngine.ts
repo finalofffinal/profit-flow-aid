@@ -1,7 +1,5 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 
-const SEASONAL_WEIGHTS: Record<number, number> = { 1: 0.28, 2: 0.18, 3: 0.20, 4: 0.34 };
-
 function seededRandom(seed: number) {
   let s = seed;
   return () => {
@@ -27,28 +25,57 @@ function getDaysInQuarter(q: number, year: number): string[] {
   return days;
 }
 
-function isWeekend(dateStr: string): boolean {
-  const d = new Date(dateStr).getDay();
-  return d === 0 || d === 5 || d === 6;
+function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr).getDay(); // 0=Sun, 1=Mon...6=Sat
 }
 
-function roundToStep(value: number, step: number): number {
-  return Math.round(value / step) * step;
+function roundToThousand(value: number): number {
+  return Math.round(value / 1000) * 1000;
 }
 
-// Vietnamese holidays boost (before holidays sell more)
-function getHolidayBoost(dateStr: string): number {
+// Realistic daily revenue pattern based on Vietnamese retail
+function getRevenueWeight(dateStr: string, rand: () => number): number {
   const d = new Date(dateStr);
-  const mmdd = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  // Tết period (late Jan / early Feb)
-  const month = d.getMonth() + 1;
+  const dow = d.getDay();
   const day = d.getDate();
-  if (month === 1 && day >= 20) return 1.8; // Pre-Tết
-  if (month === 2 && day <= 10) return 1.5; // Tết
-  if (mmdd === '04-29' || mmdd === '04-30' || mmdd === '05-01') return 1.4;
-  if (mmdd === '09-01' || mmdd === '09-02') return 1.3;
-  if (month === 12 && day >= 20) return 1.6; // Pre-Christmas/New Year
-  return 1.0;
+  const month = d.getMonth() + 1;
+  const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+  // 1. Weekly pattern: Mon-Wed lowest, Thu moderate, Fri-Sun highest
+  const weeklyWeight = [1.25, 0.72, 0.75, 0.78, 0.88, 1.15, 1.30][dow]; // Sun,Mon...Sat
+
+  // 2. Monthly salary cycle: days 1-10 high, 11-20 moderate, 21-31 low
+  let monthlyWeight = 1.0;
+  if (day <= 10) monthlyWeight = 1.15;
+  else if (day <= 20) monthlyWeight = 1.0;
+  else monthlyWeight = 0.85;
+
+  // 3. Holiday boosts (pre-holiday periods)
+  let holidayBoost = 1.0;
+  // Tết period (late Jan/early Feb)
+  if (month === 1 && day >= 15) holidayBoost = 1.5 + (day - 15) * 0.05;
+  if (month === 1 && day >= 25) holidayBoost = 2.0;
+  if (month === 2 && day <= 5) holidayBoost = 1.6;
+  if (month === 2 && day <= 15) holidayBoost = Math.max(holidayBoost, 1.2);
+  // 30/4 - 1/5
+  if (month === 4 && day >= 25) holidayBoost = 1.35;
+  if (mmdd === '04-30' || mmdd === '05-01') holidayBoost = 1.4;
+  // Quốc khánh
+  if (mmdd === '09-01' || mmdd === '09-02') holidayBoost = 1.3;
+  // Trung thu (mid-Aug)
+  if (month === 8 && day >= 10 && day <= 20) holidayBoost = 1.2;
+  // Christmas/New Year
+  if (month === 12 && day >= 15) holidayBoost = 1.3 + (day - 15) * 0.02;
+  if (month === 12 && day >= 25) holidayBoost = 1.6;
+
+  // 4. Random noise: ±12% to avoid artificial smoothness
+  const noise = 0.88 + rand() * 0.24;
+
+  // 5. Gentle sine wave for intra-quarter variation
+  const dayOfYear = Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000);
+  const sineWave = 1 + 0.08 * Math.sin((dayOfYear / 365) * Math.PI * 4);
+
+  return weeklyWeight * monthlyWeight * holidayBoost * noise * sineWave;
 }
 
 function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => number): Map<string, number> {
@@ -56,21 +83,22 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
   const weights: number[] = [];
   let weightSum = 0;
 
-  for (let i = 0; i < days.length; i++) {
-    const sineWeight = 1 + 0.2 * Math.sin((i / days.length) * Math.PI * 6);
-    const weekendBoost = isWeekend(days[i]) ? 1.25 : 1.0;
-    const holidayBoost = getHolidayBoost(days[i]);
-    const noise = 0.88 + rand() * 0.24;
-    const w = sineWeight * weekendBoost * holidayBoost * noise;
+  for (const day of days) {
+    const w = getRevenueWeight(day, rand);
     weights.push(w);
     weightSum += w;
   }
 
   let allocated = 0;
   for (let i = 0; i < days.length; i++) {
-    const amount = i === days.length - 1
-      ? totalRevenue - allocated
-      : roundToStep(Math.max(50000, (weights[i] / weightSum) * totalRevenue), 1000);
+    let amount: number;
+    if (i === days.length - 1) {
+      amount = totalRevenue - allocated;
+    } else {
+      const raw = (weights[i] / weightSum) * totalRevenue;
+      // Round to thousands, add small random jitter to avoid repetitive numbers
+      amount = roundToThousand(Math.max(50000, raw));
+    }
     map.set(days[i], amount);
     allocated += amount;
   }
@@ -95,7 +123,7 @@ export function generateQuarterData(
     return { importOrders: [], salesOrders: [], inventoryBatches: [] };
   }
 
-  const rand = seededRandom(quarter.quarter * 1000 + quarter.year);
+  const rand = seededRandom(quarter.quarter * 7919 + quarter.year * 31);
   const days = getDaysInQuarter(quarter.quarter, quarter.year);
   const activeProducts = products.filter(p => !p.deletedAt && p.sellPrice > 0);
 
@@ -121,54 +149,96 @@ export function generateQuarterData(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // Determine import schedule based on supplier size
-  const avgDailyRevenue = autoTargetRevenue / days.length;
-
+  // Determine supplier import weights based on size
+  const supplierSizes = new Map<string, { isSmall: boolean; products: Product[] }>();
+  let totalLargeProducts = 0;
+  let totalSmallProducts = 0;
   for (const [sid, prods] of supplierProducts) {
+    const isSmall = prods.length < 10;
+    supplierSizes.set(sid, { isSmall, products: prods });
+    if (isSmall) totalSmallProducts += prods.length;
+    else totalLargeProducts += prods.length;
+  }
+
+  // Small suppliers: 5%-15% of import cost, large: 85%-95%
+  const smallSupplierPercent = 0.05 + rand() * 0.10;
+  const targetCOGS = autoTargetRevenue * (1 - (quarter.targetProfitPercent || 15) / 100);
+
+  for (const [sid, { isSmall, products: prods }] of supplierSizes) {
     const supplier = suppliers.find(s => s.id === sid);
     const supplierName = supplier?.name || 'Khác';
-    const isSmall = prods.length < 10;
-    
-    // Small suppliers: 1-2 orders per month (3-6 per quarter)
-    // Large suppliers: 6-9 orders per quarter
-    const ordersPerQuarter = isSmall ? (1 + Math.floor(rand() * 2)) * 3 : 6 + Math.floor(rand() * 4);
-    const orderDayIndices: number[] = [];
-    
-    for (let i = 0; i < Math.min(ordersPerQuarter, days.length); i++) {
-      const idx = Math.floor((i / ordersPerQuarter) * days.length + rand() * (days.length / ordersPerQuarter * 0.8));
-      orderDayIndices.push(Math.min(idx, days.length - 1));
+
+    // Determine number of orders per quarter
+    let ordersPerQuarter: number;
+    if (isSmall) {
+      // 1-2 orders per quarter for small suppliers
+      ordersPerQuarter = prods.length <= 5 ? 1 : (1 + Math.floor(rand() * 2));
+    } else {
+      // 4-6 orders per quarter for large suppliers
+      ordersPerQuarter = 4 + Math.floor(rand() * 3);
     }
 
-    // Distribute products across orders
+    // Allocate import cost for this supplier
+    const supplierShare = isSmall
+      ? (smallSupplierPercent * (prods.length / Math.max(1, totalSmallProducts)))
+      : ((1 - smallSupplierPercent) * (prods.length / Math.max(1, totalLargeProducts)));
+    const supplierCOGS = targetCOGS * supplierShare;
+    const cogsPerOrder = supplierCOGS / ordersPerQuarter;
+
+    // Schedule orders across the quarter
+    const orderDayIndices: number[] = [];
+    for (let i = 0; i < ordersPerQuarter; i++) {
+      const base = Math.floor((i / ordersPerQuarter) * days.length);
+      const jitter = Math.floor(rand() * Math.max(1, days.length / ordersPerQuarter * 0.6));
+      orderDayIndices.push(Math.min(base + jitter, days.length - 1));
+    }
+    orderDayIndices.sort((a, b) => a - b);
+
+    // Distribute all products across orders
     const prodsShuffled = [...prods].sort(() => rand() - 0.5);
-    
+
     for (let oi = 0; oi < orderDayIndices.length; oi++) {
       const importDate = days[orderDayIndices[oi]];
       const items: ImportOrderItem[] = [];
-      
-      // For small suppliers, include all products in fewer orders
-      // For large, distribute across orders
-      const startIdx = isSmall ? 0 : Math.floor((oi / orderDayIndices.length) * prodsShuffled.length);
-      const count = isSmall ? prodsShuffled.length : Math.max(2, Math.ceil(prodsShuffled.length / orderDayIndices.length) + Math.floor(rand() * 3));
-      
-      for (let pi = 0; pi < count && (startIdx + pi) < prodsShuffled.length; pi++) {
-        const product = prodsShuffled[(startIdx + pi) % prodsShuffled.length];
-        const rate = product.conversionRate || 1;
-        
-        // Products without child unit (rate=1) get smaller quantities
-        const hasChild = rate > 1;
-        const daysOfStock = hasChild ? (5 + Math.floor(rand() * 8)) : (2 + Math.floor(rand() * 3));
-        const avgSmallUnitsPerDay = Math.max(1, Math.ceil((avgDailyRevenue * 0.12) / (product.sellPrice / rate)));
-        let qtySmall = avgSmallUnitsPerDay * daysOfStock;
-        
-        // For kg products, round to 100g multiples
-        if (product.unit.toLowerCase().includes('kg')) {
-          qtySmall = Math.max(10, roundToStep(qtySmall, 10)); // 10 lạng = 1kg
+
+      // Determine which products to include in this order
+      let productsForOrder: Product[];
+      if (isSmall) {
+        // Small suppliers: include ALL products in each order
+        productsForOrder = prodsShuffled;
+      } else {
+        // Large suppliers: 8-12 products per order, rotating through all
+        const perOrder = 8 + Math.floor(rand() * 5);
+        const start = Math.floor((oi / ordersPerQuarter) * prodsShuffled.length);
+        productsForOrder = [];
+        for (let pi = 0; pi < perOrder; pi++) {
+          productsForOrder.push(prodsShuffled[(start + pi) % prodsShuffled.length]);
         }
-        
-        const qtyParent = Math.max(1, Math.ceil(qtySmall / rate));
+      }
+
+      for (const product of productsForOrder) {
+        const rate = product.conversionRate || 1;
+        const hasChild = rate > 1;
+
+        // Quantity: 1-4 parent units (max 5 as specified)
+        let qtyParent: number;
+        if (!hasChild) {
+          // Products without child unit: fewer quantities
+          qtyParent = 1 + Math.floor(rand() * 2);
+        } else {
+          qtyParent = 1 + Math.floor(rand() * 4);
+        }
+
+        // Cap at 5
+        qtyParent = Math.min(5, qtyParent);
+
+        // For kg products, round quantity
+        if (product.unit.toLowerCase().includes('kg')) {
+          qtyParent = Math.max(1, qtyParent);
+        }
+
         const priceFluctuation = 0.97 + rand() * 0.06;
-        const buyPrice = roundToStep(Math.round(product.buyPrice * priceFluctuation), 500);
+        const buyPrice = roundToThousand(Math.round(product.buyPrice * priceFluctuation));
 
         items.push({
           productId: product.id,
@@ -196,6 +266,7 @@ export function generateQuarterData(
           total: items.reduce((s, it) => s + it.total, 0),
           tag: 'auto',
           locked: false,
+          images: [],
           deletedAt: null,
           createdAt: importDate + 'T08:00:00.000Z',
         };
@@ -222,7 +293,7 @@ export function generateQuarterData(
     }
   }
 
-  // Generate sales orders
+  // Generate sales orders - realistic daily baskets
   for (const day of days) {
     const targetDayRevenue = dailyRevenue.get(day) || 0;
     if (targetDayRevenue <= 0) continue;
@@ -231,41 +302,53 @@ export function generateQuarterData(
     let remaining = targetDayRevenue;
 
     const shuffled = [...activeProducts].sort(() => rand() - 0.5);
-    const basketSize = Math.min(shuffled.length, 3 + Math.floor(rand() * 6));
+    // 10-30 product lines per day
+    const basketSize = Math.min(shuffled.length, 10 + Math.floor(rand() * 21));
 
-    for (let i = 0; i < basketSize && remaining > 5000; i++) {
+    for (let i = 0; i < basketSize && remaining > 3000; i++) {
       const product = shuffled[i];
       const rate = product.conversionRate || 1;
-      const sellPerUnit = roundToStep(Math.round(product.sellPrice / rate), 500);
-      const buyPerUnit = roundToStep(Math.round(product.buyPrice / rate), 500);
+      const hasChild = rate > 1;
+
+      // Sell price per small unit
+      const sellPerUnit = roundToThousand(Math.round(product.sellPrice / rate));
+      const buyPerUnit = roundToThousand(Math.round(product.buyPrice / rate));
 
       if (sellPerUnit <= 0) continue;
 
       const portion = remaining / (basketSize - i);
+
+      // Limit: 10%-40% of one parent unit per day
+      const maxChildUnits = Math.max(1, Math.floor(rate * (0.1 + rand() * 0.3)));
       let qty = Math.max(1, Math.round(portion / sellPerUnit));
-      
-      // For kg products, ensure multiples of lạng
+
+      if (hasChild) {
+        qty = Math.min(qty, maxChildUnits);
+      } else {
+        // Products without child unit sell less (1-2 per day)
+        qty = Math.min(qty, 1 + Math.floor(rand() * 2));
+      }
+
+      // For kg products, ensure 100g multiples
       if (product.unit.toLowerCase().includes('kg') && rate > 1) {
-        qty = Math.max(1, roundToStep(qty, 1));
+        qty = Math.max(1, qty);
       }
 
-      // Products without child unit sell less
-      if (rate <= 1) {
-        qty = Math.max(1, Math.min(qty, 2 + Math.floor(rand() * 3)));
-      }
-
+      // Check stock
       const stock = stockMap.get(product.id) || 0;
       if (stock <= 0) {
-        stockMap.set(product.id, qty * 2);
+        // Pre-stock for first days
+        stockMap.set(product.id, qty * 3);
       }
       qty = Math.min(qty, stockMap.get(product.id) || qty);
+      if (qty <= 0) continue;
 
       const total = sellPerUnit * qty;
       const costTotal = buyPerUnit * qty;
       const profit = total - costTotal;
       const profitPct = costTotal > 0 ? (profit / costTotal) * 100 : 0;
 
-      const sellUnit = rate > 1 ? (product.conversionUnit || product.unit) : product.unit;
+      const sellUnit = hasChild ? (product.conversionUnit || product.unit) : product.unit;
 
       items.push({
         productId: product.id,
@@ -275,8 +358,8 @@ export function generateQuarterData(
         quantity: qty,
         sellPrice: sellPerUnit,
         buyPrice: buyPerUnit,
-        total,
-        profit,
+        total: roundToThousand(total),
+        profit: roundToThousand(profit),
         profitPercent: Math.round(profitPct * 10) / 10,
       });
 
@@ -292,8 +375,8 @@ export function generateQuarterData(
         id: generateId(),
         date: day,
         items,
-        totalRevenue,
-        totalProfit,
+        totalRevenue: roundToThousand(totalRevenue),
+        totalProfit: roundToThousand(totalProfit),
         profitPercent: totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0,
         tag: 'auto',
         paymentMethod: 'cash',
