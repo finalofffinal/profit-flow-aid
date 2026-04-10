@@ -89,7 +89,14 @@ const Index = () => {
           />
         );
       case 'inventory':
-        return <InventoryPage batches={inventoryBatches} suppliers={activeSuppliers} />;
+        return (
+          <InventoryPage
+            batches={inventoryBatches}
+            suppliers={activeSuppliers}
+            importOrders={importOrders}
+            salesOrders={salesOrders}
+          />
+        );
       case 'sales':
         return <SalesPage salesOrders={salesOrders} />;
       case 'catalog':
