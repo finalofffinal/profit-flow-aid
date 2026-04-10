@@ -1,22 +1,17 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Filter } from 'lucide-react';
-import { SaleOrder, DailySales, OrderTag } from '@/types';
+import { Search, ChevronDown, ChevronRight, Filter, Camera, X } from 'lucide-react';
+import { SaleOrder, DailySales, ImportTag } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
+import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS, PAYMENT_LABELS } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface SalesPageProps {
   salesOrders: SaleOrder[];
 }
-
-const TAG_COLORS: Record<OrderTag, string> = {
-  auto: 'bg-secondary text-secondary-foreground',
-  special: 'bg-destructive/20 text-destructive border-destructive/30',
-  temporary: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
-};
-const TAG_LABELS: Record<OrderTag, string> = { auto: 'TM', special: 'Đặc biệt', temporary: 'Tạm thời' };
 
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
@@ -27,10 +22,10 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [viewingImages, setViewingImages] = useState<string[] | null>(null);
 
   const activeOrders = salesOrders.filter(o => !o.deletedAt);
 
-  // Filter by time range
   const timeFiltered = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -111,8 +106,7 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border p-3 space-y-2">
-        {/* Time range pills */}
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
         <div className="flex gap-1.5 overflow-x-auto">
           {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
             <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
@@ -130,16 +124,16 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
         )}
 
         {/* Cumulative revenue banner */}
-        <div className="flex items-center justify-between bg-primary/5 rounded-lg p-2">
+        <div className="flex items-center justify-between bg-primary/10 rounded-xl p-3 border border-primary/20">
           <div>
-            <p className="text-xs text-muted-foreground">Doanh thu tích lũy</p>
-            <p className="text-lg font-bold text-primary">{formatCompactVND(totalRevenue)}</p>
+            <p className="text-xs text-muted-foreground font-medium">Doanh thu tích lũy</p>
+            <p className="text-xl font-black text-primary">{formatCompactVND(totalRevenue)} VND</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Lợi nhuận</p>
-            <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(totalProfit)}</p>
+            <p className="text-xs text-muted-foreground font-medium">Lợi nhuận</p>
+            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">{formatCompactVND(totalProfit)} VND</p>
           </div>
-          <Badge variant="outline" className="text-xs">{filtered.length} ngày</Badge>
+          <Badge variant="outline" className="text-xs font-bold">{filtered.length} ngày</Badge>
         </div>
 
         <div className="flex items-center gap-2">
@@ -153,7 +147,8 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
               <SelectItem value="all">Tất cả</SelectItem>
               <SelectItem value="auto">⚪ Tự động</SelectItem>
               <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-              <SelectItem value="temporary">🟡 Tạm thời</SelectItem>
+              <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+              <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -173,11 +168,12 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-sm">
-                      {dateObj.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                      {dateObj.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                     </span>
                     {isToday && <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px]">Hôm nay</Badge>}
                     {ds.orders.some(o => o.tag === 'special') && <span className="h-2 w-2 rounded-full bg-destructive" />}
-                    {ds.orders.some(o => o.tag === 'temporary') && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                    {ds.orders.some(o => o.tag === 'supplementary') && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+                    {ds.orders.some(o => o.tag === 'upgraded') && <span className="h-2 w-2 rounded-full bg-blue-600" />}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                     <span>Lãi: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(ds.totalProfit)}</span> ({ds.profitPercent}%)</span>
@@ -188,31 +184,41 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
 
               {isExpanded && (
                 <div className="border-t border-border animate-in slide-in-from-top-1">
-                  {ds.orders.map(order => (
-                    <div key={order.id} className={`p-3 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'special' ? 'border-l-destructive bg-destructive/5' : order.tag === 'temporary' ? 'border-l-amber-500 bg-amber-500/5' : ''}`}>
-                      {order.tag !== 'auto' && (
-                        <Badge className={`text-[10px] mb-1.5 ${TAG_COLORS[order.tag]}`}>{TAG_LABELS[order.tag]}</Badge>
-                      )}
-                      <div className="space-y-1">
-                        {order.items.map((item, i) => (
-                          <div key={i} className="flex items-center justify-between text-xs">
-                            <div className="min-w-0">
-                              <span className="font-medium">{item.productName}</span>
-                              <span className="text-muted-foreground ml-1">×{item.quantity} {item.unit}</span>
+                  {ds.orders.map(order => {
+                    const tagColor = IMPORT_TAG_COLORS[order.tag] || '';
+                    const tagLabel = IMPORT_TAG_LABELS[order.tag] || 'TM';
+                    return (
+                      <div key={order.id} className={`p-3 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'special' ? 'border-l-destructive bg-destructive/5' : order.tag === 'supplementary' ? 'border-l-amber-500 bg-amber-500/5' : order.tag === 'upgraded' ? 'border-l-blue-600 bg-blue-600/5' : ''}`}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Badge className={`text-[10px] ${tagColor}`}>{tagLabel}</Badge>
+                          <span className="text-[10px] text-muted-foreground">{PAYMENT_LABELS[order.paymentMethod]}</span>
+                          {order.transferImages.length > 0 && (
+                            <button className="text-[10px] text-primary underline" onClick={() => setViewingImages(order.transferImages)}>
+                              📷 {order.transferImages.length} ảnh
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          {order.items.map((item, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs">
+                              <div className="min-w-0">
+                                <span className="font-medium">{item.productName}</span>
+                                <span className="text-muted-foreground ml-1">×{item.quantity} {item.unit}</span>
+                              </div>
+                              <div className="text-right shrink-0 ml-2">
+                                <span className="font-semibold">{formatVND(item.total)}</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 ml-1">(+{item.profitPercent}%)</span>
+                              </div>
                             </div>
-                            <div className="text-right shrink-0 ml-2">
-                              <span className="font-semibold">{formatVND(item.total)}</span>
-                              <span className="text-emerald-600 dark:text-emerald-400 ml-1">(+{item.profitPercent}%)</span>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+                        <div className="flex justify-between mt-1.5 pt-1.5 border-t border-border text-xs">
+                          <span className="text-muted-foreground">{PAYMENT_LABELS[order.paymentMethod]}</span>
+                          <span className="font-bold">{formatVND(order.totalRevenue)}</span>
+                        </div>
                       </div>
-                      <div className="flex justify-between mt-1.5 pt-1.5 border-t border-border text-xs">
-                        <span className="text-muted-foreground">{order.paymentMethod === 'cash' ? '💵 Tiền mặt' : '💳 Chuyển khoản'}</span>
-                        <span className="font-bold">{formatVND(order.totalRevenue)}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -225,6 +231,18 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
           </div>
         )}
       </div>
+
+      {/* Image viewer dialog */}
+      <Dialog open={!!viewingImages} onOpenChange={() => setViewingImages(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Ảnh chuyển khoản</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-2">
+            {viewingImages?.map((img, i) => (
+              <img key={i} src={img} alt={`Transfer ${i + 1}`} className="rounded-lg w-full" />
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
