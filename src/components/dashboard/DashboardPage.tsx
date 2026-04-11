@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Eye, EyeOff, Download, Upload, TrendingUp, Wallet, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive } from 'lucide-react';
+import { Eye, EyeOff, Download, Upload, TrendingUp, Wallet, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,8 @@ import { QuarterData, SaleOrder, ImportOrder } from '@/types';
 import { formatVND, formatCompactVND, parsePriceInput } from '@/lib/currency';
 import { exportBackup, importBackup, getStorageUsage } from '@/lib/storage';
 import { MAX_YEARLY_REVENUE } from '@/lib/constants';
+import { exportSalesPdf } from '@/lib/exportPdf';
+import { exportSalesExcel } from '@/lib/exportExcel';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface DashboardPageProps {
@@ -37,7 +39,6 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
 
   const getQ = (q: number) => quarters.find(qd => qd.quarter === q && qd.year === selectedYear);
 
-  // Filter sales by time range for KPI cards
   const filteredSales = useMemo(() => {
     const todayStr = now.toISOString().split('T')[0];
     return salesOrders.filter(o => {
@@ -70,9 +71,16 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
   const totalRevenue = filteredSales.reduce((s, o) => s + o.totalRevenue, 0);
   const totalProfit = filteredSales.reduce((s, o) => s + o.totalProfit, 0);
   const profitPercent = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
-  const totalCOGS = totalRevenue - totalProfit;
 
-  // Quarter actuals for the selected year
+  // Total import cost (COGS) from import orders for the selected time
+  const totalImportCost = useMemo(() => {
+    return importOrders.filter(o => {
+      if (o.deletedAt) return false;
+      const d = new Date(o.date);
+      return d.getFullYear() === selectedYear;
+    }).reduce((s, o) => s + o.total, 0);
+  }, [importOrders, selectedYear]);
+
   const quarterActuals = useMemo(() => {
     const result: Record<number, { revenue: number; profit: number }> = { 1: { revenue: 0, profit: 0 }, 2: { revenue: 0, profit: 0 }, 3: { revenue: 0, profit: 0 }, 4: { revenue: 0, profit: 0 } };
     salesOrders.filter(o => !o.deletedAt).forEach(o => {
@@ -87,7 +95,6 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
 
   const totalTarget = [1, 2, 3, 4].reduce((s, q) => s + (getQ(q)?.targetRevenue || 0), 0);
 
-  // Chart data
   const chartData = useMemo(() => {
     const dailyMap = new Map<string, number>();
     filteredSales.forEach(o => {
@@ -129,15 +136,29 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
   };
 
   const handleRandomize = () => {
+    // Generate random total between 700M and 999M (rounded to thousands)
+    const totalAnnual = Math.round((700_000_000 + Math.random() * 299_000_000) / 1000) * 1000;
     const weights = [0.28, 0.18, 0.20, 0.34];
+    
     for (let q = 1; q <= 4; q++) {
-      const base = MAX_YEARLY_REVENUE * weights[q - 1];
-      const variance = base * 0.1 * (Math.random() - 0.5);
-      const rev = Math.round((base + variance) / 1000000) * 1000000;
-      const pct = 12 + Math.round(Math.random() * 6);
+      const base = totalAnnual * weights[q - 1];
+      // Add ±8% noise per quarter
+      const noise = 0.92 + Math.random() * 0.16;
+      const rev = Math.round((base * noise) / 1000) * 1000;
+      const pct = 10 + Math.round(Math.random() * 8);
       setQuarterTarget(q, selectedYear, rev, pct);
     }
     addNotification(`Đã tạo ngẫu nhiên mục tiêu ${selectedYear}`, 'quarter_update');
+  };
+
+  const handleExportPdf = () => {
+    exportSalesPdf(salesOrders, selectedYear);
+    addNotification(`Đã xuất PDF năm ${selectedYear}`, 'info');
+  };
+
+  const handleExportExcel = () => {
+    exportSalesExcel(salesOrders, selectedYear);
+    addNotification(`Đã xuất Excel năm ${selectedYear}`, 'info');
   };
 
   return (
@@ -161,7 +182,7 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-primary/20">
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Doanh thu tích lũy</div>
@@ -169,25 +190,25 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
                 {showNumbers ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
               </Button>
             </div>
-            <p className="mt-1 text-xl font-bold text-primary">{mask(formatCompactVND(totalRevenue))}</p>
+            <p className="mt-1 text-xl font-black text-primary">{mask(formatCompactVND(totalRevenue))}</p>
           </CardContent>
         </Card>
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-emerald-500/20">
           <CardContent className="p-3">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Wallet className="h-3.5 w-3.5" /> Lợi nhuận tích lũy</div>
-            <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(totalProfit))}</p>
+            <p className="mt-1 text-xl font-black text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(totalProfit))}</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
           <CardContent className="p-3">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> % Lợi nhuận</div>
-            <p className="mt-1 text-xl font-bold">{mask(`${profitPercent}%`)}</p>
+            <p className="mt-1 text-xl font-black">{mask(`${profitPercent}%`)}</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
           <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn hàng</div>
-            <p className="mt-1 text-xl font-bold">{mask(formatCompactVND(totalCOGS))}</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn hàng nhập</div>
+            <p className="mt-1 text-xl font-black">{mask(formatCompactVND(totalImportCost))}</p>
           </CardContent>
         </Card>
       </div>
@@ -229,14 +250,15 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
               </select>
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>🎲 Ngẫu nhiên</Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
+                <Shuffle className="mr-1 h-3 w-3" /> Ngẫu nhiên
+              </Button>
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </div>
           </div>
         </CardHeader>
         {expanded && (
           <CardContent className="space-y-3">
-            {/* Total progress */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-muted-foreground">Tổng mục tiêu</span>
@@ -268,14 +290,24 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
 
             {totalTarget > MAX_YEARLY_REVENUE && (
               <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
-                <AlertTriangle className="h-4 w-4" /> Tổng mục tiêu vượt 1 tỷ VND!
+                <AlertTriangle className="h-4 w-4" /> Tổng mục tiêu vượt 1 tỷ VND! Cần cân bằng lại.
               </div>
             )}
+
+            {/* Export buttons */}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={handleExportPdf}>
+                <FileText className="mr-2 h-4 w-4" /> Xuất PDF
+              </Button>
+              <Button variant="outline" size="sm" className="flex-1" onClick={handleExportExcel}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Xuất Excel
+              </Button>
+            </div>
           </CardContent>
         )}
       </Card>
 
-      {/* Export + Backup */}
+      {/* Backup/Restore */}
       <div className="flex gap-2 flex-wrap">
         <Button variant="outline" size="sm" className="flex-1" onClick={handleBackup}>
           <Download className="mr-2 h-4 w-4" /> Sao lưu JSON
@@ -295,6 +327,9 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
         {showStorage && (
           <div className="mt-2 text-[10px] text-muted-foreground space-y-0.5 animate-in slide-in-from-top-1">
             <p>Đã dùng: {(storage.used / 1024).toFixed(1)} KB / {(storage.total / 1024 / 1024).toFixed(1)} MB</p>
+            <p>Sản phẩm: {localStorage.getItem('scp_products')?.length || 0} bytes</p>
+            <p>Đơn nhập: {localStorage.getItem('scp_import_orders')?.length || 0} bytes</p>
+            <p>Đơn bán: {localStorage.getItem('scp_sales_orders')?.length || 0} bytes</p>
             {storage.percent > 80 && <p className="text-destructive font-semibold">⚠️ Sắp hết dung lượng! Hãy sao lưu và xuất dữ liệu.</p>}
           </div>
         )}
