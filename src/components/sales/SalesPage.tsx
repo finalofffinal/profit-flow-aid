@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Filter, Camera, X } from 'lucide-react';
-import { SaleOrder, DailySales, ImportTag } from '@/types';
+import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText } from 'lucide-react';
+import { SaleOrder, DailySales, ImportTag, PaymentMethod } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS, PAYMENT_LABELS } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
@@ -123,17 +123,17 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
           </div>
         )}
 
-        {/* Cumulative revenue banner */}
-        <div className="flex items-center justify-between bg-primary/10 rounded-xl p-3 border border-primary/20">
+        {/* Cumulative revenue banner - high contrast for dark mode */}
+        <div className="flex items-center justify-between bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
           <div>
             <p className="text-xs text-muted-foreground font-medium">Doanh thu tích lũy</p>
-            <p className="text-xl font-black text-primary">{formatCompactVND(totalRevenue)} VND</p>
+            <p className="text-xl font-black text-primary dark:text-primary">{formatCompactVND(totalRevenue)} VND</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-muted-foreground font-medium">Lợi nhuận</p>
-            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">{formatCompactVND(totalProfit)} VND</p>
+            <p className="text-xl font-black text-emerald-600 dark:text-emerald-300">{formatCompactVND(totalProfit)} VND</p>
           </div>
-          <Badge variant="outline" className="text-xs font-bold">{filtered.length} ngày</Badge>
+          <Badge variant="outline" className="text-xs font-bold border-primary/40">{filtered.length} ngày</Badge>
         </div>
 
         <div className="flex items-center gap-2">
@@ -170,13 +170,13 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
                     <span className="font-bold text-sm">
                       {dateObj.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                     </span>
-                    {isToday && <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px]">Hôm nay</Badge>}
+                    {isToday && <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px]">Hôm nay</Badge>}
                     {ds.orders.some(o => o.tag === 'special') && <span className="h-2 w-2 rounded-full bg-destructive" />}
                     {ds.orders.some(o => o.tag === 'supplementary') && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                     {ds.orders.some(o => o.tag === 'upgraded') && <span className="h-2 w-2 rounded-full bg-blue-600" />}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                    <span>Lãi: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(ds.totalProfit)}</span> ({ds.profitPercent}%)</span>
+                    <span>Lãi: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(ds.totalProfit)}</span> ({ds.profitPercent}%)</span>
                     <span>Tổng: <span className="font-bold text-foreground">{formatCompactVND(ds.totalRevenue)}</span></span>
                   </div>
                 </div>
@@ -207,7 +207,7 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
                               </div>
                               <div className="text-right shrink-0 ml-2">
                                 <span className="font-semibold">{formatVND(item.total)}</span>
-                                <span className="text-emerald-600 dark:text-emerald-400 ml-1">(+{item.profitPercent}%)</span>
+                                <span className="text-emerald-600 dark:text-emerald-300 ml-1">(+{item.profitPercent}%)</span>
                               </div>
                             </div>
                           ))}
