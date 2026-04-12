@@ -10,10 +10,23 @@ import { SalesPage } from '@/components/sales/SalesPage';
 import { PlaceholderTab } from '@/components/PlaceholderTab';
 import { useProducts, useSuppliers, useNotifications, useTheme, useQuarters, useImportOrders, useSalesOrders, useInventoryBatches } from '@/hooks/useStore';
 import { generateQuarterData } from '@/lib/dataEngine';
+import { syncFromSupabase } from '@/lib/storage';
 import { TabId } from '@/types';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<TabId>('catalog');
+  const [supabaseSynced, setSupabaseSynced] = useState(false);
+
+  // Sync from Supabase on first load
+  useEffect(() => {
+    syncFromSupabase().then((synced) => {
+      if (synced) {
+        setSupabaseSynced(true);
+        window.location.reload();
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { theme, toggleTheme } = useTheme();
   const { products, activeProducts, deletedProducts, addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct, moveProduct, copyProduct, setProducts } = useProducts();
   const { suppliers, activeSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier, setSuppliers } = useSuppliers();
