@@ -1,4 +1,5 @@
 import { Product, Supplier, Notification, QuarterData, ImportOrder, SaleOrder, InventoryBatch } from '@/types';
+import { saveToSupabase, loadFromSupabase } from '@/lib/supabase';
 
 const KEYS = {
   products: 'scp_products',
@@ -11,7 +12,8 @@ const KEYS = {
   inventoryBatches: 'scp_inventory_batches',
 } as const;
 
-function load<T>(key: string, fallback: T): T {
+// Local load (synchronous, for initial state)
+function loadLocal<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
@@ -21,22 +23,25 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+// Save to both localStorage AND Supabase
 function save<T>(key: string, data: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
-    console.error('Storage save failed:', e);
+    console.error('localStorage save failed:', e);
   }
+  // Fire-and-forget Supabase sync
+  saveToSupabase(key, data);
 }
 
 // Products
-export const loadProducts = () => load<Product[]>(KEYS.products, []);
+export const loadProducts = () => loadLocal<Product[]>(KEYS.products, []);
 export const saveProducts = (data: Product[]) => save(KEYS.products, data);
 
 // Suppliers
 const DEFAULT_SUPPLIER: Supplier = { id: 'default-khac', name: 'Khác', deletedAt: null, createdAt: new Date().toISOString() };
 export const loadSuppliers = () => {
-  const suppliers = load<Supplier[]>(KEYS.suppliers, [DEFAULT_SUPPLIER]);
+  const suppliers = loadLocal<Supplier[]>(KEYS.suppliers, [DEFAULT_SUPPLIER]);
   if (!suppliers.find(s => s.id === 'default-khac')) {
     suppliers.unshift(DEFAULT_SUPPLIER);
   }
@@ -45,37 +50,55 @@ export const loadSuppliers = () => {
 export const saveSuppliers = (data: Supplier[]) => save(KEYS.suppliers, data);
 
 // Quarters
-export const loadQuarters = () => load<QuarterData[]>(KEYS.quarters, []);
+export const loadQuarters = () => loadLocal<QuarterData[]>(KEYS.quarters, []);
 export const saveQuarters = (data: QuarterData[]) => save(KEYS.quarters, data);
 
 // Notifications
-export const loadNotifications = () => load<Notification[]>(KEYS.notifications, []);
+export const loadNotifications = () => loadLocal<Notification[]>(KEYS.notifications, []);
 export const saveNotifications = (data: Notification[]) => save(KEYS.notifications, data);
 
 // Theme
-export const loadTheme = () => load<'light' | 'dark'>(KEYS.theme, 'light');
+export const loadTheme = () => loadLocal<'light' | 'dark'>(KEYS.theme, 'light');
 export const saveTheme = (theme: 'light' | 'dark') => save(KEYS.theme, theme);
 
 // Import Orders
-export const loadImportOrders = () => load<ImportOrder[]>(KEYS.importOrders, []);
+export const loadImportOrders = () => loadLocal<ImportOrder[]>(KEYS.importOrders, []);
 export const saveImportOrders = (data: ImportOrder[]) => save(KEYS.importOrders, data);
 
 // Sales Orders
-export const loadSalesOrders = () => load<SaleOrder[]>(KEYS.salesOrders, []);
+export const loadSalesOrders = () => loadLocal<SaleOrder[]>(KEYS.salesOrders, []);
 export const saveSalesOrders = (data: SaleOrder[]) => save(KEYS.salesOrders, data);
 
 // Inventory Batches
-export const loadInventoryBatches = () => load<InventoryBatch[]>(KEYS.inventoryBatches, []);
+export const loadInventoryBatches = () => loadLocal<InventoryBatch[]>(KEYS.inventoryBatches, []);
 export const saveInventoryBatches = (data: InventoryBatch[]) => save(KEYS.inventoryBatches, data);
+
+// Sync from Supabase → localStorage (call on app init)
+export async function syncFromSupabase(): Promise<boolean> {
+  let synced = false;
+  for (const [, key] of Object.entries(KEYS)) {
+    if (key === 'scp_theme') continue; // theme is local preference
+    try {
+      const data = await loadFromSupabase(key, null);
+      if (data !== null) {
+        localStorage.setItem(key, JSON.stringify(data));
+        synced = true;
+      }
+    } catch {
+      // Supabase unavailable, continue with localStorage
+    }
+  }
+  return synced;
+}
 
 // Storage usage
 export function getStorageUsage(): { used: number; total: number; percent: number } {
   let used = 0;
   for (const key of Object.values(KEYS)) {
     const item = localStorage.getItem(key);
-    if (item) used += item.length * 2; // UTF-16
+    if (item) used += item.length * 2;
   }
-  const total = 5 * 1024 * 1024; // 5MB typical
+  const total = 5 * 1024 * 1024;
   return { used, total, percent: Math.round((used / total) * 100) };
 }
 
