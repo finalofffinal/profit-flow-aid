@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Shuffle, Camera } from 'lucide-react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
@@ -21,11 +21,12 @@ interface ImportPageProps {
   restoreOrder: (id: string) => void;
   permanentDeleteOrder: (id: string) => void;
   addNotification: (msg: string, type?: any) => void;
+  onUpdateOrderDate?: (id: string, newDate: string) => void;
 }
 
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
-export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification }: ImportPageProps) {
+export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate }: ImportPageProps) {
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -36,6 +37,7 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
+  const [editingDate, setEditingDate] = useState<string | null>(null);
 
   const timeFiltered = useMemo(() => {
     const now = new Date();
@@ -84,7 +86,6 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
     );
   }, [timeFiltered, search, tagFilter, supplierFilter]);
 
-  // Group by quarter
   const groupedByQuarter = useMemo(() => {
     const map = new Map<string, ImportOrder[]>();
     const sorted = [...filteredOrders].sort((a, b) => a.date.localeCompare(b.date));
@@ -121,6 +122,14 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
     addNotification('Đã hoàn tác', 'info');
   };
 
+  const handleDateChange = (orderId: string, newDate: string) => {
+    if (onUpdateOrderDate) {
+      onUpdateOrderDate(orderId, newDate);
+      addNotification('Đã cập nhật ngày đơn hàng', 'info');
+    }
+    setEditingDate(null);
+  };
+
   const totalImport = filteredOrders.reduce((s, o) => s + o.total, 0);
 
   return (
@@ -144,7 +153,6 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
           </Button>
         </div>
 
-        {/* Time range pills */}
         <div className="flex gap-1.5 overflow-x-auto">
           {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
             <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
@@ -202,6 +210,8 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
                 const isExpanded = expandedOrders.has(order.id);
                 const tagColor = IMPORT_TAG_COLORS[order.tag] || IMPORT_TAG_COLORS.auto;
                 const tagLabel = IMPORT_TAG_LABELS[order.tag] || 'Tự động';
+                const isEditingThisDate = editingDate === order.id;
+
                 return (
                   <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'special' ? 'border-destructive/30' : order.tag === 'supplementary' ? 'border-amber-500/30' : order.tag === 'upgraded' ? 'border-blue-600/30' : 'border-border'}`}>
                     <button className="flex w-full items-center gap-2 p-3 text-left hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(order.id)}>
@@ -212,9 +222,34 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
                           <Badge className={`text-[10px] ${tagColor}`}>{tagLabel}</Badge>
                           {order.locked && <Lock className="h-3 w-3 text-muted-foreground" />}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(order.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} · {order.items.length} SP · {formatVND(order.total)}
-                        </p>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          {isEditingThisDate && order.tag === 'auto' ? (
+                            <Input
+                              type="date"
+                              className="h-6 w-32 text-xs px-1"
+                              defaultValue={order.date.split('T')[0]}
+                              onClick={e => e.stopPropagation()}
+                              onBlur={e => handleDateChange(order.id, e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') handleDateChange(order.id, (e.target as HTMLInputElement).value); }}
+                              autoFocus
+                            />
+                          ) : (
+                            <span
+                              className={order.tag === 'auto' ? 'cursor-pointer hover:text-primary' : ''}
+                              onClick={e => {
+                                if (order.tag === 'auto') {
+                                  e.stopPropagation();
+                                  setEditingDate(order.id);
+                                }
+                              }}
+                            >
+                              {new Date(order.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                              {order.tag === 'auto' && <Calendar className="inline h-3 w-3 ml-1 opacity-50" />}
+                            </span>
+                          )}
+                          <span>· {order.items.length} SP</span>
+                          <span className="font-bold text-foreground">· {formatVND(order.total)}</span>
+                        </div>
                       </div>
                       {order.tag !== 'auto' && (
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }}>
@@ -233,8 +268,8 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
                             <span className="font-semibold shrink-0 ml-2">{formatVND(item.total)}</span>
                           </div>
                         ))}
-                        <div className="flex justify-end pt-1 border-t border-border text-xs font-bold">
-                          Tổng: {formatVND(order.total)}
+                        <div className="flex justify-end pt-1 border-t border-border text-xs font-bold text-primary">
+                          Tổng đơn: {formatVND(order.total)}
                         </div>
                       </div>
                     )}
@@ -299,6 +334,14 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
 
   const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
+  const orderTotal = useMemo(() => {
+    return selectedProducts.reduce((sum, sp) => {
+      const product = products.find(p => p.id === sp.productId);
+      if (!product) return sum;
+      return sum + product.buyPrice * sp.quantity;
+    }, 0);
+  }, [selectedProducts, products]);
+
   const addItem = () => setSelectedProducts(prev => [...prev, { productId: '', quantity: 1 }]);
   const removeItem = (i: number) => setSelectedProducts(prev => prev.filter((_, idx) => idx !== i));
 
@@ -327,8 +370,9 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
           supplierId: product.supplierId, supplierName: supplier.name,
           unit: product.unit, conversionUnit: product.conversionUnit || product.unit,
           conversionRate: product.conversionRate || 1,
-          quantity: sp.quantity, buyPrice: product.buyPrice,
-          total: product.buyPrice * sp.quantity,
+          quantity: Math.min(3, sp.quantity), // Max 3 units per product
+          buyPrice: product.buyPrice,
+          total: product.buyPrice * Math.min(3, sp.quantity),
         };
       });
     if (items.length === 0) return;
@@ -348,7 +392,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm đơn nhập hàng</DialogTitle>
-          <DialogDescription>Chọn NCC và sản phẩm từ danh mục</DialogDescription>
+          <DialogDescription>Chọn NCC và sản phẩm từ danh mục (tối đa 3 đơn vị lớn/SP)</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -376,7 +420,6 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
             </Select>
           </div>
 
-          {/* Image upload for supplementary */}
           {tag === 'supplementary' && (
             <div className="space-y-2">
               <Label className="text-xs">Ảnh đính kèm (tối đa 5)</Label>
@@ -410,10 +453,17 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
                   <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
                   <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                 </Select>
-                <Input className="w-20" type="number" min={1} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = parseInt(e.target.value) || 1; setSelectedProducts(u); }} />
+                <Input className="w-20" type="number" min={1} max={3} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.min(3, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
                 <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
               </div>
             ))}
+
+            {/* Order total */}
+            {selectedProducts.length > 0 && (
+              <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
+                Tổng đơn: {formatVND(orderTotal)}
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
