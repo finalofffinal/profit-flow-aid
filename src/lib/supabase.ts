@@ -5,7 +5,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Key-value store interface for syncing with Supabase
+// Debounce map to prevent rapid-fire saves
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const DEBOUNCE_MS = 2000; // 2 seconds debounce
+
 export async function loadFromSupabase<T>(key: string, fallback: T): Promise<T> {
   try {
     const { data, error } = await supabase
@@ -25,7 +28,8 @@ export async function loadFromSupabase<T>(key: string, fallback: T): Promise<T> 
   }
 }
 
-export async function saveToSupabase<T>(key: string, value: T): Promise<void> {
+// Internal save (no debounce)
+async function _saveToSupabase<T>(key: string, value: T): Promise<void> {
   try {
     const { error } = await supabase
       .from('app_data')
@@ -37,4 +41,20 @@ export async function saveToSupabase<T>(key: string, value: T): Promise<void> {
   } catch (e) {
     console.warn('Supabase save failed:', e);
   }
+}
+
+// Debounced save to avoid timeout on rapid state changes
+export function saveToSupabase<T>(key: string, value: T): void {
+  const existing = debounceTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  debounceTimers.set(key, setTimeout(() => {
+    debounceTimers.delete(key);
+    _saveToSupabase(key, value);
+  }, DEBOUNCE_MS));
+}
+
+// Immediate save (for backup import)
+export async function saveToSupabaseImmediate<T>(key: string, value: T): Promise<void> {
+  return _saveToSupabase(key, value);
 }

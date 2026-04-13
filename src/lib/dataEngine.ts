@@ -26,14 +26,14 @@ function getDaysInQuarter(q: number, year: number): string[] {
 }
 
 function getDayOfWeek(dateStr: string): number {
-  return new Date(dateStr).getDay(); // 0=Sun, 1=Mon...6=Sat
+  return new Date(dateStr).getDay();
 }
 
-function roundToThousand(value: number): number {
+/** Only round final revenue/profit totals to nearest 1000. Never round buy/sell prices. */
+function roundRevenue(value: number): number {
   return Math.round(value / 1000) * 1000;
 }
 
-// Realistic daily revenue pattern based on Vietnamese retail
 function getRevenueWeight(dateStr: string, rand: () => number): number {
   const d = new Date(dateStr);
   const dow = d.getDay();
@@ -41,37 +41,26 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   const month = d.getMonth() + 1;
   const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-  // 1. Weekly pattern: Mon-Wed lowest, Thu moderate, Fri-Sun highest
-  const weeklyWeight = [1.25, 0.72, 0.75, 0.78, 0.88, 1.15, 1.30][dow]; // Sun,Mon...Sat
+  const weeklyWeight = [1.25, 0.72, 0.75, 0.78, 0.88, 1.15, 1.30][dow];
 
-  // 2. Monthly salary cycle: days 1-10 high, 11-20 moderate, 21-31 low
   let monthlyWeight = 1.0;
   if (day <= 10) monthlyWeight = 1.15;
   else if (day <= 20) monthlyWeight = 1.0;
   else monthlyWeight = 0.85;
 
-  // 3. Holiday boosts (pre-holiday periods)
   let holidayBoost = 1.0;
-  // Tết period (late Jan/early Feb)
   if (month === 1 && day >= 15) holidayBoost = 1.5 + (day - 15) * 0.05;
   if (month === 1 && day >= 25) holidayBoost = 2.0;
   if (month === 2 && day <= 5) holidayBoost = 1.6;
   if (month === 2 && day <= 15) holidayBoost = Math.max(holidayBoost, 1.2);
-  // 30/4 - 1/5
   if (month === 4 && day >= 25) holidayBoost = 1.35;
   if (mmdd === '04-30' || mmdd === '05-01') holidayBoost = 1.4;
-  // Quốc khánh
   if (mmdd === '09-01' || mmdd === '09-02') holidayBoost = 1.3;
-  // Trung thu (mid-Aug)
   if (month === 8 && day >= 10 && day <= 20) holidayBoost = 1.2;
-  // Christmas/New Year
   if (month === 12 && day >= 15) holidayBoost = 1.3 + (day - 15) * 0.02;
   if (month === 12 && day >= 25) holidayBoost = 1.6;
 
-  // 4. Random noise: ±12% to avoid artificial smoothness
   const noise = 0.88 + rand() * 0.24;
-
-  // 5. Gentle sine wave for intra-quarter variation
   const dayOfYear = Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000);
   const sineWave = 1 + 0.08 * Math.sin((dayOfYear / 365) * Math.PI * 4);
 
@@ -96,8 +85,7 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
       amount = totalRevenue - allocated;
     } else {
       const raw = (weights[i] / weightSum) * totalRevenue;
-      // Round to thousands, add small random jitter to avoid repetitive numbers
-      amount = roundToThousand(Math.max(50000, raw));
+      amount = roundRevenue(Math.max(50000, raw));
     }
     map.set(days[i], amount);
     allocated += amount;
@@ -131,6 +119,7 @@ export function generateQuarterData(
     return { importOrders: [], salesOrders: [], inventoryBatches: [] };
   }
 
+  // Calculate manual contributions
   const manualSalesTotal = existingManualSales.filter(s => !s.deletedAt).reduce((sum, s) => sum + s.totalRevenue, 0);
   const autoTargetRevenue = Math.max(0, quarter.targetRevenue - manualSalesTotal);
   const dailyRevenue = generateDailyRevenue(days, autoTargetRevenue, rand);
@@ -142,6 +131,13 @@ export function generateQuarterData(
   const stockMap = new Map<string, number>();
   activeProducts.forEach(p => stockMap.set(p.id, 0));
 
+  // Track which products already imported manually
+  const manualImportedProducts = new Set<string>();
+  const manualImportCount = existingManualImports.filter(o => !o.deletedAt).length;
+  existingManualImports.filter(o => !o.deletedAt).forEach(o => {
+    o.items.forEach(it => manualImportedProducts.add(it.productId));
+  });
+
   // Group products by supplier
   const supplierProducts = new Map<string, Product[]>();
   activeProducts.forEach(p => {
@@ -149,7 +145,7 @@ export function generateQuarterData(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // Determine supplier import weights based on size
+  // Determine supplier sizes
   const supplierSizes = new Map<string, { isSmall: boolean; products: Product[] }>();
   let totalLargeProducts = 0;
   let totalSmallProducts = 0;
@@ -160,7 +156,6 @@ export function generateQuarterData(
     else totalLargeProducts += prods.length;
   }
 
-  // Small suppliers: 5%-15% of import cost, large: 85%-95%
   const smallSupplierPercent = 0.05 + rand() * 0.10;
   const targetCOGS = autoTargetRevenue * (1 - (quarter.targetProfitPercent || 15) / 100);
 
@@ -168,77 +163,98 @@ export function generateQuarterData(
     const supplier = suppliers.find(s => s.id === sid);
     const supplierName = supplier?.name || 'Khác';
 
-    // Determine number of orders per quarter
-    let ordersPerQuarter: number;
+    // Count manual orders for this supplier
+    const supplierManualOrders = existingManualImports.filter(
+      o => !o.deletedAt && o.supplierId === sid
+    ).length;
+
+    // Determine total orders needed (including manual)
+    let totalOrdersNeeded: number;
     if (isSmall) {
-      // 1-2 orders per quarter for small suppliers
-      ordersPerQuarter = prods.length <= 5 ? 1 : (1 + Math.floor(rand() * 2));
+      totalOrdersNeeded = 2; // Small NCC: exactly 2 orders per quarter
     } else {
-      // 4-6 orders per quarter for large suppliers
-      ordersPerQuarter = 4 + Math.floor(rand() * 3);
+      totalOrdersNeeded = 6 + Math.floor(rand() * 4); // Large NCC: 6-9 orders per quarter
     }
+
+    // Auto orders = total needed minus manual orders already created
+    const autoOrdersCount = Math.max(0, totalOrdersNeeded - supplierManualOrders);
+    if (autoOrdersCount === 0) continue;
 
     // Allocate import cost for this supplier
     const supplierShare = isSmall
       ? (smallSupplierPercent * (prods.length / Math.max(1, totalSmallProducts)))
       : ((1 - smallSupplierPercent) * (prods.length / Math.max(1, totalLargeProducts)));
     const supplierCOGS = targetCOGS * supplierShare;
-    const cogsPerOrder = supplierCOGS / ordersPerQuarter;
+    const cogsPerOrder = supplierCOGS / autoOrdersCount;
 
-    // Schedule orders across the quarter
+    // Schedule orders across the quarter evenly
     const orderDayIndices: number[] = [];
-    for (let i = 0; i < ordersPerQuarter; i++) {
-      const base = Math.floor((i / ordersPerQuarter) * days.length);
-      const jitter = Math.floor(rand() * Math.max(1, days.length / ordersPerQuarter * 0.6));
-      orderDayIndices.push(Math.min(base + jitter, days.length - 1));
+    for (let i = 0; i < autoOrdersCount; i++) {
+      const base = Math.floor(((i + 0.5) / autoOrdersCount) * days.length);
+      const jitter = Math.floor(rand() * Math.max(1, days.length / autoOrdersCount * 0.4));
+      const idx = Math.min(base + jitter, days.length - 1);
+      orderDayIndices.push(idx);
     }
     orderDayIndices.sort((a, b) => a - b);
 
-    // Distribute all products across orders
-    const prodsShuffled = [...prods].sort(() => rand() - 0.5);
+    // Filter out products that were already imported manually (for variety)
+    const availableProds = prods.filter(p => !manualImportedProducts.has(p.id));
+    const prodsToUse = availableProds.length > 0 ? availableProds : prods;
+    const prodsShuffled = [...prodsToUse].sort(() => rand() - 0.5);
 
-    for (let oi = 0; oi < orderDayIndices.length; oi++) {
+    // For small NCC: ensure ALL products appear across the 2 auto orders
+    // For large NCC: distribute products evenly across orders
+    for (let oi = 0; oi < autoOrdersCount; oi++) {
       const importDate = days[orderDayIndices[oi]];
       const items: ImportOrderItem[] = [];
 
-      // Determine which products to include in this order
       let productsForOrder: Product[];
+
       if (isSmall) {
-        // Small suppliers: include ALL products in each order
-        productsForOrder = prodsShuffled;
+        // Small NCC: distribute all products across 2 orders
+        // Each order gets a subset, but together they cover everything
+        if (autoOrdersCount === 1) {
+          productsForOrder = prodsShuffled;
+        } else {
+          // Split products: order 0 gets first half + some overlap, order 1 gets second half + overlap
+          const half = Math.ceil(prodsShuffled.length / 2);
+          const overlap = Math.min(2, Math.floor(prodsShuffled.length * 0.3));
+          if (oi === 0) {
+            productsForOrder = prodsShuffled.slice(0, half + overlap);
+          } else {
+            productsForOrder = prodsShuffled.slice(half - overlap);
+          }
+        }
       } else {
-        // Large suppliers: 8-12 products per order, rotating through all
-        const perOrder = 8 + Math.floor(rand() * 5);
-        const start = Math.floor((oi / ordersPerQuarter) * prodsShuffled.length);
-        productsForOrder = [];
-        for (let pi = 0; pi < perOrder; pi++) {
-          productsForOrder.push(prodsShuffled[(start + pi) % prodsShuffled.length]);
+        // Large NCC: distribute evenly, each order gets roughly equal products
+        const totalProds = prodsShuffled.length;
+        const prodsPerOrder = Math.ceil(totalProds / autoOrdersCount);
+        const start = oi * prodsPerOrder;
+        productsForOrder = prodsShuffled.slice(start, start + prodsPerOrder);
+        // Add 1-2 random extras for variety
+        const extras = Math.min(2, Math.floor(rand() * 3));
+        for (let e = 0; e < extras; e++) {
+          const randomProd = prodsShuffled[Math.floor(rand() * totalProds)];
+          if (!productsForOrder.find(p => p.id === randomProd.id)) {
+            productsForOrder.push(randomProd);
+          }
         }
       }
 
       for (const product of productsForOrder) {
         const rate = product.conversionRate || 1;
-        const hasChild = rate > 1;
 
-        // Quantity: 1-4 parent units (max 5 as specified)
-        let qtyParent: number;
-        if (!hasChild) {
-          // Products without child unit: fewer quantities
-          qtyParent = 1 + Math.floor(rand() * 2);
-        } else {
-          qtyParent = 1 + Math.floor(rand() * 4);
-        }
+        // MAX 3 parent units per product per order
+        let qtyParent = 1 + Math.floor(rand() * 3); // 1-3
+        qtyParent = Math.min(3, qtyParent);
 
-        // Cap at 5
-        qtyParent = Math.min(5, qtyParent);
-
-        // For kg products, round quantity
+        // For kg products, ensure valid quantity
         if (product.unit.toLowerCase().includes('kg')) {
           qtyParent = Math.max(1, qtyParent);
         }
 
-        const priceFluctuation = 0.97 + rand() * 0.06;
-        const buyPrice = roundToThousand(Math.round(product.buyPrice * priceFluctuation));
+        // Use exact buy price - NO rounding on prices
+        const buyPrice = product.buyPrice;
 
         items.push({
           productId: product.id,
@@ -293,8 +309,11 @@ export function generateQuarterData(
     }
   }
 
-  // Generate sales orders - realistic daily baskets
-  for (const day of days) {
+  // Generate sales orders - must match target revenue exactly
+  let totalSalesGenerated = 0;
+
+  for (let dayIdx = 0; dayIdx < days.length; dayIdx++) {
+    const day = days[dayIdx];
     const targetDayRevenue = dailyRevenue.get(day) || 0;
     if (targetDayRevenue <= 0) continue;
 
@@ -302,7 +321,6 @@ export function generateQuarterData(
     let remaining = targetDayRevenue;
 
     const shuffled = [...activeProducts].sort(() => rand() - 0.5);
-    // 10-30 product lines per day
     const basketSize = Math.min(shuffled.length, 10 + Math.floor(rand() * 21));
 
     for (let i = 0; i < basketSize && remaining > 3000; i++) {
@@ -310,34 +328,25 @@ export function generateQuarterData(
       const rate = product.conversionRate || 1;
       const hasChild = rate > 1;
 
-      // Sell price per small unit
-      const sellPerUnit = roundToThousand(Math.round(product.sellPrice / rate));
-      const buyPerUnit = roundToThousand(Math.round(product.buyPrice / rate));
+      // Use exact prices - NO rounding
+      const sellPerUnit = product.sellPrice / rate;
+      const buyPerUnit = product.buyPrice / rate;
 
       if (sellPerUnit <= 0) continue;
 
       const portion = remaining / (basketSize - i);
-
-      // Limit: 10%-40% of one parent unit per day
       const maxChildUnits = Math.max(1, Math.floor(rate * (0.1 + rand() * 0.3)));
       let qty = Math.max(1, Math.round(portion / sellPerUnit));
 
       if (hasChild) {
         qty = Math.min(qty, maxChildUnits);
       } else {
-        // Products without child unit sell less (1-2 per day)
         qty = Math.min(qty, 1 + Math.floor(rand() * 2));
-      }
-
-      // For kg products, ensure 100g multiples
-      if (product.unit.toLowerCase().includes('kg') && rate > 1) {
-        qty = Math.max(1, qty);
       }
 
       // Check stock
       const stock = stockMap.get(product.id) || 0;
       if (stock <= 0) {
-        // Pre-stock for first days
         stockMap.set(product.id, qty * 3);
       }
       qty = Math.min(qty, stockMap.get(product.id) || qty);
@@ -356,10 +365,10 @@ export function generateQuarterData(
         supplierId: product.supplierId,
         unit: sellUnit,
         quantity: qty,
-        sellPrice: sellPerUnit,
-        buyPrice: buyPerUnit,
-        total: roundToThousand(total),
-        profit: roundToThousand(profit),
+        sellPrice: sellPerUnit, // exact price, no rounding
+        buyPrice: buyPerUnit,   // exact price, no rounding
+        total,     // exact total
+        profit,
         profitPercent: Math.round(profitPct * 10) / 10,
       });
 
@@ -371,19 +380,25 @@ export function generateQuarterData(
       const totalRevenue = items.reduce((s, it) => s + it.total, 0);
       const totalProfit = items.reduce((s, it) => s + it.profit, 0);
 
+      // Only round final revenue total
+      const roundedRevenue = roundRevenue(totalRevenue);
+      const roundedProfit = roundRevenue(totalProfit);
+
       salesOrders.push({
         id: generateId(),
         date: day,
         items,
-        totalRevenue: roundToThousand(totalRevenue),
-        totalProfit: roundToThousand(totalProfit),
-        profitPercent: totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0,
+        totalRevenue: roundedRevenue,
+        totalProfit: roundedProfit,
+        profitPercent: roundedRevenue > 0 ? Math.round((roundedProfit / roundedRevenue) * 1000) / 10 : 0,
         tag: 'auto',
-        paymentMethod: 'cash',
+        paymentMethod: rand() > 0.7 ? 'transfer' : 'cash',
         transferImages: [],
         deletedAt: null,
         createdAt: day + 'T18:00:00.000Z',
       });
+
+      totalSalesGenerated += roundedRevenue;
     }
   }
 
