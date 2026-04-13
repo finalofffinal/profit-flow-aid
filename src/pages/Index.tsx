@@ -33,6 +33,10 @@ const Index = () => {
   const { notifications, addNotification, markRead, markAllRead, unreadCount } = useNotifications();
   const { quarters, setQuarterTarget, setQuarters } = useQuarters();
   const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, setOrders: setImportOrders } = useImportOrders();
+
+  const updateImportOrderDate = useCallback((id: string, newDate: string) => {
+    setImportOrders(prev => prev.map(o => o.id === id ? { ...o, date: newDate } : o));
+  }, [setImportOrders]);
   const { orders: salesOrders, activeOrders: activeSalesOrders, addOrder: addSaleOrder, deleteOrder: deleteSaleOrder, setOrders: setSalesOrders } = useSalesOrders();
   const { batches: inventoryBatches, setBatches: setInventoryBatches } = useInventoryBatches();
 
