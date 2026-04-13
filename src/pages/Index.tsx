@@ -103,6 +103,7 @@ const Index = () => {
             restoreOrder={restoreImportOrder}
             permanentDeleteOrder={permanentDeleteImportOrder}
             addNotification={addNotification}
+            onUpdateOrderDate={updateImportOrderDate}
           />
         );
       case 'inventory':
