@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown, CalendarDays } from 'lucide-react';
 import { InventoryBatch, Supplier, SaleOrder, ImportOrder } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,6 @@ export function InventoryPage({ batches, suppliers, importOrders, salesOrders }:
   const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
   const [selectedQuarter, setSelectedQuarter] = useState<string>('all');
 
-  // Calculate quarterly inventory summary
   const quarterOptions = useMemo(() => {
     const qs = new Set<string>();
     batches.forEach(b => qs.add(`Q${b.quarter}/${b.year}`));
@@ -48,12 +47,17 @@ export function InventoryPage({ batches, suppliers, importOrders, salesOrders }:
     return map;
   }, [filtered]);
 
-  // Calculate import vs sales totals for selected quarter
+  // End-of-quarter summary: last day stats
   const quarterSummary = useMemo(() => {
     if (selectedQuarter === 'all') return null;
     const [qStr, yStr] = selectedQuarter.replace('Q', '').split('/');
     const q = parseInt(qStr);
     const y = parseInt(yStr);
+
+    // Get last day of quarter
+    const lastMonth = q * 3;
+    const lastDay = new Date(y, lastMonth, 0);
+    const lastDayStr = lastDay.toISOString().split('T')[0];
 
     const qImports = importOrders.filter(o => {
       if (o.deletedAt) return false;
@@ -67,10 +71,23 @@ export function InventoryPage({ batches, suppliers, importOrders, salesOrders }:
     });
 
     const totalImport = qImports.reduce((s, o) => s + o.total, 0);
-    const totalSales = qSales.reduce((s, o) => s + o.totalRevenue, 0);
-    const remaining = totalImport - (totalSales * 0.85); // approximate remaining stock value
+    const totalSalesRevenue = qSales.reduce((s, o) => s + o.totalRevenue, 0);
+    const totalSalesCost = qSales.reduce((s, o) => {
+      return s + o.items.reduce((is, it) => is + it.buyPrice * it.quantity, 0);
+    }, 0);
 
-    return { totalImport, totalSales, remaining };
+    // Stock value = total import cost - total cost of goods sold
+    const stockValue = totalImport - totalSalesCost;
+
+    return {
+      totalImport,
+      totalSalesRevenue,
+      totalSalesCost,
+      stockValue: Math.max(0, stockValue),
+      lastDay: lastDayStr,
+      importOrderCount: qImports.length,
+      salesOrderCount: qSales.length,
+    };
   }, [selectedQuarter, importOrders, salesOrders]);
 
   const toggleSupplier = (id: string) => {
@@ -104,23 +121,37 @@ export function InventoryPage({ batches, suppliers, importOrders, salesOrders }:
           </Select>
         </div>
 
-        {/* Quarter summary */}
+        {/* End-of-quarter summary */}
         {quarterSummary && (
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2 text-center">
-              <TrendingUp className="h-3.5 w-3.5 mx-auto text-emerald-600 dark:text-emerald-400 mb-0.5" />
-              <p className="text-muted-foreground">Nhập</p>
-              <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(quarterSummary.totalImport)}</p>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CalendarDays className="h-3.5 w-3.5" />
+              <span>Thống kê cuối quý ({new Date(quarterSummary.lastDay).toLocaleDateString('vi-VN')})</span>
             </div>
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-2 text-center">
-              <TrendingDown className="h-3.5 w-3.5 mx-auto text-destructive mb-0.5" />
-              <p className="text-muted-foreground">Bán</p>
-              <p className="font-bold text-destructive">{formatCompactVND(quarterSummary.totalSales)}</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2">
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-muted-foreground">Nhập (+)</span>
+                </div>
+                <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(quarterSummary.totalImport)}</p>
+                <p className="text-muted-foreground">{quarterSummary.importOrderCount} đơn nhập</p>
+              </div>
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-2">
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                  <span className="text-muted-foreground">Bán (−)</span>
+                </div>
+                <p className="font-bold text-destructive">{formatCompactVND(quarterSummary.totalSalesRevenue)}</p>
+                <p className="text-muted-foreground">{quarterSummary.salesOrderCount} đơn bán · Vốn: {formatCompactVND(quarterSummary.totalSalesCost)}</p>
+              </div>
             </div>
-            <div className="rounded-lg bg-primary/10 border border-primary/20 p-2 text-center">
-              <Package className="h-3.5 w-3.5 mx-auto text-primary mb-0.5" />
-              <p className="text-muted-foreground">Tồn kho</p>
-              <p className="font-bold text-primary">{formatCompactVND(Math.max(0, quarterSummary.remaining))}</p>
+            <div className="rounded-lg bg-primary/10 border border-primary/20 p-2.5 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Package className="h-4 w-4 text-primary" />
+                <span className="text-xs text-muted-foreground">Giá trị tồn kho cuối quý</span>
+              </div>
+              <p className="font-bold text-lg text-primary">{formatVND(quarterSummary.stockValue)}</p>
             </div>
           </div>
         )}
