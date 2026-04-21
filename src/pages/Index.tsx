@@ -163,14 +163,15 @@ function IndexInner() {
     addNotification(`Đang tạo lại đơn tự động Q${q}/${y}...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
 
-  /** Tạo đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý */
+  /** Tạo NHIỀU đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý — chia đều nhiều NCC */
   const handleCreateSupplementary = useCallback((q: number, y: number, shortfall: number) => {
-    const order = generateSupplementaryOrder(q, y, shortfall, activeProducts, activeSuppliers);
-    if (!order) {
+    const orders = generateSupplementaryOrder(q, y, shortfall, activeProducts, activeSuppliers);
+    if (!orders || orders.length === 0) {
       addNotification('Không thể tạo đơn bù: thiếu sản phẩm/NCC hợp lệ', 'warning');
       return;
     }
-    addImportOrder(order);
+    orders.forEach(o => addImportOrder(o));
+    addNotification(`Đã tạo ${orders.length} đơn bù phân bổ cho ${orders.length} NCC`, 'success');
   }, [activeProducts, activeSuppliers, addImportOrder, addNotification]);
 
   const renderTab = () => {

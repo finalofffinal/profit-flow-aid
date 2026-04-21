@@ -49,8 +49,8 @@ export function getTetClosedLabel(dateStr: string): string | null {
 }
 
 /**
- * Tự nhiên hơn: cuối tuần KHÔNG phải lúc nào cũng cao đột biến.
- * Random theo từng tuần, có ngày T7/CN cao, có ngày bình thường.
+ * Doanh thu mỗi ngày phải KHÁC BIỆT RÕ — không quá đều.
+ * Cuối tuần KHÔNG mặc định cao bất thường, đôi khi còn thấp hơn ngày thường (mưa, vắng).
  */
 function getRevenueWeight(dateStr: string, rand: () => number): number {
   if (isTetClosedDay(dateStr)) return 0;
@@ -62,49 +62,43 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const lunar = getLunarParts(d);
 
-  // Cuối tuần: 50% là cao nhẹ, 30% bình thường, 20% thấp (mưa, vắng khách)
-  let weeklyBoost = 1.0;
+  // Phân phối rộng — mỗi ngày khác biệt rõ:
+  // Cuối tuần: 35% cao, 35% bình thường, 30% thấp
+  // Ngày thường: 25% cao, 50% bình thường, 25% thấp
+  let weeklyBoost: number;
+  const r = rand();
   if (dow === 0 || dow === 6) {
-    const r = rand();
-    if (r < 0.5) weeklyBoost = 1.10 + rand() * 0.15;       // 1.10–1.25
-    else if (r < 0.8) weeklyBoost = 0.95 + rand() * 0.10;  // 0.95–1.05
-    else weeklyBoost = 0.80 + rand() * 0.10;               // 0.80–0.90
+    if (r < 0.35) weeklyBoost = 1.05 + rand() * 0.20;
+    else if (r < 0.70) weeklyBoost = 0.85 + rand() * 0.20;
+    else weeklyBoost = 0.55 + rand() * 0.25;
   } else {
-    // Ngày thường: dao động 0.85–1.15
-    weeklyBoost = 0.85 + rand() * 0.30;
+    if (r < 0.25) weeklyBoost = 1.05 + rand() * 0.20;
+    else if (r < 0.75) weeklyBoost = 0.80 + rand() * 0.25;
+    else weeklyBoost = 0.50 + rand() * 0.30;
   }
 
-  // Trong tháng: đầu tháng (lương) cao hơn nhẹ
   let monthlyWeight = 1.0;
-  if (day <= 5) monthlyWeight = 1.08;
-  else if (day <= 10) monthlyWeight = 1.04;
+  if (day <= 5) monthlyWeight = 1.10;
+  else if (day <= 10) monthlyWeight = 1.05;
   else if (day <= 20) monthlyWeight = 1.0;
   else if (day <= 25) monthlyWeight = 0.95;
-  else monthlyWeight = 0.92;
+  else monthlyWeight = 0.90;
 
-  // Lễ Việt Nam
   let holidayBoost = 1.0;
-  // Trước Tết Âm (tháng Chạp ÂL): tăng dần
   if (lunar.month === 12 && lunar.day >= 15 && lunar.day <= 19) holidayBoost = 1.15;
   if (lunar.month === 12 && lunar.day >= 20 && lunar.day <= 24) holidayBoost = 1.30 + (lunar.day - 20) * 0.04;
   if (lunar.month === 12 && lunar.day >= 25) holidayBoost = 1.55 + (lunar.day - 25) * 0.05;
-  // Sau Tết: phục hồi nhẹ
   if (lunar.month === 1 && lunar.day >= 7 && lunar.day <= 15) holidayBoost = 1.10;
-  // Rằm tháng Giêng / tháng 7
   if ((lunar.month === 1 || lunar.month === 7) && lunar.day >= 13 && lunar.day <= 15) {
     holidayBoost = Math.max(holidayBoost, 1.18);
   }
-  // 30/4 - 1/5
   if (mmdd === '04-30' || mmdd === '05-01') holidayBoost = Math.max(holidayBoost, 1.25);
-  // Quốc khánh
   if (mmdd === '09-01' || mmdd === '09-02') holidayBoost = Math.max(holidayBoost, 1.18);
-  // Trung thu
   if (lunar.month === 8 && lunar.day >= 10 && lunar.day <= 15) holidayBoost = Math.max(holidayBoost, 1.18);
-  // Noel + Tết Tây
   if (month === 12 && day >= 22) holidayBoost = Math.max(holidayBoost, 1.15 + (day - 22) * 0.02);
 
-  // Nhiễu nhỏ ±10%
-  const noise = 0.90 + rand() * 0.20;
+  // Nhiễu lớn ±25%
+  const noise = 0.75 + rand() * 0.50;
   return weeklyBoost * monthlyWeight * holidayBoost * noise;
 }
 
@@ -223,7 +217,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('hpv')) {
     return {
-      ordersCount: [3, 5],
+      ordersCount: [18, 24], // 6–8 đơn/tháng × 3 tháng
       excludeProduct: (p) => {
         const lp = p.name.toLowerCase();
         return lp.includes('nam ngư cao cấp 500ml') || lp.includes('nam ngu cao cap 500ml')
@@ -320,7 +314,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('chợ lớn') || has('cho lon')) {
     return {
-      ordersCount: [5, 7],
+      ordersCount: [18, 24], // 6–8 đơn/tháng × 3 tháng
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         const brand = (p.brand || '').toLowerCase();
@@ -350,7 +344,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('tada')) {
     return {
-      ordersCount: [6, 9],
+      ordersCount: [21, 27], // 7–9 đơn/tháng × 3 tháng
       maxQtyPerProduct: (p) => {
         const brand = (p.brand || '').toLowerCase();
         if (brand.includes('phúc bình dương') || brand.includes('phuc binh duong')) return 1;
@@ -366,7 +360,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('địa đạo') || has('dia dao')) {
     return {
-      ordersCount: [7, 10],
+      ordersCount: [24, 30], // 8–10 đơn/tháng × 3 tháng
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         const brand = (p.brand || '').toLowerCase();
@@ -462,23 +456,39 @@ function generateSupplierImports(
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
   if (isLargeSupplier) {
-    // Bao phủ toàn bộ: shuffle rồi chia đều round-robin
-    const shuffled = [...eligible].sort(() => rand() - 0.5);
-    shuffled.forEach((p, i) => {
-      const orderIdx = i % autoCount;
-      const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
-      const qCap = rule.maxQtyPerQuarter?.(p);
-      const minReq = rule.minQtyPerOrder?.(p);
-      const used = qtyUsedQuarter.get(p.id) || 0;
-      const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
-      if (remainCap === 0) return;
-      let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * ruleMax));
-      qty = Math.min(qty, ruleMax, remainCap);
-      if (qty <= 0) return;
-      orderItems[orderIdx].push(buildItem(p, supplier, qty));
-      qtyUsedQuarter.set(p.id, used + qty);
-      productsUsed.add(p.id);
-    });
+    // NCC lớn (>10 SP, 18-30 đơn/quý):
+    // Mỗi đơn 4-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP qua nhiều lượt.
+    const targetItemsPerOrder = Math.max(4, Math.min(7, Math.round((eligible.length * 1.4) / autoCount)));
+    const totalSlots = targetItemsPerOrder * autoCount;
+    const passes = Math.ceil(totalSlots / eligible.length);
+
+    let slotCursor = 0;
+    for (let pass = 0; pass < passes; pass++) {
+      const passList = [...eligible].sort(() => rand() - 0.5);
+      for (const p of passList) {
+        if (slotCursor >= totalSlots) break;
+        const orderIdx = slotCursor % autoCount;
+        slotCursor++;
+
+        const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
+        const qCap = rule.maxQtyPerQuarter?.(p);
+        const minReq = rule.minQtyPerOrder?.(p);
+        const used = qtyUsedQuarter.get(p.id) || 0;
+        const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
+        if (remainCap === 0) continue;
+
+        // Tránh trùng SP trong cùng đơn (giữ đa dạng)
+        if (orderItems[orderIdx].some(x => x.productId === p.id)) continue;
+
+        let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * Math.max(1, ruleMax)));
+        qty = Math.min(qty, ruleMax, remainCap);
+        if (qty <= 0) continue;
+
+        orderItems[orderIdx].push(buildItem(p, supplier, qty));
+        qtyUsedQuarter.set(p.id, used + qty);
+        productsUsed.add(p.id);
+      }
+    }
 
     // Cân bằng tiền: tính tổng từng đơn, scale qty các đơn lệch nhiều về trung bình
     const totals = orderItems.map(its => its.reduce((s, it) => s + it.total, 0));
@@ -488,17 +498,19 @@ function generateSupplierImports(
         const t = totals[idx];
         if (t === 0) return;
         const ratio = avg / t;
-        // Chỉ điều chỉnh nhẹ ±25% để giữ số nguyên hợp lý
-        const clamped = Math.max(0.75, Math.min(1.25, ratio));
+        const clamped = Math.max(0.7, Math.min(1.4, ratio));
         if (Math.abs(clamped - 1) < 0.05) return;
         its.forEach(it => {
-          const ruleMax = rule.maxQtyPerProduct?.(eligible.find(p => p.id === it.productId)!) ?? 3;
-          const newQty = Math.max(1, Math.min(ruleMax, Math.round(it.quantity * clamped)));
+          const prod = eligible.find(p => p.id === it.productId);
+          if (!prod) return;
+          const hardMax = rule.maxQtyPerProduct?.(prod);
+          const minReq = rule.minQtyPerOrder?.(prod) ?? 1;
+          let newQty = Math.max(minReq, Math.round(it.quantity * clamped));
+          if (hardMax !== undefined) newQty = Math.min(newQty, hardMax);
           const delta = newQty - it.quantity;
           if (delta !== 0) {
             it.quantity = newQty;
             it.total = it.buyPrice * newQty;
-            // Cập nhật qtyUsedQuarter
             qtyUsedQuarter.set(it.productId, (qtyUsedQuarter.get(it.productId) || 0) + delta);
           }
         });
@@ -829,9 +841,10 @@ export function generateQuarterData(
     // Track SP đã bán hôm nay (để cap 1 đơn vị lớn / SP / ngày)
     const dailyParentSold = new Map<string, number>();
 
-    // Cần basket lớn để đạt target nhưng giữ "1 đơn vị lớn / SP / ngày"
-    // → cần bán nhiều SP khác nhau. Shuffle danh sách.
-    const shuffled = [...activeProducts].sort(() => rand() - 0.5);
+    // Shuffle CHỈ trong tập SP đang còn hàng → bán ra phụ thuộc kho thực (độ trễ tự nhiên)
+    // Không ưu tiên SP biên lợi nhuận cao — duyệt theo thứ tự ngẫu nhiên hoàn toàn.
+    const inStock = activeProducts.filter(p => (stockMap.get(p.id) || 0) > 0);
+    const shuffled = [...inStock].sort(() => rand() - 0.5);
 
     for (let i = 0; i < shuffled.length && remaining > 3000; i++) {
       const product = shuffled[i];
@@ -841,23 +854,22 @@ export function generateQuarterData(
       const buyPerChild = product.buyPrice / rate;
       if (sellPerChild <= 0) continue;
 
-      // 1 đơn vị lớn = `rate` child units (hoặc 1 nếu không có child)
+      // 1 đơn vị lớn / SP / ngày
       const maxChildUnitsToday = hasChild ? rate : 1;
       const alreadySold = dailyParentSold.get(product.id) || 0;
       if (alreadySold >= maxChildUnitsToday) continue;
       const remainingCapToday = maxChildUnitsToday - alreadySold;
 
-      // Lượng cần bán ước tính từ portion còn lại
+      // Lượng cần bán ước tính
       const remainingProds = shuffled.length - i;
       const portion = remaining / Math.max(1, Math.min(remainingProds, 20));
       let qty = Math.max(1, Math.round(portion / sellPerChild));
       qty = Math.min(qty, remainingCapToday);
-      if (qty <= 0) continue;
 
-      // Soft stock (nếu hết stock, virtual để vẫn đạt target)
+      // Stock cứng — KHÔNG tạo virtual stock. Hết hàng → bỏ qua SP này.
       const stock = stockMap.get(product.id) || 0;
-      if (stock <= 0) stockMap.set(product.id, qty * 3);
-      qty = Math.min(qty, stockMap.get(product.id) || qty);
+      if (stock <= 0) continue;
+      qty = Math.min(qty, stock);
       if (qty <= 0) continue;
 
       const total = sellPerChild * qty;
@@ -877,17 +889,19 @@ export function generateQuarterData(
         profitPercent: 0,
       });
 
-      stockMap.set(product.id, (stockMap.get(product.id) || 0) - qty);
+      stockMap.set(product.id, stock - qty);
       dailyParentSold.set(product.id, alreadySold + qty);
       remaining -= total;
     }
 
     if (items.length === 0) continue;
 
-    // Khớp chính xác doanh thu ngày — chỉnh item cuối
+    // Chỉ chỉnh chênh lệch nhỏ (rounding). Nếu thiếu kho thật → chấp nhận doanh thu thấp
+    // hơn target để thể hiện độ trễ giữa nhập và bán hàng.
     const rawTotal = items.reduce((s, it) => s + it.total, 0);
     const diff = targetDayRevenue - rawTotal;
-    if (Math.abs(diff) > 0) {
+    const tolerableAdjust = Math.max(5000, targetDayRevenue * 0.02);
+    if (Math.abs(diff) > 0 && Math.abs(diff) <= tolerableAdjust) {
       const last = items[items.length - 1];
       last.total = Math.max(0, last.total + diff);
       last.profit = last.total - last.buyPrice * last.quantity;
@@ -959,8 +973,9 @@ export function computeCarryOverStock(
 // ============================================================================
 
 /**
- * Tạo 1 đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
- * Chọn NCC lớn nhất (nhiều SP nhất) chưa khóa, lấy ~10–15 SP đa dạng.
+ * Tạo NHIỀU đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
+ * Chia đều cho 2-4 NCC đủ tư cách (không manual-only) — KHÔNG dồn vào 1 NCC.
+ * Tránh đơn quá nhiều tiền: mỗi đơn ~3-6 SP, tổng ≤ shortfall/numSuppliers * 1.2.
  */
 export function generateSupplementaryOrder(
   quarter: number,
@@ -968,7 +983,7 @@ export function generateSupplementaryOrder(
   shortfall: number,
   products: Product[],
   suppliers: Supplier[],
-): ImportOrder | null {
+): ImportOrder[] | null {
   if (shortfall <= 0) return null;
   const activeProducts = products.filter(p => !p.deletedAt && p.buyPrice > 0);
   if (activeProducts.length === 0) return null;
@@ -979,53 +994,70 @@ export function generateSupplementaryOrder(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  let bestSupplierId = '';
-  let bestProds: Product[] = [];
+  // Chọn NCC đủ tư cách (không manual-only), ưu tiên NCC nhiều SP
+  type Cand = { sup: Supplier; prods: Product[]; rule: SupplierRuleResult };
+  const candidates: Cand[] = [];
   for (const [sid, prods] of supplierProducts) {
     const sup = suppliers.find(s => s.id === sid);
     if (!sup) continue;
     const rule = getSupplierRule(sup.name);
     if (rule.manualOnly) continue;
     const eligible = prods.filter(p => !rule.excludeProduct?.(p));
-    if (eligible.length > bestProds.length) {
-      bestProds = eligible;
-      bestSupplierId = sid;
-    }
+    if (eligible.length === 0) continue;
+    candidates.push({ sup, prods: eligible, rule });
   }
-  if (!bestSupplierId || bestProds.length === 0) return null;
+  if (candidates.length === 0) return null;
 
-  const supplier = suppliers.find(s => s.id === bestSupplierId)!;
+  // Sắp giảm dần theo số SP, lấy 2-4 NCC
+  candidates.sort((a, b) => b.prods.length - a.prods.length);
+  const numToUse = Math.min(candidates.length, Math.max(2, Math.min(4, candidates.length)));
+  const chosen = candidates.slice(0, numToUse);
+
   const rand = seededRandom(quarter * 991 + year * 41 + Math.floor(shortfall / 1000));
   const days = getDaysInQuarter(quarter, year);
   const importDate = days[Math.floor(days.length * 0.1)];
+  const perSupplierBudget = shortfall / numToUse;
 
-  const shuffled = [...bestProds].sort(() => rand() - 0.5);
-  const pickCount = Math.min(shuffled.length, Math.max(8, Math.min(15, shuffled.length)));
-  const picked = shuffled.slice(0, pickCount);
+  const results: ImportOrder[] = [];
 
-  const items: ImportOrderItem[] = [];
-  let acc = 0;
-  for (const p of picked) {
-    if (acc >= shortfall) break;
-    const remain = shortfall - acc;
-    const targetSpend = remain / Math.max(1, picked.length - items.length);
-    const qty = Math.max(1, Math.min(5, Math.round(targetSpend / Math.max(1, p.buyPrice))));
-    items.push(buildItem(p, supplier, qty));
-    acc += p.buyPrice * qty;
+  for (const { sup, prods, rule } of chosen) {
+    const shuffled = [...prods].sort(() => rand() - 0.5);
+    // Mỗi đơn 3-6 SP để tránh đơn quá ít/quá nhiều SP
+    const pickCount = Math.min(shuffled.length, Math.max(3, Math.min(6, Math.ceil(shuffled.length / 4))));
+    const picked = shuffled.slice(0, pickCount);
+
+    const items: ImportOrderItem[] = [];
+    let acc = 0;
+    for (const p of picked) {
+      if (acc >= perSupplierBudget * 1.1) break;
+      const remain = perSupplierBudget - acc;
+      const slotsLeft = Math.max(1, picked.length - items.length);
+      const targetSpend = remain / slotsLeft;
+      let qty = Math.max(1, Math.round(targetSpend / Math.max(1, p.buyPrice)));
+      // Tôn trọng rule cứng nếu có
+      const hardMax = rule.maxQtyPerProduct?.(p);
+      if (hardMax !== undefined) qty = Math.min(qty, hardMax);
+      const minReq = rule.minQtyPerOrder?.(p);
+      if (minReq !== undefined) qty = Math.max(qty, minReq);
+      items.push(buildItem(p, sup, qty));
+      acc += p.buyPrice * qty;
+    }
+    if (items.length === 0) continue;
+
+    results.push({
+      id: generateId(),
+      supplierId: sup.id,
+      supplierName: sup.name,
+      date: importDate,
+      items,
+      total: items.reduce((s, it) => s + it.total, 0),
+      tag: 'supplementary',
+      locked: false,
+      images: [],
+      deletedAt: null,
+      createdAt: new Date().toISOString(),
+    });
   }
-  if (items.length === 0) return null;
 
-  return {
-    id: generateId(),
-    supplierId: supplier.id,
-    supplierName: supplier.name,
-    date: importDate,
-    items,
-    total: items.reduce((s, it) => s + it.total, 0),
-    tag: 'supplementary',
-    locked: false,
-    images: [],
-    deletedAt: null,
-    createdAt: new Date().toISOString(),
-  };
+  return results.length > 0 ? results : null;
 }
