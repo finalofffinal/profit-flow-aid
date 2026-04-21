@@ -29,7 +29,7 @@ function IndexInner() {
   const { suppliers, activeSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } = useSuppliers();
   const { notifications, addNotification, markRead, markAllRead, unreadCount } = useNotifications();
   const { quarters, setQuarterTarget, setQuarterLock, rebalanceQuarters } = useQuarters();
-  const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, setOrders: setImportOrders } = useImportOrders();
+  const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, updateOrder: updateImportOrder, setOrders: setImportOrders } = useImportOrders();
   const { orders: salesOrders, activeOrders: activeSalesOrders, addOrder: addSaleOrder, deleteOrder: deleteSaleOrder, setOrders: setSalesOrders } = useSalesOrders();
   const { batches: inventoryBatches, setBatches: setInventoryBatches } = useInventoryBatches();
 
