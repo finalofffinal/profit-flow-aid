@@ -545,6 +545,10 @@ export function generateQuarterData(
     }
   }
 
+  // ============================================================================
+  // GENERATE SALES — sum MUST equal autoTargetRevenue exactly
+  // ============================================================================
+
   for (let dayIdx = 0; dayIdx < days.length; dayIdx++) {
     const day = days[dayIdx];
     const targetDayRevenue = dailyRevenue.get(day) || 0;
