@@ -29,7 +29,7 @@ function IndexInner() {
   const { suppliers, activeSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } = useSuppliers();
   const { notifications, addNotification, markRead, markAllRead, unreadCount } = useNotifications();
   const { quarters, setQuarterTarget, setQuarterLock, rebalanceQuarters } = useQuarters();
-  const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, setOrders: setImportOrders } = useImportOrders();
+  const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, updateOrder: updateImportOrder, setOrders: setImportOrders } = useImportOrders();
   const { orders: salesOrders, activeOrders: activeSalesOrders, addOrder: addSaleOrder, deleteOrder: deleteSaleOrder, setOrders: setSalesOrders } = useSalesOrders();
   const { batches: inventoryBatches, setBatches: setInventoryBatches } = useInventoryBatches();
 
@@ -193,6 +193,7 @@ function IndexInner() {
             permanentDeleteOrder={permanentDeleteImportOrder}
             addNotification={addNotification}
             onUpdateOrderDate={updateImportOrderDate}
+            onUpdateOrder={updateImportOrder}
             isQuarterLocked={isQuarterLocked}
             quarters={quarters}
             onAutoReplenish={handleAutoReplenish}
@@ -211,7 +212,7 @@ function IndexInner() {
           />
         );
       case 'sales':
-        return <SalesPage salesOrders={salesOrders} quarters={quarters} addNotification={addNotification} />;
+        return <SalesPage salesOrders={salesOrders} products={activeProducts} quarters={quarters} addNotification={addNotification} />;
       case 'catalog':
         return (
           <CatalogPage

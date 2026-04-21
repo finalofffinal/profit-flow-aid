@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2 } from 'lucide-react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
@@ -25,12 +25,13 @@ interface ImportPageProps {
   permanentDeleteOrder: (id: string) => void;
   addNotification: (msg: string, type?: any) => void;
   onUpdateOrderDate?: (id: string, newDate: string) => void;
+  onUpdateOrder?: (id: string, updates: Partial<ImportOrder>) => void;
   isQuarterLocked?: (q: number, y: number) => boolean;
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -40,6 +41,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -280,10 +282,17 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                           <span className="font-bold text-foreground">· {formatVND(order.total)}</span>
                         </div>
                       </div>
-                      {order.tag !== 'auto' && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }}>
-                          <Trash className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
+                      {order.tag !== 'auto' && !order.locked && !currentQLocked && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {onUpdateOrder && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); setEditingOrderId(order.id); }}>
+                              <Pencil className="h-3.5 w-3.5 text-primary" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }}>
+                            <Trash className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
                       )}
                     </button>
                     {isExpanded && (
@@ -346,6 +355,21 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
 
       {/* Add Import Dialog */}
       <AddImportDialog open={showAdd} onClose={() => setShowAdd(false)} suppliers={suppliers.filter(s => !s.deletedAt)} products={products} onSubmit={(order) => { addOrder(order); addNotification(`Đã thêm đơn nhập từ ${order.supplierName}`, 'info'); }} />
+
+      {/* Edit Import Dialog */}
+      {editingOrderId && onUpdateOrder && (
+        <EditImportDialog
+          order={activeOrders.find(o => o.id === editingOrderId)!}
+          products={products}
+          suppliers={suppliers.filter(s => !s.deletedAt)}
+          onClose={() => setEditingOrderId(null)}
+          onSubmit={(updates) => {
+            onUpdateOrder(editingOrderId, updates);
+            addNotification(`Đã cập nhật đơn nhập`, 'info');
+            setEditingOrderId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -498,6 +522,117 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Hủy</Button>
           <Button onClick={handleSubmit} disabled={!supplierId || selectedProducts.length === 0}>Tạo đơn</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
+  order: ImportOrder;
+  products: Product[];
+  suppliers: Supplier[];
+  onClose: () => void;
+  onSubmit: (updates: Partial<ImportOrder>) => void;
+}) {
+  const [date, setDate] = useState(order.date.split('T')[0]);
+  const [tag, setTag] = useState<ImportTag>(order.tag);
+  const [supplierId, setSupplierId] = useState(order.supplierId);
+  const [items, setItems] = useState(order.items.map(it => ({ productId: it.productId, quantity: it.quantity })));
+
+  const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
+
+  const total = useMemo(() => items.reduce((s, it) => {
+    const p = products.find(pp => pp.id === it.productId);
+    return s + (p ? p.buyPrice * it.quantity : 0);
+  }, 0), [items, products]);
+
+  const handleSubmit = () => {
+    const supplier = suppliers.find(s => s.id === supplierId);
+    if (!supplier) return;
+    const newItems: ImportOrder['items'] = items
+      .filter(it => it.productId && it.quantity > 0)
+      .map(it => {
+        const p = products.find(pp => pp.id === it.productId)!;
+        return {
+          productId: p.id, productName: p.name,
+          supplierId: p.supplierId, supplierName: supplier.name,
+          unit: p.unit, conversionUnit: p.conversionUnit || p.unit,
+          conversionRate: p.conversionRate || 1,
+          quantity: it.quantity, buyPrice: p.buyPrice,
+          total: p.buyPrice * it.quantity,
+        };
+      });
+    if (newItems.length === 0) return;
+    onSubmit({
+      date, tag, supplierId, supplierName: supplier.name,
+      items: newItems,
+    });
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Sửa đơn nhập</DialogTitle>
+          <DialogDescription>Chỉnh ngày, NCC, tag, sản phẩm và số lượng</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Nhà cung cấp</Label>
+              <Select value={supplierId} onValueChange={(v) => { setSupplierId(v); setItems([]); }}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Ngày nhập</Label>
+              <Input className="mt-1" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Tag</Label>
+            <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
+                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold">Sản phẩm ({items.length})</Label>
+              <Button variant="outline" size="sm" onClick={() => setItems(prev => [...prev, { productId: '', quantity: 1 }])} disabled={!supplierId}>
+                <Plus className="mr-1 h-3 w-3" /> Thêm SP
+              </Button>
+            </div>
+            {items.map((it, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Select value={it.productId} onValueChange={v => { const u = [...items]; u[i].productId = v; setItems(u); }}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                  <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input className="w-20" type="number" min={1} value={it.quantity}
+                  onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                  onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            {items.length > 0 && (
+              <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
+                Tổng: {formatVND(total)}
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button onClick={handleSubmit} disabled={!supplierId || items.length === 0}>Lưu</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
