@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText, FileDown, Lock } from 'lucide-react';
-import { SaleOrder, DailySales, ImportTag, PaymentMethod, QuarterData } from '@/types';
+import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText, FileDown, Lock, Undo2 } from 'lucide-react';
+import { SaleOrder, DailySales, ImportTag, PaymentMethod, QuarterData, Product } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS, PAYMENT_LABELS } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
@@ -13,21 +13,36 @@ import { exportSalesPdf } from '@/lib/exportPdf';
 
 interface SalesPageProps {
   salesOrders: SaleOrder[];
+  products?: Product[];
   quarters?: QuarterData[];
   addNotification?: (msg: string, type?: any) => void;
 }
 
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
-export function SalesPage({ salesOrders, quarters, addNotification }: SalesPageProps) {
+export function SalesPage({ salesOrders, products = [], quarters, addNotification }: SalesPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('all');
+  const [brandFilter, setBrandFilter] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [viewingImages, setViewingImages] = useState<string[] | null>(null);
+  const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
+
+  const allBrands = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach(p => { if (p.brand && !p.deletedAt) set.add(p.brand); });
+    return Array.from(set).sort();
+  }, [products]);
+
+  const productBrandMap = useMemo(() => {
+    const m = new Map<string, string>();
+    products.forEach(p => { if (p.brand) m.set(p.id, p.brand); });
+    return m;
+  }, [products]);
 
   const currentQ = quarters?.find(q => q.quarter === selQ && q.year === selYear);
   const currentQLocked = !!currentQ?.locked;
