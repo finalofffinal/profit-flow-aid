@@ -231,15 +231,22 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         const lp = p.name.toLowerCase();
         if (lp.includes('hạt nêm 1,8kg') || lp.includes('hat nem 1,8kg') || lp.includes('hạt nêm 1.8kg')) return 1;
         if (lp.includes('shiitake')) return 4;
-        if (lp.includes('xúc xích') || lp.includes('xuc xich')) return 20;
+        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 20;
         return undefined;
       },
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
-        if (lp.includes('xúc xích') || lp.includes('xuc xich')) return 5;
+        // Bin & Bon: tối đa 20/quý, mỗi đơn ≥5 và ≤10 (chia 2-4 đơn)
+        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 10;
         if (lp.includes('nhất ca') || lp.includes('nhat ca')) return 1;
         if (lp.includes('tương ớt 500ml') || lp.includes('tuong ot 500ml')) return 1;
         return 5;
+      },
+      minQtyPerOrder: (p) => {
+        const lp = p.name.toLowerCase();
+        // Bin & Bon: trong 1 đơn ≥5 đơn vị lớn
+        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 5;
+        return undefined;
       },
     };
   }
@@ -249,9 +256,14 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       ordersCount: [2, 2],
       maxQtyPerQuarter: (p) => {
         const lp = p.name.toLowerCase();
-        return lp.includes('bơ thực vật') || lp.includes('bo thuc vat') ? 1 : 3;
+        if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
+        return 3; // các SP còn lại tối đa 3 đơn vị/quý
       },
-      maxQtyPerProduct: () => 3,
+      maxQtyPerProduct: (p) => {
+        const lp = p.name.toLowerCase();
+        if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
+        return 3;
+      },
     };
   }
 
@@ -525,13 +537,35 @@ function generateSupplierImports(
     }
   }
 
-  // Build orders + batches; bỏ đơn rỗng (yêu cầu: KHÔNG tạo đơn 1 món thì… đơn rỗng càng không)
-  // Yêu cầu: không tạo đơn chỉ có 1 SP → nếu đơn chỉ có 1 SP, dồn sang đơn liền kề
-  for (let i = 0; i < orderItems.length; i++) {
-    if (orderItems[i].length === 1 && orderItems.length > 1) {
-      const target = i + 1 < orderItems.length ? i + 1 : i - 1;
-      orderItems[target].push(...orderItems[i]);
+  // Yêu cầu: KHÔNG có đơn chỉ 1 SP, hạn chế đơn 2 SP (trừ khi NCC chỉ có ≤2 SP).
+  // Dồn đơn nhỏ sang đơn liền kề có ít SP nhất để cân bằng.
+  const minItemsPerOrder = eligible.length <= 2 ? 1 : 3;
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < orderItems.length; i++) {
+      if (orderItems[i].length === 0 || orderItems[i].length >= minItemsPerOrder) continue;
+      // Tìm đơn khác (≠ rỗng) có ít SP nhất để dồn vào
+      let targetIdx = -1;
+      let minLen = Infinity;
+      for (let j = 0; j < orderItems.length; j++) {
+        if (j === i || orderItems[j].length === 0) continue;
+        if (orderItems[j].length < minLen) { minLen = orderItems[j].length; targetIdx = j; }
+      }
+      if (targetIdx === -1) break;
+      // Dồn nhưng tránh trùng SP trong cùng đơn (gộp qty nếu trùng)
+      for (const it of orderItems[i]) {
+        const exist = orderItems[targetIdx].find(x => x.productId === it.productId);
+        if (exist) {
+          exist.quantity += it.quantity;
+          exist.total = exist.buyPrice * exist.quantity;
+        } else {
+          orderItems[targetIdx].push(it);
+        }
+      }
       orderItems[i] = [];
+      merged = true;
+      break;
     }
   }
 
@@ -646,32 +680,91 @@ export function generateQuarterData(
     inventoryBatches.push(...batches);
   }
 
-  // ===== Cân bằng tổng nhập về 80–110% doanh thu mục tiêu =====
+  // ===== Cân bằng tổng nhập theo TỶ TRỌNG NCC =====
+  // - Tổng nhập = 80–110% doanh thu mục tiêu
+  // - NCC nhỏ (≤10 SP) chiếm 10–15% tổng nhập
+  // - NCC lớn (>10 SP) chiếm 85–90% tổng nhập
+  // Khi scale, CLAMP qty về maxQtyPerProduct/maxQtyPerQuarter để KHÔNG phá rule đặc biệt.
   const isHighRev = quarter.quarter === 1 || quarter.quarter === 4;
   const importBudgetRatio = isHighRev ? 0.95 + rand() * 0.15 : 0.80 + rand() * 0.15;
   const targetImportTotal = autoTargetRevenue * importBudgetRatio;
-  const currentImportTotal = importOrders.reduce((s, o) => s + o.total, 0);
-  if (currentImportTotal > 0 && targetImportTotal > 0) {
-    const scale = targetImportTotal / currentImportTotal;
-    if (Math.abs(scale - 1) > 0.05) {
-      for (const order of importOrders) {
-        for (const it of order.items) {
-          const newQty = Math.max(1, Math.round(it.quantity * scale));
-          const rate = it.conversionRate || 1;
-          stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + (newQty - it.quantity) * rate);
-          it.quantity = newQty;
-          it.total = it.buyPrice * newQty;
+  const smallShareRatio = 0.10 + rand() * 0.05; // 10–15%
+  const largeShareRatio = 1 - smallShareRatio;
+
+  const largeSupplierIds = new Set<string>();
+  const smallSupplierIds = new Set<string>();
+  for (const [sid, prods] of supplierProducts) {
+    const supplier = suppliers.find(s => s.id === sid);
+    if (!supplier) continue;
+    const rule = getSupplierRule(supplier.name);
+    if (rule.manualOnly) continue;
+    const eligibleCount = prods.filter(p => !rule.excludeProduct?.(p)).length;
+    if (eligibleCount > 10) largeSupplierIds.add(sid);
+    else smallSupplierIds.add(sid);
+  }
+
+  const productById = new Map(activeProducts.map(p => [p.id, p]));
+
+  /**
+   * Scale 1 nhóm NCC về targetTotal, CLAMP qty theo cap.
+   * Trả về tổng thực tế đạt được sau clamp (có thể < target nếu chạm cap).
+   */
+  const scaleGroup = (sids: Set<string>, targetTotal: number): number => {
+    const groupOrders = importOrders.filter(o => sids.has(o.supplierId));
+    const currentTotal = groupOrders.reduce((s, o) => s + o.total, 0);
+    if (currentTotal <= 0 || targetTotal <= 0) return currentTotal;
+    const scale = targetTotal / currentTotal;
+    if (Math.abs(scale - 1) < 0.05) return currentTotal;
+
+    // Quarter-wide qty đã dùng (sau scale) per product
+    const qUsed = new Map<string, number>();
+    for (const o of groupOrders) for (const it of o.items) {
+      qUsed.set(it.productId, (qUsed.get(it.productId) || 0) + it.quantity);
+    }
+
+    for (const order of groupOrders) {
+      const supplier = suppliers.find(s => s.id === order.supplierId)!;
+      const rule = getSupplierRule(supplier.name);
+      for (const it of order.items) {
+        const prod = productById.get(it.productId);
+        if (!prod) continue;
+        const ruleMax = rule.maxQtyPerProduct?.(prod) ?? 999;
+        const qCap = rule.maxQtyPerQuarter?.(prod);
+        const minReq = rule.minQtyPerOrder?.(prod);
+        // Scale rồi clamp về [max(minReq,1), ruleMax]
+        let newQty = Math.max(minReq ?? 1, Math.round(it.quantity * scale));
+        newQty = Math.min(newQty, ruleMax);
+        // Clamp thêm theo cap quý: đảm bảo tổng quý ≤ qCap
+        if (qCap !== undefined) {
+          const otherQ = (qUsed.get(it.productId) || 0) - it.quantity;
+          newQty = Math.min(newQty, Math.max(0, qCap - otherQ));
         }
-        order.total = order.items.reduce((s, it) => s + it.total, 0);
+        if (newQty < 1) newQty = 1;
+        const rate = it.conversionRate || 1;
+        stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + (newQty - it.quantity) * rate);
+        qUsed.set(it.productId, (qUsed.get(it.productId) || 0) + (newQty - it.quantity));
+        it.quantity = newQty;
+        it.total = it.buyPrice * newQty;
       }
-      for (const batch of inventoryBatches) {
-        const order = importOrders.find(o => o.id === batch.importOrderId);
-        const it = order?.items.find(x => x.productId === batch.productId);
-        if (it) {
-          batch.quantity = it.quantity;
-          batch.originalQuantity = it.quantity;
-        }
-      }
+      order.total = order.items.reduce((s, it) => s + it.total, 0);
+    }
+    return groupOrders.reduce((s, o) => s + o.total, 0);
+  };
+
+  // Pass 1: scale nhóm nhỏ về 10–15% target
+  scaleGroup(smallSupplierIds, targetImportTotal * smallShareRatio);
+  // Pass 2: nhóm lớn lấy phần còn lại (≥85% target) để bù cho phần nhóm nhỏ bị clamp
+  const smallActual = importOrders.filter(o => smallSupplierIds.has(o.supplierId)).reduce((s, o) => s + o.total, 0);
+  const largeTarget = Math.max(targetImportTotal - smallActual, targetImportTotal * largeShareRatio);
+  scaleGroup(largeSupplierIds, largeTarget);
+
+  // Sync inventory batches với qty mới
+  for (const batch of inventoryBatches) {
+    const order = importOrders.find(o => o.id === batch.importOrderId);
+    const it = order?.items.find(x => x.productId === batch.productId);
+    if (it) {
+      batch.quantity = it.quantity;
+      batch.originalQuantity = it.quantity;
     }
   }
 
