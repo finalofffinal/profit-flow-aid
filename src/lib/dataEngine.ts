@@ -953,3 +953,79 @@ export function computeCarryOverStock(
   }
   return stock;
 }
+
+// ============================================================================
+// SUPPLEMENTARY ORDER — tạo đơn bù khi tổng nhập < doanh thu cần
+// ============================================================================
+
+/**
+ * Tạo 1 đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
+ * Chọn NCC lớn nhất (nhiều SP nhất) chưa khóa, lấy ~10–15 SP đa dạng.
+ */
+export function generateSupplementaryOrder(
+  quarter: number,
+  year: number,
+  shortfall: number,
+  products: Product[],
+  suppliers: Supplier[],
+): ImportOrder | null {
+  if (shortfall <= 0) return null;
+  const activeProducts = products.filter(p => !p.deletedAt && p.buyPrice > 0);
+  if (activeProducts.length === 0) return null;
+
+  const supplierProducts = new Map<string, Product[]>();
+  activeProducts.forEach(p => {
+    if (!supplierProducts.has(p.supplierId)) supplierProducts.set(p.supplierId, []);
+    supplierProducts.get(p.supplierId)!.push(p);
+  });
+
+  let bestSupplierId = '';
+  let bestProds: Product[] = [];
+  for (const [sid, prods] of supplierProducts) {
+    const sup = suppliers.find(s => s.id === sid);
+    if (!sup) continue;
+    const rule = getSupplierRule(sup.name);
+    if (rule.manualOnly) continue;
+    const eligible = prods.filter(p => !rule.excludeProduct?.(p));
+    if (eligible.length > bestProds.length) {
+      bestProds = eligible;
+      bestSupplierId = sid;
+    }
+  }
+  if (!bestSupplierId || bestProds.length === 0) return null;
+
+  const supplier = suppliers.find(s => s.id === bestSupplierId)!;
+  const rand = seededRandom(quarter * 991 + year * 41 + Math.floor(shortfall / 1000));
+  const days = getDaysInQuarter(quarter, year);
+  const importDate = days[Math.floor(days.length * 0.1)];
+
+  const shuffled = [...bestProds].sort(() => rand() - 0.5);
+  const pickCount = Math.min(shuffled.length, Math.max(8, Math.min(15, shuffled.length)));
+  const picked = shuffled.slice(0, pickCount);
+
+  const items: ImportOrderItem[] = [];
+  let acc = 0;
+  for (const p of picked) {
+    if (acc >= shortfall) break;
+    const remain = shortfall - acc;
+    const targetSpend = remain / Math.max(1, picked.length - items.length);
+    const qty = Math.max(1, Math.min(5, Math.round(targetSpend / Math.max(1, p.buyPrice))));
+    items.push(buildItem(p, supplier, qty));
+    acc += p.buyPrice * qty;
+  }
+  if (items.length === 0) return null;
+
+  return {
+    id: generateId(),
+    supplierId: supplier.id,
+    supplierName: supplier.name,
+    date: importDate,
+    items,
+    total: items.reduce((s, it) => s + it.total, 0),
+    tag: 'supplementary',
+    locked: false,
+    images: [],
+    deletedAt: null,
+    createdAt: new Date().toISOString(),
+  };
+}
