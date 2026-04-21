@@ -159,11 +159,9 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
             </Button>
           )}
-          {currentQLocked && (
-            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
-              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
-            </Button>
-          )}
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
+            <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+          </Button>
           <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}

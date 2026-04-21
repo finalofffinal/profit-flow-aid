@@ -99,7 +99,7 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
     return map;
   }
 
-  // Allocate then enforce exact sum on the last non-zero day
+  // Allocate then enforce EXACT sum on the last non-zero day
   let allocated = 0;
   let lastNonZeroIdx = -1;
   for (let i = 0; i < days.length; i++) {
@@ -108,7 +108,7 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
       continue;
     }
     const raw = (weights[i] / weightSum) * totalRevenue;
-    const amount = roundRevenue(Math.max(50000, raw));
+    const amount = Math.max(50000, Math.round(raw / 1000) * 1000);
     map.set(days[i], amount);
     allocated += amount;
     lastNonZeroIdx = i;
@@ -567,15 +567,12 @@ export function generateQuarterData(
 
     if (items.length === 0) continue;
 
-    // Force exact daily target by adjusting last item's qty + price-residual via padding item if needed
+    // Force EXACT daily target — adjust last item to absorb the entire residual
     const rawTotal = items.reduce((s, it) => s + it.total, 0);
-    const roundedRaw = roundRevenue(rawTotal);
-    const targetRounded = roundRevenue(targetDayRevenue);
-    const diff = targetRounded - roundedRaw;
-    // Adjust last item's total by `diff` (small rounding adjustment only)
+    const diff = targetDayRevenue - rawTotal; // exact, not rounded
     if (Math.abs(diff) > 0 && items.length > 0) {
       const last = items[items.length - 1];
-      last.total += diff;
+      last.total = Math.max(0, last.total + diff);
       last.profit = last.total - last.buyPrice * last.quantity;
     }
 
@@ -586,8 +583,8 @@ export function generateQuarterData(
       id: generateId(),
       date: day,
       items,
-      totalRevenue: roundRevenue(totalRevenue),
-      totalProfit: roundRevenue(totalProfit),
+      totalRevenue, // EXACT match to dailyRevenue.get(day)
+      totalProfit,
       profitPercent: 0,
       tag: 'auto',
       paymentMethod: 'cash', // legacy field, not displayed in PDF

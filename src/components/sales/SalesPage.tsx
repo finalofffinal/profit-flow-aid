@@ -151,11 +151,9 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
               <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
             </Button>
           )}
-          {currentQLocked && (
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportPdf}>
-              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
-            </Button>
-          )}
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportPdf}>
+            <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+          </Button>
         </div>
         {currentQLocked && (
           <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
