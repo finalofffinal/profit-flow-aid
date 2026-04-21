@@ -513,8 +513,37 @@ export function generateQuarterData(
   }
 
   // ============================================================================
-  // GENERATE SALES — sum MUST equal autoTargetRevenue exactly
+  // REBALANCE IMPORTS — đưa tổng nhập về 80–110% doanh thu mục tiêu
   // ============================================================================
+  const currentImportTotal = importOrders.reduce((s, o) => s + o.total, 0);
+  if (currentImportTotal > 0 && targetImportTotal > 0) {
+    const scale = targetImportTotal / currentImportTotal;
+    // Chỉ scale nếu lệch >5% để tránh nhiễu nhỏ
+    if (Math.abs(scale - 1) > 0.05) {
+      for (const order of importOrders) {
+        for (const it of order.items) {
+          // scale quantity, giữ buyPrice nguyên (snapshot)
+          const newQty = Math.max(1, Math.round(it.quantity * scale));
+          // cập nhật stock theo chênh lệch
+          const rate = it.conversionRate || 1;
+          const stockDelta = (newQty - it.quantity) * rate;
+          stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + stockDelta);
+          it.quantity = newQty;
+          it.total = it.buyPrice * newQty;
+        }
+        order.total = order.items.reduce((s, it) => s + it.total, 0);
+      }
+      // Cập nhật batches tương ứng
+      for (const batch of inventoryBatches) {
+        const order = importOrders.find(o => o.id === batch.importOrderId);
+        const it = order?.items.find(x => x.productId === batch.productId);
+        if (it) {
+          batch.quantity = it.quantity;
+          batch.originalQuantity = it.quantity;
+        }
+      }
+    }
+  }
 
   for (let dayIdx = 0; dayIdx < days.length; dayIdx++) {
     const day = days[dayIdx];
