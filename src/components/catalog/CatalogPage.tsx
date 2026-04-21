@@ -781,7 +781,7 @@ export function CatalogPage({
         onPermanentDeleteSupplier={permanentDeleteSupplier}
       />
 
-      <PriceHistoryDialog product={historyProduct} open={!!historyProduct} onClose={() => setHistoryProduct(null)} />
+      <PriceHistoryDialog product={historyProduct} open={!!historyProduct} onClose={() => setHistoryProduct(null)} onUpdateEntry={updatePriceHistoryEntry} />
 
       <Dialog open={showAddNCC} onOpenChange={v => !v && setShowAddNCC(false)}>
         <DialogContent className="max-w-sm">
