@@ -178,6 +178,8 @@ function IndexInner() {
             addNotification={addNotification}
             onUpdateOrderDate={updateImportOrderDate}
             isQuarterLocked={isQuarterLocked}
+            quarters={quarters}
+            onAutoReplenish={handleAutoReplenish}
           />
         );
       case 'inventory':
@@ -187,10 +189,13 @@ function IndexInner() {
             suppliers={activeSuppliers}
             importOrders={importOrders}
             salesOrders={salesOrders}
+            products={activeProducts}
+            quarters={quarters}
+            addNotification={addNotification}
           />
         );
       case 'sales':
-        return <SalesPage salesOrders={salesOrders} />;
+        return <SalesPage salesOrders={salesOrders} quarters={quarters} addNotification={addNotification} />;
       case 'catalog':
         return (
           <CatalogPage
