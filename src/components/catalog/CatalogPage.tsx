@@ -473,12 +473,15 @@ function TrashDialog({
 export function CatalogPage({
   products, activeProducts, deletedProducts, suppliers,
   addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct,
-  moveProduct, copyProduct, addSupplier, updateSupplier, deleteSupplier,
+  moveProduct, copyProduct, reorderProducts, updatePriceHistoryEntry,
+  addSupplier, updateSupplier, deleteSupplier,
   restoreSupplier, permanentDeleteSupplier, addNotification,
 }: CatalogPageProps) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [search, setSearch] = useState('');
   const [filterNCC, setFilterNCC] = useState<string>('all');
   const [filterUnit, setFilterUnit] = useState<string>('all');
+  const [filterBrand, setFilterBrand] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [showTrash, setShowTrash] = useState(false);
@@ -521,11 +524,35 @@ export function CatalogPage({
     for (const sid of sids) {
       const supplier = activeSuppliers.find(s => s.id === sid);
       if (!supplier) continue;
-      const prods = filtered.filter(p => p.supplierId === sid);
+      const prods = filtered.filter(p => p.supplierId === sid)
+        .sort((a, b) => {
+          const oa = a.order ?? 999999;
+          const ob = b.order ?? 999999;
+          if (oa !== ob) return oa - ob;
+          return a.createdAt.localeCompare(b.createdAt);
+        });
       if (prods.length > 0 || filterNCC === 'all') groups.push({ supplier, products: prods });
     }
     return groups;
   }, [filtered, activeSuppliers, filterNCC]);
+
+  const handleDragEnd = useCallback((supplierId: string, prodIds: string[]) => (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = prodIds.indexOf(active.id as string);
+    const newIdx = prodIds.indexOf(over.id as string);
+    if (oldIdx < 0 || newIdx < 0) {
+      // Cross-supplier drop: move product
+      const overProd = activeProducts.find(p => p.id === over.id);
+      if (overProd && overProd.supplierId !== supplierId) {
+        moveProduct(active.id as string, overProd.supplierId);
+        addNotification(`Đã chuyển sang ${overProd.supplierId}`, 'info');
+      }
+      return;
+    }
+    const next = arrayMove(prodIds, oldIdx, newIdx);
+    reorderProducts(next);
+  }, [reorderProducts, activeProducts, moveProduct, addNotification]);
 
   const toggleCollapse = (id: string) => {
     setCollapsedSuppliers(prev => {
