@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Search, ChevronDown, ChevronRight, GripVertical, Copy, Pencil, Trash, RotateCcw, Package, History, Undo2, Filter } from 'lucide-react';
+import { Plus, Trash2, Search, ChevronDown, ChevronRight, GripVertical, Copy, Pencil, Trash, RotateCcw, Package, History, Undo2, Filter, Check, X } from 'lucide-react';
 import { Product, Supplier } from '@/types';
 import { formatVND, formatPriceForInput, parsePriceInput } from '@/lib/currency';
 import { PARENT_UNITS, CHILD_UNITS } from '@/lib/constants';
@@ -15,6 +15,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CatalogPageProps {
   products: Product[];
@@ -28,6 +31,8 @@ interface CatalogPageProps {
   permanentDeleteProduct: (id: string) => void;
   moveProduct: (productId: string, newSupplierId: string) => void;
   copyProduct: (productId: string, targetSupplierId: string) => void;
+  reorderProducts: (orderedIds: string[]) => void;
+  updatePriceHistoryEntry: (productId: string, index: number, entry: { date: string; buyPrice: number }) => void;
   addSupplier: (name: string) => Supplier;
   updateSupplier: (id: string, name: string) => void;
   deleteSupplier: (id: string) => void;
