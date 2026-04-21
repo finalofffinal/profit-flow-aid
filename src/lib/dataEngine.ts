@@ -975,8 +975,9 @@ export function computeCarryOverStock(
 
 /**
  * Tạo NHIỀU đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
- * Chia đều cho 2-4 NCC đủ tư cách (không manual-only) — KHÔNG dồn vào 1 NCC.
- * Tránh đơn quá nhiều tiền: mỗi đơn ~3-6 SP, tổng ≤ shortfall/numSuppliers * 1.2.
+ * - Chia đều cho TẤT CẢ NCC đủ tư cách (không manual-only) — KHÔNG dồn vào vài NCC.
+ * - Mỗi SP tối đa 3 đơn vị lớn / đơn bù.
+ * - Trải đều TẤT CẢ sản phẩm của NCC, không chỉ vài SP.
  */
 export function generateSupplementaryOrder(
   quarter: number,
@@ -995,7 +996,7 @@ export function generateSupplementaryOrder(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // Chọn NCC đủ tư cách (không manual-only), ưu tiên NCC nhiều SP
+  // Chọn TẤT CẢ NCC đủ tư cách (không manual-only)
   type Cand = { sup: Supplier; prods: Product[]; rule: SupplierRuleResult };
   const candidates: Cand[] = [];
   for (const [sid, prods] of supplierProducts) {
@@ -1009,40 +1010,48 @@ export function generateSupplementaryOrder(
   }
   if (candidates.length === 0) return null;
 
-  // Sắp giảm dần theo số SP, lấy 2-4 NCC
-  candidates.sort((a, b) => b.prods.length - a.prods.length);
-  const numToUse = Math.min(candidates.length, Math.max(2, Math.min(4, candidates.length)));
-  const chosen = candidates.slice(0, numToUse);
-
+  // Phân bổ ngân sách theo tỉ trọng số SP của mỗi NCC (NCC nhiều SP → nhận nhiều hơn)
+  const totalProds = candidates.reduce((s, c) => s + c.prods.length, 0);
   const rand = seededRandom(quarter * 991 + year * 41 + Math.floor(shortfall / 1000));
   const days = getDaysInQuarter(quarter, year);
   const importDate = days[Math.floor(days.length * 0.1)];
-  const perSupplierBudget = shortfall / numToUse;
 
   const results: ImportOrder[] = [];
+  const MAX_QTY_PER_PRODUCT = 3; // Yêu cầu: tối đa 3 đơn vị lớn / SP / đơn bù
 
-  for (const { sup, prods, rule } of chosen) {
+  for (const { sup, prods, rule } of candidates) {
+    // Tỉ trọng theo số SP của NCC này
+    const supplierBudget = shortfall * (prods.length / totalProds);
+
+    // Trải đều TẤT CẢ SP: shuffle nhẹ rồi bao phủ toàn bộ
     const shuffled = [...prods].sort(() => rand() - 0.5);
-    // Mỗi đơn 3-6 SP để tránh đơn quá ít/quá nhiều SP
-    const pickCount = Math.min(shuffled.length, Math.max(3, Math.min(6, Math.ceil(shuffled.length / 4))));
-    const picked = shuffled.slice(0, pickCount);
 
     const items: ImportOrderItem[] = [];
-    let acc = 0;
-    for (const p of picked) {
-      if (acc >= perSupplierBudget * 1.1) break;
-      const remain = perSupplierBudget - acc;
-      const slotsLeft = Math.max(1, picked.length - items.length);
-      const targetSpend = remain / slotsLeft;
-      let qty = Math.max(1, Math.round(targetSpend / Math.max(1, p.buyPrice)));
-      // Tôn trọng rule cứng nếu có
+    // Pass 1: gán mỗi SP qty = 1 (bao phủ toàn bộ)
+    for (const p of shuffled) {
+      let qty = 1;
       const hardMax = rule.maxQtyPerProduct?.(p);
       if (hardMax !== undefined) qty = Math.min(qty, hardMax);
-      const minReq = rule.minQtyPerOrder?.(p);
-      if (minReq !== undefined) qty = Math.max(qty, minReq);
+      if (qty <= 0) continue;
       items.push(buildItem(p, sup, qty));
-      acc += p.buyPrice * qty;
     }
+
+    // Pass 2: tăng dần qty (vòng tròn) cho đến khi đạt ngân sách hoặc chạm trần 3
+    let acc = items.reduce((s, it) => s + it.total, 0);
+    let safety = items.length * MAX_QTY_PER_PRODUCT;
+    let cursor = 0;
+    while (acc < supplierBudget && safety-- > 0 && items.length > 0) {
+      const it = items[cursor % items.length];
+      cursor++;
+      const prod = prods.find(p => p.id === it.productId)!;
+      const hardMax = rule.maxQtyPerProduct?.(prod);
+      const cap = Math.min(MAX_QTY_PER_PRODUCT, hardMax ?? MAX_QTY_PER_PRODUCT);
+      if (it.quantity >= cap) continue;
+      it.quantity += 1;
+      it.total = it.buyPrice * it.quantity;
+      acc += it.buyPrice;
+    }
+
     if (items.length === 0) continue;
 
     results.push({
