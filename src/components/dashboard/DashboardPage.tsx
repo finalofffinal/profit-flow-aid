@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Eye, EyeOff, Download, Upload, TrendingUp, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle, Lock, Unlock, LayoutDashboard, Tag, Truck, Warehouse, ShoppingCart } from 'lucide-react';
+import { Eye, EyeOff, Download, Upload, TrendingUp, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle, Lock, Unlock, LayoutDashboard, Tag, Truck, Warehouse, ShoppingCart, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { exportSalesPdf } from '@/lib/exportPdf';
 import { exportSalesExcel } from '@/lib/exportExcel';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardPageProps {
   quarters: QuarterData[];
@@ -32,6 +33,7 @@ export function DashboardPage({
   salesOrders, importOrders, addNotification, onDataRestore, onTabChange,
 }: DashboardPageProps) {
   const { quarter: selectedQ, year: selectedYear } = usePeriod();
+  const { isAdmin } = useAuth();
   const [showNumbers, setShowNumbers] = useState(true);
   const [editingQ, setEditingQ] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
