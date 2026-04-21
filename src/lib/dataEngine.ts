@@ -456,11 +456,12 @@ function generateSupplierImports(
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
   if (isLargeSupplier) {
-    // NCC lớn (>10 SP, 18-30 đơn/quý):
-    // Mỗi đơn 4-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP qua nhiều lượt.
-    const targetItemsPerOrder = Math.max(4, Math.min(7, Math.round((eligible.length * 1.4) / autoCount)));
+    // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
+    // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
+    // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
+    const targetItemsPerOrder = Math.max(5, Math.min(7, Math.ceil(eligible.length / autoCount) + 1));
     const totalSlots = targetItemsPerOrder * autoCount;
-    const passes = Math.ceil(totalSlots / eligible.length);
+    const passes = Math.max(1, Math.ceil(totalSlots / eligible.length));
 
     let slotCursor = 0;
     for (let pass = 0; pass < passes; pass++) {
