@@ -973,8 +973,9 @@ export function computeCarryOverStock(
 // ============================================================================
 
 /**
- * Tạo 1 đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
- * Chọn NCC lớn nhất (nhiều SP nhất) chưa khóa, lấy ~10–15 SP đa dạng.
+ * Tạo NHIỀU đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
+ * Chia đều cho 2-4 NCC đủ tư cách (không manual-only) — KHÔNG dồn vào 1 NCC.
+ * Tránh đơn quá nhiều tiền: mỗi đơn ~3-6 SP, tổng ≤ shortfall/numSuppliers * 1.2.
  */
 export function generateSupplementaryOrder(
   quarter: number,
@@ -982,7 +983,7 @@ export function generateSupplementaryOrder(
   shortfall: number,
   products: Product[],
   suppliers: Supplier[],
-): ImportOrder | null {
+): ImportOrder[] | null {
   if (shortfall <= 0) return null;
   const activeProducts = products.filter(p => !p.deletedAt && p.buyPrice > 0);
   if (activeProducts.length === 0) return null;
@@ -993,53 +994,70 @@ export function generateSupplementaryOrder(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  let bestSupplierId = '';
-  let bestProds: Product[] = [];
+  // Chọn NCC đủ tư cách (không manual-only), ưu tiên NCC nhiều SP
+  type Cand = { sup: Supplier; prods: Product[]; rule: SupplierRuleResult };
+  const candidates: Cand[] = [];
   for (const [sid, prods] of supplierProducts) {
     const sup = suppliers.find(s => s.id === sid);
     if (!sup) continue;
     const rule = getSupplierRule(sup.name);
     if (rule.manualOnly) continue;
     const eligible = prods.filter(p => !rule.excludeProduct?.(p));
-    if (eligible.length > bestProds.length) {
-      bestProds = eligible;
-      bestSupplierId = sid;
-    }
+    if (eligible.length === 0) continue;
+    candidates.push({ sup, prods: eligible, rule });
   }
-  if (!bestSupplierId || bestProds.length === 0) return null;
+  if (candidates.length === 0) return null;
 
-  const supplier = suppliers.find(s => s.id === bestSupplierId)!;
+  // Sắp giảm dần theo số SP, lấy 2-4 NCC
+  candidates.sort((a, b) => b.prods.length - a.prods.length);
+  const numToUse = Math.min(candidates.length, Math.max(2, Math.min(4, candidates.length)));
+  const chosen = candidates.slice(0, numToUse);
+
   const rand = seededRandom(quarter * 991 + year * 41 + Math.floor(shortfall / 1000));
   const days = getDaysInQuarter(quarter, year);
   const importDate = days[Math.floor(days.length * 0.1)];
+  const perSupplierBudget = shortfall / numToUse;
 
-  const shuffled = [...bestProds].sort(() => rand() - 0.5);
-  const pickCount = Math.min(shuffled.length, Math.max(8, Math.min(15, shuffled.length)));
-  const picked = shuffled.slice(0, pickCount);
+  const results: ImportOrder[] = [];
 
-  const items: ImportOrderItem[] = [];
-  let acc = 0;
-  for (const p of picked) {
-    if (acc >= shortfall) break;
-    const remain = shortfall - acc;
-    const targetSpend = remain / Math.max(1, picked.length - items.length);
-    const qty = Math.max(1, Math.min(5, Math.round(targetSpend / Math.max(1, p.buyPrice))));
-    items.push(buildItem(p, supplier, qty));
-    acc += p.buyPrice * qty;
+  for (const { sup, prods, rule } of chosen) {
+    const shuffled = [...prods].sort(() => rand() - 0.5);
+    // Mỗi đơn 3-6 SP để tránh đơn quá ít/quá nhiều SP
+    const pickCount = Math.min(shuffled.length, Math.max(3, Math.min(6, Math.ceil(shuffled.length / 4))));
+    const picked = shuffled.slice(0, pickCount);
+
+    const items: ImportOrderItem[] = [];
+    let acc = 0;
+    for (const p of picked) {
+      if (acc >= perSupplierBudget * 1.1) break;
+      const remain = perSupplierBudget - acc;
+      const slotsLeft = Math.max(1, picked.length - items.length);
+      const targetSpend = remain / slotsLeft;
+      let qty = Math.max(1, Math.round(targetSpend / Math.max(1, p.buyPrice)));
+      // Tôn trọng rule cứng nếu có
+      const hardMax = rule.maxQtyPerProduct?.(p);
+      if (hardMax !== undefined) qty = Math.min(qty, hardMax);
+      const minReq = rule.minQtyPerOrder?.(p);
+      if (minReq !== undefined) qty = Math.max(qty, minReq);
+      items.push(buildItem(p, sup, qty));
+      acc += p.buyPrice * qty;
+    }
+    if (items.length === 0) continue;
+
+    results.push({
+      id: generateId(),
+      supplierId: sup.id,
+      supplierName: sup.name,
+      date: importDate,
+      items,
+      total: items.reduce((s, it) => s + it.total, 0),
+      tag: 'supplementary',
+      locked: false,
+      images: [],
+      deletedAt: null,
+      createdAt: new Date().toISOString(),
+    });
   }
-  if (items.length === 0) return null;
 
-  return {
-    id: generateId(),
-    supplierId: supplier.id,
-    supplierName: supplier.name,
-    date: importDate,
-    items,
-    total: items.reduce((s, it) => s + it.total, 0),
-    tag: 'supplementary',
-    locked: false,
-    images: [],
-    deletedAt: null,
-    createdAt: new Date().toISOString(),
-  };
+  return results.length > 0 ? results : null;
 }
