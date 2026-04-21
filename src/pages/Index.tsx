@@ -124,7 +124,9 @@ function IndexInner() {
       const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...allAutoSales];
       const carryOver = computeCarryOverStock(q.quarter, q.year, activeProducts, allImportsSoFar, allSalesSoFar);
 
-      const generated = generateQuarterData(q, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
+      const seedKey = `${q.quarter}-${q.year}`;
+      const qWithSeed = { ...q, regenSeed: regenSeeds[seedKey] || 0 } as any;
+      const generated = generateQuarterData(qWithSeed, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
       allAutoImports.push(...generated.importOrders);
       allAutoSales.push(...generated.salesOrders);
       allAutoBatches.push(...generated.inventoryBatches);
