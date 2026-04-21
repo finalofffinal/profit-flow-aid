@@ -498,17 +498,19 @@ function generateSupplierImports(
         const t = totals[idx];
         if (t === 0) return;
         const ratio = avg / t;
-        // Chỉ điều chỉnh nhẹ ±25% để giữ số nguyên hợp lý
-        const clamped = Math.max(0.75, Math.min(1.25, ratio));
+        const clamped = Math.max(0.7, Math.min(1.4, ratio));
         if (Math.abs(clamped - 1) < 0.05) return;
         its.forEach(it => {
-          const ruleMax = rule.maxQtyPerProduct?.(eligible.find(p => p.id === it.productId)!) ?? 3;
-          const newQty = Math.max(1, Math.min(ruleMax, Math.round(it.quantity * clamped)));
+          const prod = eligible.find(p => p.id === it.productId);
+          if (!prod) return;
+          const hardMax = rule.maxQtyPerProduct?.(prod);
+          const minReq = rule.minQtyPerOrder?.(prod) ?? 1;
+          let newQty = Math.max(minReq, Math.round(it.quantity * clamped));
+          if (hardMax !== undefined) newQty = Math.min(newQty, hardMax);
           const delta = newQty - it.quantity;
           if (delta !== 0) {
             it.quantity = newQty;
             it.total = it.buyPrice * newQty;
-            // Cập nhật qtyUsedQuarter
             qtyUsedQuarter.set(it.productId, (qtyUsedQuarter.get(it.productId) || 0) + delta);
           }
         });
