@@ -40,7 +40,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
-  const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
+  const [undoStack, setUndoStack] = useState<{ action: string; data: any; label?: string }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
