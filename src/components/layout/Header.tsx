@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Sun, Moon, Bell, Info, Cloud, CloudOff } from 'lucide-react';
-import { formatLunarDate } from '@/lib/lunar';
+import { formatLunarDateFull } from '@/lib/lunar';
 import { BUSINESS_INFO } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +39,7 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
     return () => clearInterval(timer);
   }, []);
 
-  const lunarDate = formatLunarDate(time);
+  const lunarDate = formatLunarDateFull(time);
   const solarDate = time.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
   const hours = String(time.getHours()).padStart(2, '0');
   const minutes = String(time.getMinutes()).padStart(2, '0');
@@ -83,10 +83,9 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
             </span>
             <span className="text-sm md:text-lg font-bold tabular-nums text-primary/60">:{seconds}</span>
           </div>
-          <div className="hidden md:flex items-center gap-1.5 text-sm font-bold text-foreground/80 mt-0.5">
-            <span>{solarDate}</span>
-            <span className="text-primary/60">·</span>
-            <span className="text-primary/80">AL: {lunarDate}</span>
+          <div className="hidden md:flex flex-col items-center gap-0.5 mt-1">
+            <span className="text-base font-black text-foreground tracking-tight">{solarDate}</span>
+            <span className="text-sm font-bold text-primary/85">Âm lịch: {lunarDate}</span>
           </div>
         </div>
 
@@ -134,13 +133,15 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
         </div>
       </div>
 
-      {/* Mobile: bigger date row */}
-      <div className="flex items-center justify-between gap-2 border-t border-primary/20 bg-primary/5 px-3 py-1.5 text-sm font-bold md:hidden">
-        <span className="text-foreground">{time.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-        <Badge variant="outline" className={`text-[10px] ${online ? 'border-emerald-500/50 text-emerald-600' : 'border-destructive/50 text-destructive'}`}>
-          {online ? <><Cloud className="inline h-3 w-3 mr-0.5" />Online</> : <><CloudOff className="inline h-3 w-3 mr-0.5" />Offline</>}
-        </Badge>
-        <span className="text-primary">AL: {lunarDate}</span>
+      {/* Mobile: bigger date row, lunar BELOW solar */}
+      <div className="flex flex-col gap-1 border-t border-primary/20 bg-primary/5 px-3 py-1.5 md:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-black text-foreground">{time.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+          <Badge variant="outline" className={`text-[10px] ${online ? 'border-emerald-500/50 text-emerald-600' : 'border-destructive/50 text-destructive'}`}>
+            {online ? <><Cloud className="inline h-3 w-3 mr-0.5" />Online</> : <><CloudOff className="inline h-3 w-3 mr-0.5" />Offline</>}
+          </Badge>
+        </div>
+        <span className="text-xs font-bold text-primary/85">Âm lịch: {lunarDate}</span>
       </div>
 
       {showInfo && (

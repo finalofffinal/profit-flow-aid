@@ -130,6 +130,18 @@ export function formatLunarDate(date: Date): string {
   return `${lunar.day} tháng ${LUNAR_MONTHS[lunar.month - 1]}`;
 }
 
+/** Full lunar date including year name (Giáp Thìn, etc.) */
+export function formatLunarDateFull(date: Date): string {
+  const lunar = solarToLunar(date.getDate(), date.getMonth() + 1, date.getFullYear());
+  const yearName = getLunarYearName(lunar.year);
+  return `Mùng ${lunar.day} tháng ${LUNAR_MONTHS[lunar.month - 1]}${lunar.leap ? ' (nhuận)' : ''} năm ${yearName}`;
+}
+
+/** Returns { day, month, leap } for sales-engine holiday detection */
+export function getLunarParts(date: Date): { day: number; month: number; year: number; leap: boolean } {
+  return solarToLunar(date.getDate(), date.getMonth() + 1, date.getFullYear());
+}
+
 export function getLunarYearName(year: number): string {
   const canIndex = (year + 6) % 10;
   const chiIndex = (year + 8) % 12;
