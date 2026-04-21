@@ -406,8 +406,8 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
     };
   }
 
-  // Default fallback
-  return { ordersCount: [2, 2], maxQtyPerProduct: () => 3 };
+  // Default fallback - không có rule cứng cho NCC này
+  return { ordersCount: [2, 2] };
 }
 
 // ============================================================================
@@ -732,16 +732,21 @@ export function generateQuarterData(
       for (const it of order.items) {
         const prod = productById.get(it.productId);
         if (!prod) continue;
-        const ruleMax = rule.maxQtyPerProduct?.(prod) ?? 999;
-        const qCap = rule.maxQtyPerQuarter?.(prod);
+        // RULE CỨNG: chỉ clamp khi rule trả số cụ thể (không undefined).
+        // SP không có rule yêu cầu → scale tự nhiên, không bị giới hạn 3.
+        const hardMaxPerOrder = rule.maxQtyPerProduct?.(prod);
+        const hardMaxPerQuarter = rule.maxQtyPerQuarter?.(prod);
         const minReq = rule.minQtyPerOrder?.(prod);
-        // Scale rồi clamp về [max(minReq,1), ruleMax]
+
         let newQty = Math.max(minReq ?? 1, Math.round(it.quantity * scale));
-        newQty = Math.min(newQty, ruleMax);
-        // Clamp thêm theo cap quý: đảm bảo tổng quý ≤ qCap
-        if (qCap !== undefined) {
+        // Clamp theo rule cứng/đơn (nếu có)
+        if (hardMaxPerOrder !== undefined) {
+          newQty = Math.min(newQty, hardMaxPerOrder);
+        }
+        // Clamp theo rule cứng/quý (nếu có)
+        if (hardMaxPerQuarter !== undefined) {
           const otherQ = (qUsed.get(it.productId) || 0) - it.quantity;
-          newQty = Math.min(newQty, Math.max(0, qCap - otherQ));
+          newQty = Math.min(newQty, Math.max(0, hardMaxPerQuarter - otherQ));
         }
         if (newQty < 1) newQty = 1;
         const rate = it.conversionRate || 1;
