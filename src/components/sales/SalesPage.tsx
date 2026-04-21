@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText } from 'lucide-react';
-import { SaleOrder, DailySales, ImportTag, PaymentMethod } from '@/types';
+import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText, FileDown, Lock } from 'lucide-react';
+import { SaleOrder, DailySales, ImportTag, PaymentMethod, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS, PAYMENT_LABELS } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
@@ -8,9 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { usePeriod } from '@/contexts/PeriodContext';
+import { exportSalesPdf } from '@/lib/exportPdf';
 
 interface SalesPageProps {
   salesOrders: SaleOrder[];
+  quarters?: QuarterData[];
+  addNotification?: (msg: string, type?: any) => void;
 }
 
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
