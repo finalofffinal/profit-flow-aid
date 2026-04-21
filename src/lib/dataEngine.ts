@@ -841,9 +841,10 @@ export function generateQuarterData(
     // Track SP đã bán hôm nay (để cap 1 đơn vị lớn / SP / ngày)
     const dailyParentSold = new Map<string, number>();
 
-    // Cần basket lớn để đạt target nhưng giữ "1 đơn vị lớn / SP / ngày"
-    // → cần bán nhiều SP khác nhau. Shuffle danh sách.
-    const shuffled = [...activeProducts].sort(() => rand() - 0.5);
+    // Shuffle CHỈ trong tập SP đang còn hàng → bán ra phụ thuộc kho thực (độ trễ tự nhiên)
+    // Không ưu tiên SP biên lợi nhuận cao — duyệt theo thứ tự ngẫu nhiên hoàn toàn.
+    const inStock = activeProducts.filter(p => (stockMap.get(p.id) || 0) > 0);
+    const shuffled = [...inStock].sort(() => rand() - 0.5);
 
     for (let i = 0; i < shuffled.length && remaining > 3000; i++) {
       const product = shuffled[i];
@@ -853,23 +854,22 @@ export function generateQuarterData(
       const buyPerChild = product.buyPrice / rate;
       if (sellPerChild <= 0) continue;
 
-      // 1 đơn vị lớn = `rate` child units (hoặc 1 nếu không có child)
+      // 1 đơn vị lớn / SP / ngày
       const maxChildUnitsToday = hasChild ? rate : 1;
       const alreadySold = dailyParentSold.get(product.id) || 0;
       if (alreadySold >= maxChildUnitsToday) continue;
       const remainingCapToday = maxChildUnitsToday - alreadySold;
 
-      // Lượng cần bán ước tính từ portion còn lại
+      // Lượng cần bán ước tính
       const remainingProds = shuffled.length - i;
       const portion = remaining / Math.max(1, Math.min(remainingProds, 20));
       let qty = Math.max(1, Math.round(portion / sellPerChild));
       qty = Math.min(qty, remainingCapToday);
-      if (qty <= 0) continue;
 
-      // Soft stock (nếu hết stock, virtual để vẫn đạt target)
+      // Stock cứng — KHÔNG tạo virtual stock. Hết hàng → bỏ qua SP này.
       const stock = stockMap.get(product.id) || 0;
-      if (stock <= 0) stockMap.set(product.id, qty * 3);
-      qty = Math.min(qty, stockMap.get(product.id) || qty);
+      if (stock <= 0) continue;
+      qty = Math.min(qty, stock);
       if (qty <= 0) continue;
 
       const total = sellPerChild * qty;
@@ -889,7 +889,7 @@ export function generateQuarterData(
         profitPercent: 0,
       });
 
-      stockMap.set(product.id, (stockMap.get(product.id) || 0) - qty);
+      stockMap.set(product.id, stock - qty);
       dailyParentSold.set(product.id, alreadySold + qty);
       remaining -= total;
     }
