@@ -12,7 +12,7 @@ import {
   useProducts, useSuppliers, useNotifications, useTheme,
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
 } from '@/hooks/useStore';
-import { generateQuarterData, computeCarryOverStock } from '@/lib/dataEngine';
+import { generateQuarterData, computeCarryOverStock, generateSupplementaryOrder } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { TabId } from '@/types';
@@ -162,6 +162,16 @@ function IndexInner() {
     setInventoryBatches(prev => prev.filter(b => !(b.quarter === q && b.year === y)));
     addNotification(`Đang tạo lại đơn tự động Q${q}/${y}...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
+
+  /** Tạo đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý */
+  const handleCreateSupplementary = useCallback((q: number, y: number, shortfall: number) => {
+    const order = generateSupplementaryOrder(q, y, shortfall, activeProducts, activeSuppliers);
+    if (!order) {
+      addNotification('Không thể tạo đơn bù: thiếu sản phẩm/NCC hợp lệ', 'warning');
+      return;
+    }
+    addImportOrder(order);
+  }, [activeProducts, activeSuppliers, addImportOrder, addNotification]);
 
   const renderTab = () => {
     switch (activeTab) {
