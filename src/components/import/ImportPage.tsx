@@ -53,39 +53,9 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
     return filterByTimeRange(activeOrders, timeRange, selQ, selYear, customFrom, customTo);
   }, [activeOrders, timeRange, selQ, selYear, customFrom, customTo]);
 
-  // Revenue gap detection: total nhập nên nằm trong dải 80–110% doanh thu mục tiêu.
-  // Nếu < 70% target -> cảnh báo thiếu hàng tạo doanh thu.
-  const revenueGap = useMemo(() => {
-    if (!currentQuarter || currentQuarter.locked || currentQuarter.targetRevenue <= 0) return null;
-    const qOrders = activeOrders.filter(o => {
-      const d = new Date(o.date);
-      return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
-    });
-    const totalImport = qOrders.reduce((s, o) => s + o.total, 0);
-    const expectedMinImport = currentQuarter.targetRevenue * 0.80; // dải dưới
-    if (totalImport < expectedMinImport) {
-      return { totalImport, expectedMinImport, target: currentQuarter.targetRevenue };
-    }
-    return null;
-  }, [activeOrders, currentQuarter, selQ, selYear]);
-
   const handleExportPdf = () => {
     exportImportPdf(importOrders, products, selQ, selYear);
     addNotification(`Đã xuất PDF Nhập hàng Q${selQ}/${selYear}`, 'success');
-  };
-
-  const handleAutoReplenish = () => {
-    if (currentQLocked) {
-      // Replenish next non-locked quarter instead
-      const nextQ = quarters?.find(q => !q.locked && (q.year > selYear || (q.year === selYear && q.quarter > selQ)));
-      if (nextQ && onAutoReplenish) {
-        onAutoReplenish(nextQ.quarter, nextQ.year);
-        addNotification(`Đã chuyển bù sang Q${nextQ.quarter}/${nextQ.year} (quý này đã khóa)`, 'info');
-      }
-    } else if (onAutoReplenish) {
-      onAutoReplenish(selQ, selYear);
-      addNotification(`Đã tạo lại đơn nhập tự động cho Q${selQ}/${selYear}`, 'success');
-    }
   };
 
   const filteredOrders = useMemo(() => {
@@ -177,18 +147,6 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
         {currentQLocked && (
           <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
             <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
-          </div>
-        )}
-
-        {revenueGap && onAutoReplenish && (
-          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Wand2 className="h-3.5 w-3.5 shrink-0" />
-              <span>Hàng nhập không đủ tạo doanh thu Q{selQ} ({formatCompactVND(revenueGap.totalImport)} / cần ≥{formatCompactVND(revenueGap.expectedMinImport)})</span>
-            </div>
-            <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={handleAutoReplenish}>
-              <Wand2 className="mr-1 h-3 w-3" /> Tạo bù
-            </Button>
           </div>
         )}
 

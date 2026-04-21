@@ -194,13 +194,22 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                       {dateObj.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                     </span>
                     {isToday && <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px]">Hôm nay</Badge>}
+                    {ds.totalRevenue === 0 && ds.orders.some(o => o.items[0]?.productId === '__tet__') && (
+                      <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px]">🏮 Nghỉ Tết</Badge>
+                    )}
                     {ds.orders.some(o => o.tag === 'special') && <span className="h-2 w-2 rounded-full bg-destructive" />}
                     {ds.orders.some(o => o.tag === 'supplementary') && <span className="h-2 w-2 rounded-full bg-amber-500" />}
                     {ds.orders.some(o => o.tag === 'upgraded') && <span className="h-2 w-2 rounded-full bg-blue-600" />}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                    <span>Lãi: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(ds.totalProfit)}</span> ({ds.profitPercent}%)</span>
-                    <span>Tổng: <span className="font-bold text-foreground">{formatCompactVND(ds.totalRevenue)}</span></span>
+                    {ds.totalRevenue === 0 ? (
+                      <span className="italic">Không bán hàng</span>
+                    ) : (
+                      <>
+                        <span>Lãi: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(ds.totalProfit)}</span> ({ds.profitPercent}%)</span>
+                        <span>Tổng: <span className="font-bold text-foreground">{formatCompactVND(ds.totalRevenue)}</span></span>
+                      </>
+                    )}
                   </div>
                 </div>
               </button>
@@ -210,6 +219,15 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                   {ds.orders.map(order => {
                     const tagColor = IMPORT_TAG_COLORS[order.tag] || '';
                     const tagLabel = IMPORT_TAG_LABELS[order.tag] || 'TM';
+                    const isTetClosed = order.totalRevenue === 0 && order.items.length === 1 && order.items[0].productId === '__tet__';
+                    if (isTetClosed) {
+                      return (
+                        <div key={order.id} className="p-3 border-l-2 border-l-amber-500 bg-amber-500/10">
+                          <p className="text-sm font-bold text-amber-700 dark:text-amber-300">🏮 {order.items[0].productName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Doanh thu: 0 VND</p>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={order.id} className={`p-3 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'special' ? 'border-l-destructive bg-destructive/5' : order.tag === 'supplementary' ? 'border-l-amber-500 bg-amber-500/5' : order.tag === 'upgraded' ? 'border-l-blue-600 bg-blue-600/5' : ''}`}>
                         <div className="flex items-center gap-2 mb-1.5">
@@ -222,18 +240,21 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                           )}
                         </div>
                         <div className="space-y-1">
-                          {order.items.map((item, i) => (
-                            <div key={i} className="flex items-center justify-between text-xs">
-                              <div className="min-w-0">
-                                <span className="font-medium">{item.productName}</span>
-                                <span className="text-muted-foreground ml-1">×{item.quantity} {item.unit}</span>
+                          {order.items.map((item, i) => {
+                            const itemProfitPct = item.total > 0 ? Math.round((item.profit / item.total) * 1000) / 10 : 0;
+                            return (
+                              <div key={i} className="flex items-center justify-between text-xs">
+                                <div className="min-w-0">
+                                  <span className="font-medium">{item.productName}</span>
+                                  <span className="text-muted-foreground ml-1">×{item.quantity} {item.unit}</span>
+                                </div>
+                                <div className="text-right shrink-0 ml-2">
+                                  <span className="font-semibold">{formatVND(item.total)}</span>
+                                  <span className="text-emerald-600 dark:text-emerald-300 ml-1">(+{itemProfitPct}%)</span>
+                                </div>
                               </div>
-                              <div className="text-right shrink-0 ml-2">
-                                <span className="font-semibold">{formatVND(item.total)}</span>
-                                <span className="text-emerald-600 dark:text-emerald-300 ml-1">(+{item.profitPercent}%)</span>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         <div className="flex justify-between mt-1.5 pt-1.5 border-t border-border text-xs">
                           <span className="text-muted-foreground">{PAYMENT_LABELS[order.paymentMethod]}</span>
