@@ -69,10 +69,10 @@ function IndexInner() {
     setImportOrders(prev => prev.map(o => o.id === id ? { ...o, date: newDate } : o));
   }, [setImportOrders]);
 
-  // Stable signature to avoid unnecessary regen
+  // Stable signature to avoid unnecessary regen (includes regenSeeds for manual re-rolls)
   const quarterSig = useMemo(
-    () => quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}`).sort().join('|'),
-    [quarters]
+    () => quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
+    [quarters, regenSeeds]
   );
 
   // Auto-generate import/sales/batches whenever quarters or active products change
