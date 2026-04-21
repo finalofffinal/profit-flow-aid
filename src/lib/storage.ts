@@ -25,6 +25,65 @@ function loadLocal<T>(key: string, fallback: T): T {
 function save<T>(key: string, data: T): void {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.error('localStorage save failed:', e); }
   if (key !== KEYS.theme) saveToSupabase(key, data);
+  // Auto-purge when usage > 80% to keep storage healthy
+  scheduleAutoPurge();
+}
+
+let purgeTimer: number | null = null;
+function scheduleAutoPurge() {
+  if (purgeTimer !== null) return;
+  purgeTimer = window.setTimeout(() => {
+    purgeTimer = null;
+    try { autoPurgeIfFull(); } catch (e) { console.warn('Auto-purge failed:', e); }
+  }, 1500);
+}
+
+/** Purge old read notifications + old soft-deleted import/sales orders when localStorage > 80%. */
+function autoPurgeIfFull() {
+  const usage = getStorageUsage();
+  if (usage.percent < 80) return;
+
+  // 1. Drop read notifications older than 7 days
+  try {
+    const raw = localStorage.getItem(KEYS.notifications);
+    if (raw) {
+      const list = JSON.parse(raw) as Notification[];
+      const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+      const kept = list.filter(n => !n.read || new Date(n.createdAt).getTime() > cutoff);
+      if (kept.length < list.length) {
+        localStorage.setItem(KEYS.notifications, JSON.stringify(kept));
+        saveToSupabase(KEYS.notifications, kept);
+      }
+    }
+  } catch {}
+
+  // 2. Permanently remove soft-deleted import orders > 30 days
+  try {
+    const raw = localStorage.getItem(KEYS.importOrders);
+    if (raw) {
+      const list = JSON.parse(raw) as ImportOrder[];
+      const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+      const kept = list.filter(o => !o.deletedAt || new Date(o.deletedAt).getTime() > cutoff);
+      if (kept.length < list.length) {
+        localStorage.setItem(KEYS.importOrders, JSON.stringify(kept));
+        saveToSupabase(KEYS.importOrders, kept);
+      }
+    }
+  } catch {}
+
+  // 3. Trim notifications to last 100
+  try {
+    const raw = localStorage.getItem(KEYS.notifications);
+    if (raw) {
+      const list = JSON.parse(raw) as Notification[];
+      if (list.length > 100) {
+        const sorted = [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        const kept = sorted.slice(0, 100);
+        localStorage.setItem(KEYS.notifications, JSON.stringify(kept));
+        saveToSupabase(KEYS.notifications, kept);
+      }
+    }
+  } catch {}
 }
 
 export const loadProducts = () => loadLocal<Product[]>(KEYS.products, []);
