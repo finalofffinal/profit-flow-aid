@@ -675,6 +675,13 @@ export function CatalogPage({
               {activeSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Select value={filterBrand} onValueChange={setFilterBrand}>
+            <SelectTrigger className="w-32 h-9 text-sm"><SelectValue placeholder="Nhãn hàng" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả nhãn</SelectItem>
+              {allBrands.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={filterUnit} onValueChange={setFilterUnit}>
             <SelectTrigger className="w-28 h-9 text-sm"><Filter className="mr-1 h-3 w-3" /><SelectValue placeholder="Đơn vị" /></SelectTrigger>
             <SelectContent>
@@ -726,20 +733,24 @@ export function CatalogPage({
                 {prods.length === 0 ? (
                   <p className="py-4 text-center text-xs text-muted-foreground">Chưa có sản phẩm. Kéo thả sản phẩm vào đây.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {prods.map(p => (
-                      <ProductCard
-                        key={p.id}
-                        product={p}
-                        suppliers={activeSuppliers}
-                        onEdit={(prod) => { setEditingProduct(prod); setShowForm(true); }}
-                        onDelete={handleDelete}
-                        onCopy={copyProduct}
-                        onCopySameSupplier={handleCopySameSupplier}
-                        onHistoryView={setHistoryProduct}
-                      />
-                    ))}
-                  </div>
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(supplier.id, prods.map(p => p.id))}>
+                    <SortableContext items={prods.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {prods.map(p => (
+                          <ProductCard
+                            key={p.id}
+                            product={p}
+                            suppliers={activeSuppliers}
+                            onEdit={(prod) => { setEditingProduct(prod); setShowForm(true); }}
+                            onDelete={handleDelete}
+                            onCopy={copyProduct}
+                            onCopySameSupplier={handleCopySameSupplier}
+                            onHistoryView={setHistoryProduct}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
             )}
