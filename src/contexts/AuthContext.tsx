@@ -23,6 +23,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (saved === 'admin') setRole('admin');
   }, []);
 
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.body.setAttribute('data-role', role);
+    }
+  }, [role]);
+
   const login = (password: string): boolean => {
     if (password === ADMIN_PASSWORD) {
       setRole('admin');
