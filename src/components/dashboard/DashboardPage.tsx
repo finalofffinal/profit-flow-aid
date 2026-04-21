@@ -427,7 +427,7 @@ function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isE
       {isEditing && !locked ? (
         <div className="space-y-2">
           <div>
-            <label className="text-xs text-muted-foreground">Định mức (×1.000 VND)</label>
+            <label className="text-xs text-muted-foreground">Doanh thu (×1.000 VND)</label>
             <Input value={revInput} onChange={e => setRevInput(e.target.value)} placeholder="250000" />
           </div>
           <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu & cân bằng</Button>
@@ -435,15 +435,9 @@ function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isE
       ) : (
         <>
           <div>
-            <p className="text-[11px] text-muted-foreground">Định mức</p>
+            <p className="text-[11px] text-muted-foreground">Doanh thu</p>
             <p className="text-lg font-black text-primary">{mask(formatVND(target))}</p>
           </div>
-          <div>
-            <p className="text-[11px] text-muted-foreground">Thực tế</p>
-            <p className="text-sm font-bold">{mask(formatVND(actual))}</p>
-          </div>
-          <Progress value={progress} className="h-1.5" />
-          <p className="text-[10px] text-right text-muted-foreground">{progress.toFixed(1)}%</p>
         </>
       )}
     </div>
