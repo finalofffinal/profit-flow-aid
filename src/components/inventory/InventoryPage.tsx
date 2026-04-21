@@ -19,7 +19,14 @@ interface InventoryPageProps {
   addNotification?: (msg: string, type?: any) => void;
 }
 
-export function InventoryPage({ batches, suppliers, importOrders, salesOrders, products, quarters, addNotification }: InventoryPageProps) {
+export function InventoryPage(props: InventoryPageProps) {
+  const batches = props.batches ?? [];
+  const suppliers = props.suppliers ?? [];
+  const importOrders = props.importOrders ?? [];
+  const salesOrders = props.salesOrders ?? [];
+  const products = props.products ?? [];
+  const quarters = props.quarters;
+  const addNotification = props.addNotification;
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
