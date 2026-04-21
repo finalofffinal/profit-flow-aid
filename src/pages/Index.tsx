@@ -12,7 +12,7 @@ import {
   useProducts, useSuppliers, useNotifications, useTheme,
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
 } from '@/hooks/useStore';
-import { generateQuarterData } from '@/lib/dataEngine';
+import { generateQuarterData, computeCarryOverStock } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { TabId } from '@/types';
@@ -104,7 +104,12 @@ function IndexInner() {
     let allAutoSales: typeof salesOrders = [];
     let allAutoBatches: typeof inventoryBatches = [];
 
-    for (const q of quarters) {
+    // Sort quarters chronologically so carry-over compounds correctly
+    const sortedQs = [...quarters].sort((a, b) =>
+      a.year !== b.year ? a.year - b.year : a.quarter - b.quarter
+    );
+
+    for (const q of sortedQs) {
       if (q.targetRevenue <= 0 || q.locked) continue;
       const qManualSales = manualSales.filter(o => {
         const d = new Date(o.date);
@@ -114,7 +119,13 @@ function IndexInner() {
         const d = new Date(o.date);
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
       });
-      const generated = generateQuarterData(q, activeProducts, activeSuppliers, qManualImports, qManualSales);
+
+      // Compute carry-over: include all manual + locked-auto + already-generated previous-quarter auto data
+      const allImportsSoFar = [...manualImports, ...lockedAutoImports, ...allAutoImports];
+      const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...allAutoSales];
+      const carryOver = computeCarryOverStock(q.quarter, q.year, activeProducts, allImportsSoFar, allSalesSoFar);
+
+      const generated = generateQuarterData(q, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
       allAutoImports.push(...generated.importOrders);
       allAutoSales.push(...generated.salesOrders);
       allAutoBatches.push(...generated.inventoryBatches);

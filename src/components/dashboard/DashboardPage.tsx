@@ -121,16 +121,30 @@ export function DashboardPage({
   };
 
   const handleRandomize = () => {
-    const totalAnnual = Math.round((700_000_000 + Math.random() * 299_000_000) / 1000) * 1000;
-    const weights = [0.28, 0.18, 0.20, 0.34];
-    for (let q = 1; q <= 4; q++) {
-      if (getQ(q)?.locked) continue;
-      const base = totalAnnual * weights[q - 1];
-      const noise = 0.92 + Math.random() * 0.16;
-      const rev = Math.round((base * noise) / 1000) * 1000;
+    // Random 650-950tr (cap 1 tỷ). Bias: 70% trong khoảng 650-900, 30% trong khoảng 900-950
+    const r = Math.random();
+    const totalAnnual = r < 0.7
+      ? Math.round((650_000_000 + Math.random() * 250_000_000) / 1000) * 1000
+      : Math.round((900_000_000 + Math.random() * 50_000_000) / 1000) * 1000;
+    const weights = [0.30, 0.18, 0.20, 0.32]; // Q1+Q4 cao
+    let allocated = 0;
+    const unlockedQs = [1, 2, 3, 4].filter(q => !getQ(q)?.locked);
+    const lockedSum = [1, 2, 3, 4].filter(q => getQ(q)?.locked).reduce((s, q) => s + (getQ(q)?.targetRevenue || 0), 0);
+    const remaining = Math.max(0, totalAnnual - lockedSum);
+    const wSum = unlockedQs.reduce((s, q) => s + weights[q - 1], 0) || 1;
+    unlockedQs.forEach((q, idx) => {
+      let rev: number;
+      if (idx === unlockedQs.length - 1) {
+        rev = Math.max(0, remaining - allocated);
+      } else {
+        const base = remaining * weights[q - 1] / wSum;
+        const noise = 0.92 + Math.random() * 0.16;
+        rev = Math.round((base * noise) / 1000) * 1000;
+      }
       setQuarterTarget(q, selectedYear, rev);
-    }
-    addNotification(`Đã tạo ngẫu nhiên mục tiêu ${selectedYear} (bỏ qua quý đã khóa)`, 'quarter_update');
+      allocated += rev;
+    });
+    addNotification(`Đã tạo định mức năm ${selectedYear}: ${(totalAnnual / 1_000_000).toFixed(0)} triệu`, 'quarter_update');
   };
 
   const handleExport = (type: 'pdf' | 'excel') => {
@@ -182,17 +196,19 @@ export function DashboardPage({
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div>
-            <p className="text-xs text-muted-foreground">Doanh thu thực tế</p>
+            <p className="text-xs text-muted-foreground">Doanh thu Q{selectedQ}</p>
             <p className="text-xl md:text-2xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Định mức quý</p>
+            <p className="text-xs text-muted-foreground">Định mức Q{selectedQ}</p>
             <p className="text-xl md:text-2xl font-black text-foreground">{mask(formatVND(currentQTarget))}</p>
           </div>
         </div>
         <div className="mt-2">
           <Progress value={currentQProgress} className="h-2" />
-          <p className="text-[11px] text-muted-foreground mt-1 text-right">{currentQProgress.toFixed(1)}% định mức</p>
+          <p className="text-[11px] text-muted-foreground mt-1 text-right">
+            {currentQProgress.toFixed(1)}% — Cần đạt đúng {mask(formatCompactVND(currentQTarget))}
+          </p>
         </div>
       </div>
 
@@ -253,12 +269,19 @@ export function DashboardPage({
         </CardHeader>
         {expanded && (
           <CardContent className="space-y-3">
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Tổng định mức / Thực tế</span>
-                <span className="font-bold">{formatCompactVND(totalActualYear)} / <span className="text-primary">{formatCompactVND(totalTarget)}</span></span>
+            <div className="rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border-2 border-primary/30 p-3">
+              <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Tổng 4 quý {selectedYear}</span>
+                <span className="text-[10px] text-muted-foreground">tối đa 1 tỷ VND</span>
               </div>
-              <Progress value={totalTarget > 0 ? Math.min(100, (totalActualYear / totalTarget) * 100) : 0} className="h-2" />
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-2xl md:text-3xl font-black text-primary">{mask(formatVND(totalTarget))}</p>
+                <span className="text-sm font-bold text-foreground/70">/ {formatCompactVND(MAX_YEARLY_REVENUE)}</span>
+              </div>
+              <Progress value={Math.min(100, (totalTarget / MAX_YEARLY_REVENUE) * 100)} className="h-2 mt-2" />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Định mức 4 quý gộp lại — bán hàng trong năm phải khớp đúng số này
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
