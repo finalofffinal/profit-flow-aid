@@ -878,10 +878,9 @@ export function generateQuarterData(
             quantity: it.quantity,
             originalQuantity: it.quantity,
             buyPrice: it.buyPrice,
-            sellPrice: 0,
             unit: it.unit,
-            importDate: topupDate,
-          } as InventoryBatch);
+            date: topupDate,
+          });
         }
       }
     }
