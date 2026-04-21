@@ -19,7 +19,8 @@ interface SalesPageProps {
 
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
-export function SalesPage({ salesOrders }: SalesPageProps) {
+export function SalesPage({ salesOrders, quarters, addNotification }: SalesPageProps) {
+  const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
@@ -27,6 +28,14 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
   const [customTo, setCustomTo] = useState('');
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [viewingImages, setViewingImages] = useState<string[] | null>(null);
+
+  const currentQ = quarters?.find(q => q.quarter === selQ && q.year === selYear);
+  const currentQLocked = !!currentQ?.locked;
+
+  const handleExportPdf = () => {
+    exportSalesPdf(salesOrders, selYear, [selQ]);
+    addNotification?.(`Đã xuất PDF Bán hàng Q${selQ}/${selYear}`, 'success');
+  };
 
   const activeOrders = salesOrders.filter(o => !o.deletedAt);
 
