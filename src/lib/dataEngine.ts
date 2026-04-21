@@ -456,23 +456,39 @@ function generateSupplierImports(
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
   if (isLargeSupplier) {
-    // Bao phủ toàn bộ: shuffle rồi chia đều round-robin
-    const shuffled = [...eligible].sort(() => rand() - 0.5);
-    shuffled.forEach((p, i) => {
-      const orderIdx = i % autoCount;
-      const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
-      const qCap = rule.maxQtyPerQuarter?.(p);
-      const minReq = rule.minQtyPerOrder?.(p);
-      const used = qtyUsedQuarter.get(p.id) || 0;
-      const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
-      if (remainCap === 0) return;
-      let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * ruleMax));
-      qty = Math.min(qty, ruleMax, remainCap);
-      if (qty <= 0) return;
-      orderItems[orderIdx].push(buildItem(p, supplier, qty));
-      qtyUsedQuarter.set(p.id, used + qty);
-      productsUsed.add(p.id);
-    });
+    // NCC lớn (>10 SP, 18-30 đơn/quý):
+    // Mỗi đơn 4-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP qua nhiều lượt.
+    const targetItemsPerOrder = Math.max(4, Math.min(7, Math.round((eligible.length * 1.4) / autoCount)));
+    const totalSlots = targetItemsPerOrder * autoCount;
+    const passes = Math.ceil(totalSlots / eligible.length);
+
+    let slotCursor = 0;
+    for (let pass = 0; pass < passes; pass++) {
+      const passList = [...eligible].sort(() => rand() - 0.5);
+      for (const p of passList) {
+        if (slotCursor >= totalSlots) break;
+        const orderIdx = slotCursor % autoCount;
+        slotCursor++;
+
+        const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
+        const qCap = rule.maxQtyPerQuarter?.(p);
+        const minReq = rule.minQtyPerOrder?.(p);
+        const used = qtyUsedQuarter.get(p.id) || 0;
+        const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
+        if (remainCap === 0) continue;
+
+        // Tránh trùng SP trong cùng đơn (giữ đa dạng)
+        if (orderItems[orderIdx].some(x => x.productId === p.id)) continue;
+
+        let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * Math.max(1, ruleMax)));
+        qty = Math.min(qty, ruleMax, remainCap);
+        if (qty <= 0) continue;
+
+        orderItems[orderIdx].push(buildItem(p, supplier, qty));
+        qtyUsedQuarter.set(p.id, used + qty);
+        productsUsed.add(p.id);
+      }
+    }
 
     // Cân bằng tiền: tính tổng từng đơn, scale qty các đơn lệch nhiều về trung bình
     const totals = orderItems.map(its => its.reduce((s, it) => s + it.total, 0));
