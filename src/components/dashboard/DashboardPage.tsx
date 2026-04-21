@@ -1,99 +1,85 @@
-import { useState, useMemo } from 'react';
-import { Eye, EyeOff, Download, Upload, TrendingUp, Wallet, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Eye, EyeOff, Download, Upload, TrendingUp, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle, Lock, Unlock, LayoutDashboard, Tag, Truck, Warehouse, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { QuarterData, SaleOrder, ImportOrder } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { QuarterData, SaleOrder, ImportOrder, TabId } from '@/types';
 import { formatVND, formatCompactVND, parsePriceInput } from '@/lib/currency';
 import { exportBackup, importBackup, getStorageUsage } from '@/lib/storage';
 import { MAX_YEARLY_REVENUE } from '@/lib/constants';
 import { exportSalesPdf } from '@/lib/exportPdf';
 import { exportSalesExcel } from '@/lib/exportExcel';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { usePeriod } from '@/contexts/PeriodContext';
 
 interface DashboardPageProps {
   quarters: QuarterData[];
-  setQuarterTarget: (q: number, year: number, targetRevenue: number, targetProfitPercent: number) => void;
+  setQuarterTarget: (q: number, year: number, targetRevenue: number) => void;
+  setQuarterLock: (q: number, year: number, locked: boolean) => void;
+  rebalanceQuarters: (year: number, keepQ: number, keepRevenue: number, totalAnnual: number) => void;
   salesOrders: SaleOrder[];
   importOrders: ImportOrder[];
   addNotification: (msg: string, type?: any) => void;
   onDataRestore: () => void;
+  onTabChange: (tab: TabId) => void;
 }
 
-type TimeRange = 'today' | 'week' | 'month' | 'quarter' | 'custom';
-
-export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importOrders, addNotification, onDataRestore }: DashboardPageProps) {
+export function DashboardPage({
+  quarters, setQuarterTarget, setQuarterLock, rebalanceQuarters,
+  salesOrders, importOrders, addNotification, onDataRestore, onTabChange,
+}: DashboardPageProps) {
+  const { quarter: selectedQ, year: selectedYear } = usePeriod();
   const [showNumbers, setShowNumbers] = useState(true);
   const [editingQ, setEditingQ] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
   const [showStorage, setShowStorage] = useState(false);
+  const [storageUsage, setStorageUsage] = useState(getStorageUsage());
+  const [exportDialog, setExportDialog] = useState<null | 'pdf' | 'excel'>(null);
 
-  const now = new Date();
-  const currentQ = Math.ceil((now.getMonth() + 1) / 3);
+  // Refresh storage every 3s
+  useEffect(() => {
+    const t = setInterval(() => setStorageUsage(getStorageUsage()), 3000);
+    return () => clearInterval(t);
+  }, []);
 
   const getQ = (q: number) => quarters.find(qd => qd.quarter === q && qd.year === selectedYear);
+  const lockedQs = useMemo(() => [1, 2, 3, 4].filter(q => getQ(q)?.locked), [quarters, selectedYear]);
 
+  // Sales filtered to current Q+Y for KPI/chart
   const filteredSales = useMemo(() => {
-    const todayStr = now.toISOString().split('T')[0];
     return salesOrders.filter(o => {
       if (o.deletedAt) return false;
       const d = new Date(o.date);
-      if (d.getFullYear() !== selectedYear) return false;
-      const day = o.date.split('T')[0];
-      switch (timeRange) {
-        case 'today': return day === todayStr;
-        case 'week': {
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay() + 1);
-          weekStart.setHours(0, 0, 0, 0);
-          return d >= weekStart && d <= now;
-        }
-        case 'month': return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        case 'quarter': {
-          const dq = Math.ceil((d.getMonth() + 1) / 3);
-          return dq === currentQ;
-        }
-        case 'custom': {
-          if (!customFrom || !customTo) return true;
-          return day >= customFrom && day <= customTo;
-        }
-        default: return true;
-      }
+      return d.getFullYear() === selectedYear && Math.ceil((d.getMonth() + 1) / 3) === selectedQ;
     });
-  }, [salesOrders, timeRange, selectedYear, customFrom, customTo, now, currentQ]);
+  }, [salesOrders, selectedYear, selectedQ]);
 
   const totalRevenue = filteredSales.reduce((s, o) => s + o.totalRevenue, 0);
-  const totalProfit = filteredSales.reduce((s, o) => s + o.totalProfit, 0);
-  const profitPercent = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
 
-  // Total import cost (COGS) from import orders for the selected time
   const totalImportCost = useMemo(() => {
     return importOrders.filter(o => {
       if (o.deletedAt) return false;
       const d = new Date(o.date);
-      return d.getFullYear() === selectedYear;
+      return d.getFullYear() === selectedYear && Math.ceil((d.getMonth() + 1) / 3) === selectedQ;
     }).reduce((s, o) => s + o.total, 0);
-  }, [importOrders, selectedYear]);
+  }, [importOrders, selectedYear, selectedQ]);
 
   const quarterActuals = useMemo(() => {
-    const result: Record<number, { revenue: number; profit: number }> = { 1: { revenue: 0, profit: 0 }, 2: { revenue: 0, profit: 0 }, 3: { revenue: 0, profit: 0 }, 4: { revenue: 0, profit: 0 } };
+    const result: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
     salesOrders.filter(o => !o.deletedAt).forEach(o => {
       const d = new Date(o.date);
       if (d.getFullYear() !== selectedYear) return;
       const q = Math.ceil((d.getMonth() + 1) / 3);
-      result[q].revenue += o.totalRevenue;
-      result[q].profit += o.totalProfit;
+      result[q] += o.totalRevenue;
     });
     return result;
   }, [salesOrders, selectedYear]);
 
   const totalTarget = [1, 2, 3, 4].reduce((s, q) => s + (getQ(q)?.targetRevenue || 0), 0);
+  const totalActualYear = [1, 2, 3, 4].reduce((s, q) => s + quarterActuals[q], 0);
 
   const chartData = useMemo(() => {
     const dailyMap = new Map<string, number>();
@@ -109,8 +95,7 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
       }));
   }, [filteredSales]);
 
-  const mask = (v: string) => showNumbers ? v : '********';
-  const storage = getStorageUsage();
+  const mask = (v: string) => showNumbers ? v : '••••••';
 
   const handleBackup = () => {
     const data = exportBackup();
@@ -136,79 +121,93 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
   };
 
   const handleRandomize = () => {
-    // Generate random total between 700M and 999M (rounded to thousands)
     const totalAnnual = Math.round((700_000_000 + Math.random() * 299_000_000) / 1000) * 1000;
     const weights = [0.28, 0.18, 0.20, 0.34];
-    
     for (let q = 1; q <= 4; q++) {
+      if (getQ(q)?.locked) continue;
       const base = totalAnnual * weights[q - 1];
-      // Add ±8% noise per quarter
       const noise = 0.92 + Math.random() * 0.16;
       const rev = Math.round((base * noise) / 1000) * 1000;
-      const pct = 10 + Math.round(Math.random() * 8);
-      setQuarterTarget(q, selectedYear, rev, pct);
+      setQuarterTarget(q, selectedYear, rev);
     }
-    addNotification(`Đã tạo ngẫu nhiên mục tiêu ${selectedYear}`, 'quarter_update');
+    addNotification(`Đã tạo ngẫu nhiên mục tiêu ${selectedYear} (bỏ qua quý đã khóa)`, 'quarter_update');
   };
 
-  const handleExportPdf = () => {
-    exportSalesPdf(salesOrders, selectedYear);
-    addNotification(`Đã xuất PDF năm ${selectedYear}`, 'info');
+  const handleExport = (type: 'pdf' | 'excel') => {
+    if (lockedQs.length === 0) {
+      addNotification('Cần khóa ít nhất 1 quý trước khi xuất', 'warning');
+      return;
+    }
+    if (lockedQs.length === 1) {
+      // Direct export for that quarter
+      doExport(type, lockedQs);
+      return;
+    }
+    setExportDialog(type);
   };
 
-  const handleExportExcel = () => {
-    exportSalesExcel(salesOrders, selectedYear);
-    addNotification(`Đã xuất Excel năm ${selectedYear}`, 'info');
+  const doExport = (type: 'pdf' | 'excel', quarters: number[]) => {
+    if (type === 'pdf') exportSalesPdf(salesOrders, selectedYear, quarters);
+    else exportSalesExcel(salesOrders, selectedYear, quarters);
+    addNotification(`Đã xuất ${type.toUpperCase()} năm ${selectedYear}`, 'success');
+    setExportDialog(null);
   };
+
+  const navTabs: { id: TabId; label: string; icon: any; color: string }[] = [
+    { id: 'catalog', label: 'Danh mục', icon: Tag, color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30' },
+    { id: 'import', label: 'Nhập hàng', icon: Truck, color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30' },
+    { id: 'inventory', label: 'Kho hàng', icon: Warehouse, color: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30' },
+    { id: 'sales', label: 'Bán hàng', icon: ShoppingCart, color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30' },
+  ];
+
+  const currentQTarget = getQ(selectedQ)?.targetRevenue || 0;
+  const currentQLocked = !!getQ(selectedQ)?.locked;
+  const currentQProgress = currentQTarget > 0 ? Math.min(100, (totalRevenue / currentQTarget) * 100) : 0;
 
   return (
     <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 pb-20 lg:pb-4">
-      {/* Time range selector */}
-      <div className="flex gap-1.5 overflow-x-auto">
-        {(['today', 'week', 'month', 'quarter', 'custom'] as TimeRange[]).map(r => (
-          <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
-            onClick={() => setTimeRange(r)}>
-            {{ today: `Hôm nay ${now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`, week: 'Tuần này', month: 'Tháng này', quarter: `Quý ${currentQ}`, custom: 'Tùy chọn' }[r]}
+      {/* Big context header */}
+      <div className="rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-primary/5 p-4 shadow-md">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Đang xem</p>
+            <h2 className="text-2xl md:text-3xl font-black text-primary flex items-center gap-2">
+              Quý {selectedQ} / {selectedYear}
+              {currentQLocked && <Lock className="h-5 w-5 text-amber-600" />}
+            </h2>
+          </div>
+          <Button variant="ghost" size="icon" onClick={() => setShowNumbers(!showNumbers)} title={showNumbers ? 'Ẩn số' : 'Hiện số'}>
+            {showNumbers ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
-        ))}
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Doanh thu thực tế</p>
+            <p className="text-xl md:text-2xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Định mức quý</p>
+            <p className="text-xl md:text-2xl font-black text-foreground">{mask(formatVND(currentQTarget))}</p>
+          </div>
+        </div>
+        <div className="mt-2">
+          <Progress value={currentQProgress} className="h-2" />
+          <p className="text-[11px] text-muted-foreground mt-1 text-right">{currentQProgress.toFixed(1)}% định mức</p>
+        </div>
       </div>
 
-      {timeRange === 'custom' && (
-        <div className="flex gap-2">
-          <Input type="date" className="h-8 text-xs" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-          <Input type="date" className="h-8 text-xs" value={customTo} onChange={e => setCustomTo(e.target.value)} />
-        </div>
-      )}
-
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3">
         <Card className="shadow-sm border-primary/20">
           <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Doanh thu tích lũy</div>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowNumbers(!showNumbers)}>
-                {showNumbers ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-              </Button>
-            </div>
-            <p className="mt-1 text-xl font-black text-primary">{mask(formatCompactVND(totalRevenue))}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm border-emerald-500/20">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Wallet className="h-3.5 w-3.5" /> Lợi nhuận tích lũy</div>
-            <p className="mt-1 text-xl font-black text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(totalProfit))}</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Doanh thu Q{selectedQ}</div>
+            <p className="mt-1 text-lg md:text-xl font-black text-primary">{mask(formatCompactVND(totalRevenue))}</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
           <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> % Lợi nhuận</div>
-            <p className="mt-1 text-xl font-black">{mask(`${profitPercent}%`)}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn hàng nhập</div>
-            <p className="mt-1 text-xl font-black">{mask(formatCompactVND(totalImportCost))}</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn nhập Q{selectedQ}</div>
+            <p className="mt-1 text-lg md:text-xl font-black">{mask(formatCompactVND(totalImportCost))}</p>
           </CardContent>
         </Card>
       </div>
@@ -217,7 +216,7 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
       {chartData.length > 0 && (
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Doanh thu theo ngày (nghìn VND)</CardTitle>
+            <CardTitle className="text-sm">Doanh thu Q{selectedQ}/{selectedYear} (nghìn VND)</CardTitle>
           </CardHeader>
           <CardContent className="h-48">
             <ResponsiveContainer width="100%" height="100%">
@@ -240,15 +239,10 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
       )}
 
       {/* Quarter Targets */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm border-2 border-primary/20">
         <CardHeader className="pb-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-sm">Định mức doanh thu (1 tỷ)</CardTitle>
-              <select className="text-xs border rounded px-2 py-1 bg-background" value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} onClick={e => e.stopPropagation()}>
-                {[2026, 2027, 2028, 2029, 2030].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+            <CardTitle className="text-base font-bold">Định mức doanh thu năm {selectedYear}</CardTitle>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
                 <Shuffle className="mr-1 h-3 w-3" /> Ngẫu nhiên
@@ -261,28 +255,33 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
           <CardContent className="space-y-3">
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Tổng mục tiêu</span>
-                <span className="font-bold">{formatCompactVND(totalTarget)} / {formatCompactVND(MAX_YEARLY_REVENUE)}</span>
+                <span className="text-muted-foreground">Tổng định mức / Thực tế</span>
+                <span className="font-bold">{formatCompactVND(totalActualYear)} / <span className="text-primary">{formatCompactVND(totalTarget)}</span></span>
               </div>
-              <Progress value={Math.min(100, (totalTarget / MAX_YEARLY_REVENUE) * 100)} className="h-2" />
+              <Progress value={totalTarget > 0 ? Math.min(100, (totalActualYear / totalTarget) * 100) : 0} className="h-2" />
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {[1, 2, 3, 4].map(q => {
                 const qData = getQ(q);
-                const actual = quarterActuals[q];
                 const target = qData?.targetRevenue || 0;
-                const progress = target > 0 ? Math.min(100, (actual.revenue / target) * 100) : 0;
+                const actual = quarterActuals[q];
+                const progress = target > 0 ? Math.min(100, (actual / target) * 100) : 0;
                 const isEditing = editingQ === q;
-
+                const locked = !!qData?.locked;
                 return (
                   <QuarterCard key={q} quarter={q} year={selectedYear} target={target}
-                    profitPercent={qData?.targetProfitPercent || 15}
-                    actualRevenue={actual.revenue} actualProfit={actual.profit}
-                    progress={progress} showNumbers={showNumbers}
-                    isEditing={isEditing}
+                    actual={actual} progress={progress} showNumbers={showNumbers}
+                    isEditing={isEditing} locked={locked}
                     onEdit={() => setEditingQ(isEditing ? null : q)}
-                    onSave={(rev, pct) => { setQuarterTarget(q, selectedYear, rev, pct); setEditingQ(null); addNotification(`Đã cập nhật Q${q}/${selectedYear}`, 'quarter_update'); }}
+                    onToggleLock={() => { setQuarterLock(q, selectedYear, !locked); addNotification(`${!locked ? 'Đã khóa' : 'Đã mở khóa'} Q${q}/${selectedYear}`, 'quarter_update'); }}
+                    onSave={(rev) => {
+                      setQuarterTarget(q, selectedYear, rev);
+                      // Auto-rebalance other quarters toward 1 tỷ
+                      rebalanceQuarters(selectedYear, q, rev, MAX_YEARLY_REVENUE);
+                      setEditingQ(null);
+                      addNotification(`Đã cập nhật Q${q}/${selectedYear} và cân bằng các quý khác`, 'quarter_update');
+                    }}
                   />
                 );
               })}
@@ -290,19 +289,21 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
 
             {totalTarget > MAX_YEARLY_REVENUE && (
               <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
-                <AlertTriangle className="h-4 w-4" /> Tổng mục tiêu vượt 1 tỷ VND! Cần cân bằng lại.
+                <AlertTriangle className="h-4 w-4" /> Tổng định mức vượt 1 tỷ VND!
               </div>
             )}
 
-            {/* Export buttons */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={handleExportPdf}>
-                <FileText className="mr-2 h-4 w-4" /> Xuất PDF
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport('pdf')} disabled={lockedQs.length === 0}>
+                <FileText className="mr-2 h-4 w-4" /> Xuất PDF {lockedQs.length > 0 && `(${lockedQs.length} quý)`}
               </Button>
-              <Button variant="outline" size="sm" className="flex-1" onClick={handleExportExcel}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" /> Xuất Excel
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport('excel')} disabled={lockedQs.length === 0}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Xuất Excel {lockedQs.length > 0 && `(${lockedQs.length} quý)`}
               </Button>
             </div>
+            {lockedQs.length === 0 && (
+              <p className="text-[11px] text-muted-foreground text-center">🔒 Khóa ít nhất 1 quý để xuất báo cáo</p>
+            )}
           </CardContent>
         )}
       </Card>
@@ -317,66 +318,121 @@ export function DashboardPage({ quarters, setQuarterTarget, salesOrders, importO
         </Button>
       </div>
 
+      {/* Quick tab nav */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2"><CardTitle className="text-sm">Đi tới tab khác</CardTitle></CardHeader>
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {navTabs.map(t => {
+            const Icon = t.icon;
+            return (
+              <button key={t.id} onClick={() => onTabChange(t.id)}
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-3 transition-all hover:scale-105 hover:shadow-md ${t.color}`}>
+                <Icon className="h-6 w-6" />
+                <span className="text-xs font-bold">{t.label}</span>
+              </button>
+            );
+          })}
+        </CardContent>
+      </Card>
+
       {/* Storage indicator */}
-      <div className="rounded-lg border p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setShowStorage(!showStorage)}>
+      <div className="rounded-lg border-2 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setShowStorage(!showStorage)}>
         <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2"><HardDrive className="h-3.5 w-3.5 text-muted-foreground" /> Dữ liệu lưu trữ</div>
-          <span className={`font-bold ${storage.percent > 80 ? 'text-destructive' : 'text-muted-foreground'}`}>{storage.percent}%</span>
+          <div className="flex items-center gap-2 font-semibold"><HardDrive className="h-3.5 w-3.5 text-muted-foreground" /> Dữ liệu lưu trữ</div>
+          <span className={`font-bold ${storageUsage.percent > 80 ? 'text-destructive' : storageUsage.percent > 50 ? 'text-amber-600' : 'text-emerald-600'}`}>
+            {storageUsage.percent}% · {(storageUsage.used / 1024).toFixed(0)} KB
+          </span>
         </div>
-        <Progress value={storage.percent} className="h-1.5 mt-1" />
+        <Progress value={storageUsage.percent} className="h-1.5 mt-1.5" />
         {showStorage && (
-          <div className="mt-2 text-[10px] text-muted-foreground space-y-0.5 animate-in slide-in-from-top-1">
-            <p>Đã dùng: {(storage.used / 1024).toFixed(1)} KB / {(storage.total / 1024 / 1024).toFixed(1)} MB</p>
-            <p>Sản phẩm: {localStorage.getItem('scp_products')?.length || 0} bytes</p>
-            <p>Đơn nhập: {localStorage.getItem('scp_import_orders')?.length || 0} bytes</p>
-            <p>Đơn bán: {localStorage.getItem('scp_sales_orders')?.length || 0} bytes</p>
-            {storage.percent > 80 && <p className="text-destructive font-semibold">⚠️ Sắp hết dung lượng! Hãy sao lưu và xuất dữ liệu.</p>}
+          <div className="mt-3 space-y-1 text-[11px] animate-in slide-in-from-top-1">
+            {storageUsage.breakdown.map(b => (
+              <div key={b.key} className="flex items-center justify-between border-t pt-1">
+                <span className="text-muted-foreground">{b.label} <span className="text-foreground/60">({b.count})</span></span>
+                <span className="font-mono font-semibold">{(b.bytes / 1024).toFixed(1)} KB</span>
+              </div>
+            ))}
+            <p className="pt-2 text-muted-foreground">Tổng dung lượng giới hạn: {(storageUsage.total / 1024 / 1024).toFixed(1)} MB (localStorage). Dữ liệu cũng đồng bộ Cloud không giới hạn.</p>
+            {storageUsage.percent > 80 && <p className="text-destructive font-semibold">⚠️ Sắp hết dung lượng cục bộ!</p>}
           </div>
         )}
       </div>
+
+      {/* Export choice dialog */}
+      <Dialog open={!!exportDialog} onOpenChange={v => !v && setExportDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chọn quý để xuất</DialogTitle>
+            <DialogDescription>
+              Có {lockedQs.length} quý đã khóa. Chọn xuất từng quý hoặc cả năm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2">
+            {lockedQs.map(q => (
+              <Button key={q} variant="outline" onClick={() => doExport(exportDialog!, [q])}>
+                Quý {q}/{selectedYear}
+              </Button>
+            ))}
+            {lockedQs.length === 4 && (
+              <Button className="col-span-2" onClick={() => doExport(exportDialog!, [1, 2, 3, 4])}>
+                📊 Cả năm {selectedYear} (4 quý)
+              </Button>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setExportDialog(null)}>Hủy</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function QuarterCard({ quarter, year, target, profitPercent, actualRevenue, actualProfit, progress, showNumbers, isEditing, onEdit, onSave }: {
-  quarter: number; year: number; target: number; profitPercent: number;
-  actualRevenue: number; actualProfit: number; progress: number;
-  showNumbers: boolean; isEditing: boolean;
-  onEdit: () => void; onSave: (rev: number, pct: number) => void;
+function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isEditing, locked, onEdit, onSave, onToggleLock }: {
+  quarter: number; year: number; target: number;
+  actual: number; progress: number;
+  showNumbers: boolean; isEditing: boolean; locked: boolean;
+  onEdit: () => void; onSave: (rev: number) => void; onToggleLock: () => void;
 }) {
   const [revInput, setRevInput] = useState(target > 0 ? (target / 1000).toString() : '');
-  const [pctInput, setPctInput] = useState(profitPercent.toString());
-  const mask = (v: string) => showNumbers ? v : '********';
+  useEffect(() => { setRevInput(target > 0 ? (target / 1000).toString() : ''); }, [target]);
+  const mask = (v: string) => showNumbers ? v : '••••';
 
   return (
-    <div className="rounded-xl border border-border p-3 space-y-2">
+    <div className={`rounded-xl border-2 p-3 space-y-2 ${locked ? 'border-amber-500/50 bg-amber-500/5' : 'border-border'}`}>
       <div className="flex items-center justify-between">
-        <Badge variant="outline" className="font-bold">Q{quarter}/{year}</Badge>
-        <Button variant="ghost" size="sm" className="text-xs h-6" onClick={onEdit}>
-          {isEditing ? 'Đóng' : 'Sửa'}
-        </Button>
+        <Badge variant="outline" className="font-bold text-sm">Q{quarter}/{year}</Badge>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={onToggleLock} title={locked ? 'Mở khóa' : 'Khóa quý'}>
+            {locked ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5" />}
+          </Button>
+          {!locked && (
+            <Button variant="ghost" size="sm" className="text-xs h-6" onClick={onEdit}>
+              {isEditing ? 'Đóng' : 'Sửa'}
+            </Button>
+          )}
+        </div>
       </div>
-      {isEditing ? (
+      {isEditing && !locked ? (
         <div className="space-y-2">
           <div>
-            <label className="text-xs text-muted-foreground">Mục tiêu doanh thu (×1000 VND)</label>
-            <Input size={1} value={revInput} onChange={e => setRevInput(e.target.value)} placeholder="250000" />
+            <label className="text-xs text-muted-foreground">Định mức (×1.000 VND)</label>
+            <Input value={revInput} onChange={e => setRevInput(e.target.value)} placeholder="250000" />
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground">% Lợi nhuận kỳ vọng</label>
-            <Input size={1} type="number" value={pctInput} onChange={e => setPctInput(e.target.value)} placeholder="15" />
-          </div>
-          <Button size="sm" onClick={() => onSave(parsePriceInput(revInput), parseFloat(pctInput) || 15)}>Lưu</Button>
+          <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu & cân bằng</Button>
         </div>
       ) : (
         <>
-          <div className="text-xs space-y-0.5">
-            <p>Mục tiêu: <span className="font-bold">{mask(formatVND(target))}</span></p>
-            <p>Thực tế: <span className="font-bold text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(actualRevenue))}</span></p>
-            <p>Lợi nhuận: <span className="font-bold text-emerald-600 dark:text-emerald-400">{mask(formatCompactVND(actualProfit))}</span></p>
+          <div>
+            <p className="text-[11px] text-muted-foreground">Định mức</p>
+            <p className="text-lg font-black text-primary">{mask(formatVND(target))}</p>
           </div>
-          <Progress value={progress} className="h-2" />
-          <p className="text-[10px] text-muted-foreground">{progress.toFixed(1)}% hoàn thành</p>
+          <div>
+            <p className="text-[11px] text-muted-foreground">Thực tế</p>
+            <p className="text-sm font-bold">{mask(formatVND(actual))}</p>
+          </div>
+          <Progress value={progress} className="h-1.5" />
+          <p className="text-[10px] text-right text-muted-foreground">{progress.toFixed(1)}%</p>
         </>
       )}
     </div>
