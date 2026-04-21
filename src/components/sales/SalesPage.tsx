@@ -120,6 +120,20 @@ export function SalesPage({ salesOrders, quarters, addNotification }: SalesPageP
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-bold">Bán hàng</h2>
+          <div className="flex-1" />
+          {currentQLocked && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportPdf}>
+              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+            </Button>
+          )}
+        </div>
+        {currentQLocked && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa
+          </div>
+        )}
         <div className="flex gap-1.5 overflow-x-auto">
           {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
             <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
