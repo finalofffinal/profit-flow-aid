@@ -231,15 +231,22 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         const lp = p.name.toLowerCase();
         if (lp.includes('hạt nêm 1,8kg') || lp.includes('hat nem 1,8kg') || lp.includes('hạt nêm 1.8kg')) return 1;
         if (lp.includes('shiitake')) return 4;
-        if (lp.includes('xúc xích') || lp.includes('xuc xich')) return 20;
+        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 20;
         return undefined;
       },
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
-        if (lp.includes('xúc xích') || lp.includes('xuc xich')) return 5;
+        // Bin & Bon: tối đa 20/quý, mỗi đơn ≥5 và ≤10 (chia 2-4 đơn)
+        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 10;
         if (lp.includes('nhất ca') || lp.includes('nhat ca')) return 1;
         if (lp.includes('tương ớt 500ml') || lp.includes('tuong ot 500ml')) return 1;
         return 5;
+      },
+      minQtyPerOrder: (p) => {
+        const lp = p.name.toLowerCase();
+        // Bin & Bon: trong 1 đơn ≥5 đơn vị lớn
+        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 5;
+        return undefined;
       },
     };
   }
@@ -249,9 +256,14 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       ordersCount: [2, 2],
       maxQtyPerQuarter: (p) => {
         const lp = p.name.toLowerCase();
-        return lp.includes('bơ thực vật') || lp.includes('bo thuc vat') ? 1 : 3;
+        if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
+        return 3; // các SP còn lại tối đa 3 đơn vị/quý
       },
-      maxQtyPerProduct: () => 3,
+      maxQtyPerProduct: (p) => {
+        const lp = p.name.toLowerCase();
+        if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
+        return 3;
+      },
     };
   }
 
