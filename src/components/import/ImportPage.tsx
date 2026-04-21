@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
@@ -29,9 +29,10 @@ interface ImportPageProps {
   isQuarterLocked?: (q: number, y: number) => boolean;
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
+  onCreateSupplementaryOrder?: (q: number, y: number, shortfall: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onCreateSupplementaryOrder }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -39,7 +40,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
-  const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
+  const [undoStack, setUndoStack] = useState<{ action: string; data: any; label?: string }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
@@ -92,8 +93,8 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
     const order = activeOrders.find(o => o.id === id);
     deleteOrder(id);
     if (order) {
-      setUndoStack(prev => [...prev, { action: 'delete_order', data: id }]);
-      addNotification(`Đã xóa đơn nhập ${order.supplierName}`, 'info');
+      setUndoStack(prev => [...prev, { action: 'delete_order', data: id, label: `đơn nhập ${order.supplierName}` }].slice(-20));
+      addNotification(`Đã xóa đơn nhập ${order.supplierName} · Ctrl+Z để hoàn tác`, 'info');
     }
   };
 
@@ -104,8 +105,21 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
       restoreOrder(last.data);
     }
     setUndoStack(prev => prev.slice(0, -1));
-    addNotification('Đã hoàn tác', 'info');
+    addNotification(`Đã hoàn tác: ${last.label || 'hành động'}`, 'success');
   };
+
+  // Ctrl+Z keyboard shortcut
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && undoStack.length > 0) {
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoStack]);
 
   const handleDateChange = (orderId: string, newDate: string) => {
     if (onUpdateOrderDate) {
@@ -113,6 +127,26 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
       addNotification('Đã cập nhật ngày đơn hàng', 'info');
     }
     setEditingDate(null);
+  };
+
+  // ===== Cảnh báo nhập thiếu so với doanh thu cần tạo =====
+  // Tổng nhập trong quý hiện tại / Doanh thu mục tiêu Q. Chuẩn: 80–115%.
+  const currentQTotalImport = useMemo(() => {
+    return activeOrders.filter(o => {
+      const d = new Date(o.date);
+      return Math.ceil((d.getMonth() + 1) / 3) === selQ && d.getFullYear() === selYear;
+    }).reduce((s, o) => s + o.total, 0);
+  }, [activeOrders, selQ, selYear]);
+
+  const targetRev = currentQuarter?.targetRevenue || 0;
+  const importRatio = targetRev > 0 ? currentQTotalImport / targetRev : 1;
+  const isShort = targetRev > 0 && importRatio < 0.80 && !currentQLocked;
+  const shortfall = Math.max(0, targetRev * 0.95 - currentQTotalImport);
+
+  const handleCreateSupplementary = () => {
+    if (!onCreateSupplementaryOrder || shortfall <= 0) return;
+    onCreateSupplementaryOrder(selQ, selYear, shortfall);
+    addNotification(`Đang tạo đơn bù ~${formatCompactVND(shortfall)} cho Q${selQ}/${selYear}`, 'success');
   };
 
   const totalImport = filteredOrders.reduce((s, o) => s + o.total, 0);
@@ -125,8 +159,8 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           <Badge variant="outline" className="font-bold">{filteredOrders.length} đơn</Badge>
           <div className="flex-1" />
           {undoStack.length > 0 && (
-            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo}>
-              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo} title="Ctrl+Z">
+              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác ({undoStack.length})
             </Button>
           )}
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
@@ -147,6 +181,23 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
         {currentQLocked && (
           <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
             <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
+          </div>
+        )}
+
+        {isShort && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-destructive">Nhập hàng Q{selQ}/{selYear} chưa đủ ({Math.round(importRatio * 100)}% doanh thu)</div>
+              <div className="text-muted-foreground">
+                Đã nhập {formatCompactVND(currentQTotalImport)} / Mục tiêu {formatCompactVND(targetRev)} · Thiếu ~{formatCompactVND(shortfall)}
+              </div>
+            </div>
+            {onCreateSupplementaryOrder && (
+              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleCreateSupplementary}>
+                <Wand2 className="mr-1 h-3.5 w-3.5" /> Tạo đơn bù
+              </Button>
+            )}
           </div>
         )}
 
@@ -180,8 +231,11 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           </Select>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
           <span>Tổng: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
+          {targetRev > 0 && !currentQLocked && (
+            <span>· Tỉ lệ nhập/DT Q{selQ}: <span className={`font-bold ${importRatio < 0.80 ? 'text-destructive' : importRatio > 1.20 ? 'text-amber-600' : 'text-emerald-600'}`}>{Math.round(importRatio * 100)}%</span></span>
+          )}
         </div>
       </div>
 

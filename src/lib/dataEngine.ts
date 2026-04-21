@@ -440,12 +440,14 @@ function generateSupplierImports(
   const autoCount = Math.max(0, total - manualOrdersCount);
   if (autoCount === 0) return { orders: [], batches: [] };
 
-  // Schedule order days (rải đều có jitter)
+  // Schedule order days — DỒN VỀ ĐẦU/GIỮA QUÝ để gối đầu (có hàng sẵn cho bán)
+  // Phân bổ trong 70% đầu của quý thay vì rải đều cả quý
+  const usableDays = Math.max(1, Math.floor(days.length * 0.7));
   const dayIdxs: number[] = [];
   for (let i = 0; i < autoCount; i++) {
-    const base = Math.floor(((i + 0.5) / autoCount) * days.length);
-    const jitter = Math.floor((rand() - 0.5) * (days.length / autoCount * 0.6));
-    dayIdxs.push(Math.min(days.length - 1, Math.max(0, base + jitter)));
+    const base = Math.floor(((i + 0.5) / autoCount) * usableDays);
+    const jitter = Math.floor((rand() - 0.5) * (usableDays / autoCount * 0.5));
+    dayIdxs.push(Math.min(usableDays - 1, Math.max(0, base + jitter)));
   }
   dayIdxs.sort((a, b) => a - b);
 
@@ -689,8 +691,9 @@ export function generateQuarterData(
   // - NCC nhỏ (≤10 SP) chiếm 10–15% tổng nhập
   // - NCC lớn (>10 SP) chiếm 85–90% tổng nhập
   // Khi scale, CLAMP qty về maxQtyPerProduct/maxQtyPerQuarter để KHÔNG phá rule đặc biệt.
+  // GỐI ĐẦU: tăng tỉ lệ nhập 95–115% (cao hơn doanh thu 1 chút để có tồn kho phục vụ quý sau)
   const isHighRev = quarter.quarter === 1 || quarter.quarter === 4;
-  const importBudgetRatio = isHighRev ? 0.95 + rand() * 0.15 : 0.80 + rand() * 0.15;
+  const importBudgetRatio = isHighRev ? 1.05 + rand() * 0.10 : 0.95 + rand() * 0.10;
   const targetImportTotal = autoTargetRevenue * importBudgetRatio;
   const smallShareRatio = 0.10 + rand() * 0.05; // 10–15%
   const largeShareRatio = 1 - smallShareRatio;
@@ -949,4 +952,80 @@ export function computeCarryOverStock(
     if (v < 0) stock.set(k, 0);
   }
   return stock;
+}
+
+// ============================================================================
+// SUPPLEMENTARY ORDER — tạo đơn bù khi tổng nhập < doanh thu cần
+// ============================================================================
+
+/**
+ * Tạo 1 đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
+ * Chọn NCC lớn nhất (nhiều SP nhất) chưa khóa, lấy ~10–15 SP đa dạng.
+ */
+export function generateSupplementaryOrder(
+  quarter: number,
+  year: number,
+  shortfall: number,
+  products: Product[],
+  suppliers: Supplier[],
+): ImportOrder | null {
+  if (shortfall <= 0) return null;
+  const activeProducts = products.filter(p => !p.deletedAt && p.buyPrice > 0);
+  if (activeProducts.length === 0) return null;
+
+  const supplierProducts = new Map<string, Product[]>();
+  activeProducts.forEach(p => {
+    if (!supplierProducts.has(p.supplierId)) supplierProducts.set(p.supplierId, []);
+    supplierProducts.get(p.supplierId)!.push(p);
+  });
+
+  let bestSupplierId = '';
+  let bestProds: Product[] = [];
+  for (const [sid, prods] of supplierProducts) {
+    const sup = suppliers.find(s => s.id === sid);
+    if (!sup) continue;
+    const rule = getSupplierRule(sup.name);
+    if (rule.manualOnly) continue;
+    const eligible = prods.filter(p => !rule.excludeProduct?.(p));
+    if (eligible.length > bestProds.length) {
+      bestProds = eligible;
+      bestSupplierId = sid;
+    }
+  }
+  if (!bestSupplierId || bestProds.length === 0) return null;
+
+  const supplier = suppliers.find(s => s.id === bestSupplierId)!;
+  const rand = seededRandom(quarter * 991 + year * 41 + Math.floor(shortfall / 1000));
+  const days = getDaysInQuarter(quarter, year);
+  const importDate = days[Math.floor(days.length * 0.1)];
+
+  const shuffled = [...bestProds].sort(() => rand() - 0.5);
+  const pickCount = Math.min(shuffled.length, Math.max(8, Math.min(15, shuffled.length)));
+  const picked = shuffled.slice(0, pickCount);
+
+  const items: ImportOrderItem[] = [];
+  let acc = 0;
+  for (const p of picked) {
+    if (acc >= shortfall) break;
+    const remain = shortfall - acc;
+    const targetSpend = remain / Math.max(1, picked.length - items.length);
+    const qty = Math.max(1, Math.min(5, Math.round(targetSpend / Math.max(1, p.buyPrice))));
+    items.push(buildItem(p, supplier, qty));
+    acc += p.buyPrice * qty;
+  }
+  if (items.length === 0) return null;
+
+  return {
+    id: generateId(),
+    supplierId: supplier.id,
+    supplierName: supplier.name,
+    date: importDate,
+    items,
+    total: items.reduce((s, it) => s + it.total, 0),
+    tag: 'supplementary',
+    locked: false,
+    images: [],
+    deletedAt: null,
+    createdAt: new Date().toISOString(),
+  };
 }
