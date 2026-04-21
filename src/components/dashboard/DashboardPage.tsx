@@ -246,7 +246,7 @@ export function DashboardPage({
       <Card className="shadow-sm border-2 border-primary/20">
         <CardHeader className="pb-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-bold">Định mức doanh thu năm {selectedYear}</CardTitle>
+            <CardTitle className="text-base font-bold">Doanh thu năm {selectedYear}</CardTitle>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
                 <Shuffle className="mr-1 h-3 w-3" /> Ngẫu nhiên
@@ -268,7 +268,7 @@ export function DashboardPage({
               </div>
               <Progress value={Math.min(100, (totalTarget / MAX_YEARLY_REVENUE) * 100)} className="h-2 mt-2" />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Định mức 4 quý gộp lại — bán hàng trong năm phải khớp đúng số này
+                Doanh thu 4 quý gộp lại trong năm {selectedYear}
               </p>
             </div>
 
