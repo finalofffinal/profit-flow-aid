@@ -147,6 +147,22 @@ function IndexInner() {
     return !!quarters.find(qd => qd.quarter === q && qd.year === y && qd.locked);
   }, [quarters]);
 
+  /** Force regenerate auto orders for a target quarter by removing its current auto orders first */
+  const handleAutoReplenish = useCallback((q: number, y: number) => {
+    setImportOrders(prev => prev.filter(o => {
+      if (o.tag !== 'auto') return true;
+      const d = new Date(o.date);
+      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+    }));
+    setSalesOrders(prev => prev.filter(o => {
+      if (o.tag !== 'auto') return true;
+      const d = new Date(o.date);
+      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+    }));
+    setInventoryBatches(prev => prev.filter(b => !(b.quarter === q && b.year === y)));
+    addNotification(`Đang tạo lại đơn tự động Q${q}/${y}...`, 'info');
+  }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
+
   const renderTab = () => {
     switch (activeTab) {
       case 'dashboard':
