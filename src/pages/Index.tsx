@@ -51,16 +51,14 @@ function IndexInner() {
     };
   }, []);
 
-  // One-time initial sync from Supabase WITHOUT page reload
+  // One-time initial sync from Supabase WITHOUT page reload.
+  // syncFromSupabase dispatches per-key 'supabase-initial-sync-data' events that
+  // hook listeners use to populate React state with FULL data while localStorage
+  // keeps only a trimmed slice (≤10%).
   useEffect(() => {
     let cancelled = false;
-    syncFromSupabase().then((result) => {
+    syncFromSupabase().then(() => {
       if (cancelled) return;
-      // Refresh in-memory state from localStorage only if remote brought new data
-      if (Object.keys(result).length > 0) {
-        // Force a state refresh by triggering a custom event each hook listens to via realtime
-        window.dispatchEvent(new Event('supabase-initial-sync'));
-      }
       setInitialSyncDone(true);
     });
     return () => { cancelled = true; };
