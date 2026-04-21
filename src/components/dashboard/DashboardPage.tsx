@@ -281,7 +281,10 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-bold">Doanh thu năm {selectedYear}</CardTitle>
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
+              <Button data-admin-only variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleSuggest(); }} title="Giữ nguyên các quý đã khóa, tự cân chỉnh các quý còn lại để đạt 1 tỷ">
+                <Lightbulb className="mr-1 h-3 w-3" /> Kiến nghị
+              </Button>
+              <Button data-admin-only variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
                 <Shuffle className="mr-1 h-3 w-3" /> Ngẫu nhiên
               </Button>
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -316,15 +319,14 @@ export function DashboardPage({
                 return (
                   <QuarterCard key={q} quarter={q} year={selectedYear} target={target}
                     actual={actual} progress={progress} showNumbers={showNumbers}
-                    isEditing={isEditing} locked={locked}
+                    isEditing={isEditing} locked={locked} isAdmin={isAdmin}
                     onEdit={() => setEditingQ(isEditing ? null : q)}
                     onToggleLock={() => { setQuarterLock(q, selectedYear, !locked); addNotification(`${!locked ? 'Đã khóa' : 'Đã mở khóa'} Q${q}/${selectedYear}`, 'quarter_update'); }}
                     onSave={(rev) => {
                       setQuarterTarget(q, selectedYear, rev);
-                      // Auto-rebalance other quarters toward 1 tỷ
-                      rebalanceQuarters(selectedYear, q, rev, MAX_YEARLY_REVENUE);
+                      // Note: Manual save no longer auto-rebalances. User can hit "Kiến nghị" to rebalance.
                       setEditingQ(null);
-                      addNotification(`Đã cập nhật Q${q}/${selectedYear} và cân bằng các quý khác`, 'quarter_update');
+                      addNotification(`Đã cập nhật Q${q}/${selectedYear}`, 'quarter_update');
                     }}
                   />
                 );
