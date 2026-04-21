@@ -157,6 +157,11 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
             </Button>
           )}
+          {currentQLocked && (
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
+              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
@@ -174,6 +179,24 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
             <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
           </div>
         )}
+
+        {revenueGap && onAutoReplenish && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Wand2 className="h-3.5 w-3.5 shrink-0" />
+              <span>Hàng nhập không đủ tạo doanh thu Q{selQ} ({formatCompactVND(revenueGap.totalImport)} / cần ≥{formatCompactVND(revenueGap.expectedMinImport)})</span>
+            </div>
+            <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={handleAutoReplenish}>
+              <Wand2 className="mr-1 h-3 w-3" /> Tạo bù
+            </Button>
+          </div>
+        )}
+
+        <TimeRangeFilter
+          value={timeRange} onChange={setTimeRange}
+          customFrom={customFrom} onCustomFromChange={setCustomFrom}
+          customTo={customTo} onCustomToChange={setCustomTo}
+        />
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -200,7 +223,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
         </div>
 
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>Tổng nhập: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
+          <span>Tổng: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
         </div>
       </div>
 
