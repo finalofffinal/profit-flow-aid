@@ -24,16 +24,34 @@ function useSyncedState<T>(
     saver(state);
   }, [state, saver]);
 
-  // Subscribe to realtime updates for this key
+  // Subscribe to realtime updates + initial-sync event for this key
   useEffect(() => {
     const unsub = subscribeRealtime((key, value) => {
       if (key !== storageKey) return;
       if (value === null || value === undefined) return;
       incomingFromRemote.current = true;
-      try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch {}
+      // Trim before persisting locally; React state holds the FULL data.
+      try {
+        const trimmed = storage.trimForLocal(storageKey, value);
+        localStorage.setItem(storageKey, JSON.stringify(trimmed));
+      } catch {}
       setState(value as T);
     });
-    return unsub;
+
+    // Initial-sync custom event: pushes FULL Supabase data into React state on mount
+    const onInitialSync = (e: Event) => {
+      const detail = (e as CustomEvent<{ key: string; value: unknown }>).detail;
+      if (!detail || detail.key !== storageKey) return;
+      if (detail.value === null || detail.value === undefined) return;
+      incomingFromRemote.current = true;
+      setState(detail.value as T);
+    };
+    window.addEventListener('supabase-initial-sync-data', onInitialSync as EventListener);
+
+    return () => {
+      unsub();
+      window.removeEventListener('supabase-initial-sync-data', onInitialSync as EventListener);
+    };
   }, [storageKey]);
 
   return [state, setState];

@@ -194,21 +194,9 @@ export function DashboardPage({
             {showNumbers ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-xs text-muted-foreground">Doanh thu Q{selectedQ}</p>
-            <p className="text-xl md:text-2xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Định mức Q{selectedQ}</p>
-            <p className="text-xl md:text-2xl font-black text-foreground">{mask(formatVND(currentQTarget))}</p>
-          </div>
-        </div>
-        <div className="mt-2">
-          <Progress value={currentQProgress} className="h-2" />
-          <p className="text-[11px] text-muted-foreground mt-1 text-right">
-            {currentQProgress.toFixed(1)}% — Cần đạt đúng {mask(formatCompactVND(currentQTarget))}
-          </p>
+        <div className="mt-3">
+          <p className="text-xs text-muted-foreground">Doanh thu Q{selectedQ}</p>
+          <p className="text-2xl md:text-3xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
         </div>
       </div>
 
@@ -258,7 +246,7 @@ export function DashboardPage({
       <Card className="shadow-sm border-2 border-primary/20">
         <CardHeader className="pb-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-bold">Định mức doanh thu năm {selectedYear}</CardTitle>
+            <CardTitle className="text-base font-bold">Doanh thu năm {selectedYear}</CardTitle>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
                 <Shuffle className="mr-1 h-3 w-3" /> Ngẫu nhiên
@@ -280,7 +268,7 @@ export function DashboardPage({
               </div>
               <Progress value={Math.min(100, (totalTarget / MAX_YEARLY_REVENUE) * 100)} className="h-2 mt-2" />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Định mức 4 quý gộp lại — bán hàng trong năm phải khớp đúng số này
+                Doanh thu 4 quý gộp lại trong năm {selectedYear}
               </p>
             </div>
 
@@ -439,7 +427,7 @@ function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isE
       {isEditing && !locked ? (
         <div className="space-y-2">
           <div>
-            <label className="text-xs text-muted-foreground">Định mức (×1.000 VND)</label>
+            <label className="text-xs text-muted-foreground">Doanh thu (×1.000 VND)</label>
             <Input value={revInput} onChange={e => setRevInput(e.target.value)} placeholder="250000" />
           </div>
           <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu & cân bằng</Button>
@@ -447,15 +435,9 @@ function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isE
       ) : (
         <>
           <div>
-            <p className="text-[11px] text-muted-foreground">Định mức</p>
+            <p className="text-[11px] text-muted-foreground">Doanh thu</p>
             <p className="text-lg font-black text-primary">{mask(formatVND(target))}</p>
           </div>
-          <div>
-            <p className="text-[11px] text-muted-foreground">Thực tế</p>
-            <p className="text-sm font-bold">{mask(formatVND(actual))}</p>
-          </div>
-          <Progress value={progress} className="h-1.5" />
-          <p className="text-[10px] text-right text-muted-foreground">{progress.toFixed(1)}%</p>
         </>
       )}
     </div>
