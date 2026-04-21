@@ -289,6 +289,17 @@ export function useImportOrders() {
   const permanentDeleteOrder = useCallback((id: string) => {
     setOrders(prev => prev.filter(o => o.id !== id));
   }, [setOrders]);
+  const updateOrder = useCallback((id: string, updates: Partial<ImportOrder>) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== id) return o;
+      const merged = { ...o, ...updates };
+      // Recompute total when items change
+      if (updates.items) {
+        merged.total = updates.items.reduce((s, it) => s + it.total, 0);
+      }
+      return merged;
+    }));
+  }, [setOrders]);
 
   const activeOrders = useMemo(() => orders.filter(o => !o.deletedAt), [orders]);
   const deletedOrders = useMemo(() => orders.filter(o => o.deletedAt), [orders]);
