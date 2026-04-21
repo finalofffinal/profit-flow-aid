@@ -147,8 +147,7 @@ export const saveSalesOrders = (data: SaleOrder[]) => save(KEYS.salesOrders, dat
 export const loadInventoryBatches = () => loadLocal<InventoryBatch[]>(KEYS.inventoryBatches, []);
 export const saveInventoryBatches = (data: InventoryBatch[]) => save(KEYS.inventoryBatches, data);
 
-/** Sync from Supabase → localStorage (trimmed). Returns map of keys that had remote data.
- *  Note: full data is dispatched into React state via the realtime listener; local copy is trimmed. */
+/** Sync from Supabase → React state (full via custom event) + localStorage (trimmed). */
 export async function syncFromSupabase(): Promise<Record<string, boolean>> {
   const result: Record<string, boolean> = {};
   await Promise.all(
@@ -158,9 +157,15 @@ export async function syncFromSupabase(): Promise<Record<string, boolean>> {
         try {
           const data = await loadFromSupabase(key, null);
           if (data !== null) {
-            // Trim before persisting locally to keep ≤ 10%
-            const trimmed = trimForLocal(key, data);
-            try { localStorage.setItem(key, JSON.stringify(trimmed)); } catch {}
+            // 1. Trim before persisting locally to keep ≤ 10%
+            try {
+              const trimmed = trimForLocal(key, data);
+              localStorage.setItem(key, JSON.stringify(trimmed));
+            } catch {}
+            // 2. Push FULL data into React state via custom event
+            window.dispatchEvent(new CustomEvent('supabase-initial-sync-data', {
+              detail: { key, value: data },
+            }));
             result[key] = true;
           }
         } catch { /* offline ok */ }
