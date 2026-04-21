@@ -227,6 +227,7 @@ function IndexInner() {
             isQuarterLocked={isQuarterLocked}
             quarters={quarters}
             onAutoReplenish={handleAutoReplenish}
+            onClearAutoOrders={handleClearAutoOrders}
             onCreateSupplementaryOrder={handleCreateSupplementary}
           />
         );
