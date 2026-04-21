@@ -22,6 +22,7 @@ function IndexInner() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [online, setOnline] = useState<boolean>(navigator.onLine);
   const [initialSyncDone, setInitialSyncDone] = useState(false);
+  const [regenSeeds, setRegenSeeds] = useState<Record<string, number>>({});
   const { quarter: selQ, year: selYear } = usePeriod();
 
   const { theme, toggleTheme } = useTheme();
@@ -68,10 +69,10 @@ function IndexInner() {
     setImportOrders(prev => prev.map(o => o.id === id ? { ...o, date: newDate } : o));
   }, [setImportOrders]);
 
-  // Stable signature to avoid unnecessary regen
+  // Stable signature to avoid unnecessary regen (includes regenSeeds for manual re-rolls)
   const quarterSig = useMemo(
-    () => quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}`).sort().join('|'),
-    [quarters]
+    () => quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
+    [quarters, regenSeeds]
   );
 
   // Auto-generate import/sales/batches whenever quarters or active products change
@@ -123,7 +124,9 @@ function IndexInner() {
       const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...allAutoSales];
       const carryOver = computeCarryOverStock(q.quarter, q.year, activeProducts, allImportsSoFar, allSalesSoFar);
 
-      const generated = generateQuarterData(q, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
+      const seedKey = `${q.quarter}-${q.year}`;
+      const qWithSeed = { ...q, regenSeed: regenSeeds[seedKey] || 0 } as any;
+      const generated = generateQuarterData(qWithSeed, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
       allAutoImports.push(...generated.importOrders);
       allAutoSales.push(...generated.salesOrders);
       allAutoBatches.push(...generated.inventoryBatches);
@@ -145,8 +148,8 @@ function IndexInner() {
     return !!quarters.find(qd => qd.quarter === q && qd.year === y && qd.locked);
   }, [quarters]);
 
-  /** Force regenerate auto orders for a target quarter by removing its current auto orders first */
-  const handleAutoReplenish = useCallback((q: number, y: number) => {
+  /** Xóa toàn bộ đơn auto của 1 quý (giữ thủ công) — useEffect sẽ tự sinh lại */
+  const handleClearAutoOrders = useCallback((q: number, y: number) => {
     setImportOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
       const d = new Date(o.date);
@@ -158,7 +161,25 @@ function IndexInner() {
       return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
     }));
     setInventoryBatches(prev => prev.filter(b => !(b.quarter === q && b.year === y)));
-    addNotification(`Đang tạo lại đơn tự động Q${q}/${y}...`, 'info');
+    addNotification(`Đã xóa đơn tự động Q${q}/${y}, đang sinh lại...`, 'info');
+  }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
+
+  /** Reroll: tạo seed mới → useEffect regen với cấu trúc đơn ngẫu nhiên khác */
+  const handleAutoReplenish = useCallback((q: number, y: number) => {
+    const key = `${q}-${y}`;
+    setRegenSeeds(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+    setImportOrders(prev => prev.filter(o => {
+      if (o.tag !== 'auto') return true;
+      const d = new Date(o.date);
+      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+    }));
+    setSalesOrders(prev => prev.filter(o => {
+      if (o.tag !== 'auto') return true;
+      const d = new Date(o.date);
+      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+    }));
+    setInventoryBatches(prev => prev.filter(b => !(b.quarter === q && b.year === y)));
+    addNotification(`Đang ngẫu nhiên hóa lại Q${q}/${y}...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
 
   /** Tạo NHIỀU đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý — chia đều nhiều NCC */
@@ -206,6 +227,7 @@ function IndexInner() {
             isQuarterLocked={isQuarterLocked}
             quarters={quarters}
             onAutoReplenish={handleAutoReplenish}
+            onClearAutoOrders={handleClearAutoOrders}
             onCreateSupplementaryOrder={handleCreateSupplementary}
           />
         );

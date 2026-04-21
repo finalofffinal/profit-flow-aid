@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle } from 'lucide-react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle, Shuffle, Eraser } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
@@ -29,10 +29,11 @@ interface ImportPageProps {
   isQuarterLocked?: (q: number, y: number) => boolean;
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
+  onClearAutoOrders?: (q: number, y: number) => void;
   onCreateSupplementaryOrder?: (q: number, y: number, shortfall: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onCreateSupplementaryOrder }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onCreateSupplementaryOrder }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -166,6 +167,16 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
             <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
           </Button>
+          {onAutoReplenish && !currentQLocked && (
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAutoReplenish(selQ, selYear)} title="Tạo lại đơn auto với cấu trúc ngẫu nhiên khác">
+              <Shuffle className="mr-1 h-3.5 w-3.5" /> Ngẫu nhiên
+            </Button>
+          )}
+          {onClearAutoOrders && !currentQLocked && (
+            <Button size="sm" variant="outline" className="h-8 text-xs text-destructive" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả đơn auto của quý hiện tại (sẽ tự sinh lại theo doanh thu)">
+              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa đơn auto
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}

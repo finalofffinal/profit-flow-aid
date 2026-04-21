@@ -663,7 +663,9 @@ export function generateQuarterData(
     return { importOrders: [], salesOrders: [], inventoryBatches: [] };
   }
 
-  const rand = seededRandom(quarter.quarter * 7919 + quarter.year * 31);
+  // regenSeed cho phép tạo lại ngẫu nhiên với cấu trúc khác. Mặc định ổn định theo Q/Y.
+  const regenSeed = (quarter as any).regenSeed || 0;
+  const rand = seededRandom(quarter.quarter * 7919 + quarter.year * 31 + regenSeed * 13);
   const days = getDaysInQuarter(quarter.quarter, quarter.year);
   const activeProducts = products.filter(p => !p.deletedAt && p.sellPrice > 0);
   if (activeProducts.length === 0) {
@@ -794,10 +796,102 @@ export function generateQuarterData(
   }
 
   // ============================================================================
-  // SALES — tổng = autoTargetRevenue chính xác.
-  // - Mỗi SP/ngày tối đa 1 đơn vị LỚN (= conversionRate child units, hoặc 1 nếu không có child).
-  // - Biên lợi nhuận tự nhiên 10–25% (đã quyết định bởi giá nhập/bán).
-  // - Nghỉ Tết: tạo SaleOrder placeholder doanh thu 0 với label.
+  // BƠM KHO BẢO HIỂM trước khi sinh sales — đảm bảo tổng giá trị bán tiềm năng
+  // (theo sellPrice của kho hiện có) ≥ autoTargetRevenue * 1.05 để bán đủ 100% target.
+  // ============================================================================
+  const computePotentialRevenue = () => {
+    let total = 0;
+    for (const p of activeProducts) {
+      const stock = stockMap.get(p.id) || 0;
+      const rate = p.conversionRate || 1;
+      const sellPerChild = p.sellPrice / rate;
+      total += stock * sellPerChild;
+    }
+    return total;
+  };
+
+  const potential = computePotentialRevenue();
+  if (potential < autoTargetRevenue * 1.05 && autoTargetRevenue > 0) {
+    const deficit = autoTargetRevenue * 1.10 - potential;
+    const largeIds = Array.from(largeSupplierIds);
+    const targetIds = largeIds.length > 0 ? largeIds : Array.from(supplierProducts.keys());
+    if (targetIds.length > 0 && deficit > 0) {
+      const perSupplier = deficit / targetIds.length;
+      const topupDate = days[0];
+      for (const sid of targetIds) {
+        const supplier = suppliers.find(s => s.id === sid);
+        if (!supplier) continue;
+        const rule = getSupplierRule(supplier.name);
+        if (rule.manualOnly) continue;
+        const prods = (supplierProducts.get(sid) || []).filter(p => !rule.excludeProduct?.(p));
+        if (prods.length === 0) continue;
+
+        const items: ImportOrderItem[] = [];
+        let acc = 0;
+        const shuffled = [...prods].sort(() => rand() - 0.5);
+        for (const p of shuffled) {
+          if (acc >= perSupplier) break;
+          items.push(buildItem(p, supplier, 1));
+          acc += p.buyPrice;
+          stockMap.set(p.id, (stockMap.get(p.id) || 0) + (p.conversionRate || 1));
+        }
+        let safety = items.length * 3;
+        let cursor = 0;
+        while (acc < perSupplier && safety-- > 0 && items.length > 0) {
+          const it = items[cursor % items.length];
+          cursor++;
+          const prod = prods.find(p => p.id === it.productId)!;
+          const hardMax = rule.maxQtyPerProduct?.(prod);
+          const cap = Math.min(3, hardMax ?? 3);
+          if (it.quantity >= cap) continue;
+          it.quantity += 1;
+          it.total = it.buyPrice * it.quantity;
+          acc += it.buyPrice;
+          stockMap.set(prod.id, (stockMap.get(prod.id) || 0) + (prod.conversionRate || 1));
+        }
+        if (items.length === 0) continue;
+
+        const topupOrder: ImportOrder = {
+          id: generateId(),
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          date: topupDate,
+          items,
+          total: items.reduce((s, it) => s + it.total, 0),
+          tag: 'auto',
+          locked: false,
+          images: [],
+          deletedAt: null,
+          createdAt: topupDate + 'T00:00:00.000Z',
+        };
+        importOrders.push(topupOrder);
+        for (const it of items) {
+          inventoryBatches.push({
+            id: generateId(),
+            productId: it.productId,
+            productName: it.productName,
+            supplierId: supplier.id,
+            supplierName: supplier.name,
+            importOrderId: topupOrder.id,
+            quarter: quarter.quarter,
+            year: quarter.year,
+            quantity: it.quantity,
+            originalQuantity: it.quantity,
+            buyPrice: it.buyPrice,
+            unit: it.unit,
+            date: topupDate,
+          });
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // SALES — tổng = autoTargetRevenue chính xác 100%.
+  // - Mỗi SP/ngày tối đa 1 đơn vị LỚN (= conversionRate child units).
+  // - Biên lợi nhuận tự nhiên 10–25% (theo giá nhập/bán).
+  // - Nghỉ Tết: tạo SaleOrder placeholder doanh thu 0.
+  // - Sau khi sinh xong: fix-up pass rải phần chênh để khớp 100%.
   // ============================================================================
 
   for (let dayIdx = 0; dayIdx < days.length; dayIdx++) {
@@ -939,6 +1033,58 @@ export function generateQuarterData(
       deletedAt: null,
       createdAt: day + 'T18:00:00.000Z',
     });
+  }
+
+  // ============================================================================
+  // FIX-UP PASS: đảm bảo tổng sales = autoTargetRevenue chính xác 100%.
+  // Phân bổ phần chênh lệch (do round/clamp) đều cho các đơn không phải Tết.
+  // ============================================================================
+  const nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
+  const currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
+  const salesGap = autoTargetRevenue - currentSalesTotal;
+
+  if (Math.abs(salesGap) > 0 && nonTetOrders.length > 0 && currentSalesTotal > 0) {
+    // Scale tỉ lệ — giữ nguyên cấu trúc items nhưng nhân hệ số sao cho tổng khớp.
+    const scale = autoTargetRevenue / currentSalesTotal;
+    let allocated = 0;
+    for (let i = 0; i < nonTetOrders.length; i++) {
+      const o = nonTetOrders[i];
+      const isLast = i === nonTetOrders.length - 1;
+      let newOrderTotal: number;
+      if (isLast) {
+        newOrderTotal = autoTargetRevenue - allocated;
+      } else {
+        newOrderTotal = Math.round((o.totalRevenue * scale) / 1000) * 1000;
+      }
+      newOrderTotal = Math.max(0, newOrderTotal);
+      const itemScale = o.totalRevenue > 0 ? newOrderTotal / o.totalRevenue : 1;
+      let itemAlloc = 0;
+      for (let j = 0; j < o.items.length; j++) {
+        const it = o.items[j];
+        const isLastItem = j === o.items.length - 1;
+        let newTotal: number;
+        if (isLastItem) {
+          newTotal = newOrderTotal - itemAlloc;
+        } else {
+          newTotal = Math.max(0, it.total * itemScale);
+        }
+        newTotal = Math.max(0, newTotal);
+        // Cập nhật lợi nhuận theo tỉ lệ (giữ margin)
+        const prevTotal = it.total;
+        if (prevTotal > 0) {
+          const margin = it.profit / prevTotal;
+          it.total = newTotal;
+          it.profit = newTotal * margin;
+        } else {
+          it.total = newTotal;
+        }
+        itemAlloc += newTotal;
+      }
+      o.totalRevenue = newOrderTotal;
+      o.totalProfit = o.items.reduce((s, it) => s + it.profit, 0);
+      o.profitPercent = newOrderTotal > 0 ? Math.round((o.totalProfit / newOrderTotal) * 1000) / 10 : 0;
+      allocated += newOrderTotal;
+    }
   }
 
   return { importOrders, salesOrders, inventoryBatches };
