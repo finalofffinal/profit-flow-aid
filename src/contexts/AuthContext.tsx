@@ -12,7 +12,12 @@ interface AuthCtx {
   logout: () => void;
 }
 
-const Ctx = createContext<AuthCtx | null>(null);
+const Ctx = createContext<AuthCtx>({
+  role: 'viewer',
+  isAdmin: false,
+  login: () => false,
+  logout: () => {},
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>('viewer');
@@ -51,7 +56,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useAuth must be used within AuthProvider');
-  return v;
+  return useContext(Ctx);
 }
