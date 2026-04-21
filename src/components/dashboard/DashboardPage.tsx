@@ -434,38 +434,38 @@ export function DashboardPage({
   );
 }
 
-function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isEditing, locked, onEdit, onSave, onToggleLock }: {
+function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isEditing, locked, isAdmin, onEdit, onSave, onToggleLock }: {
   quarter: number; year: number; target: number;
   actual: number; progress: number;
-  showNumbers: boolean; isEditing: boolean; locked: boolean;
+  showNumbers: boolean; isEditing: boolean; locked: boolean; isAdmin?: boolean;
   onEdit: () => void; onSave: (rev: number) => void; onToggleLock: () => void;
 }) {
   const [revInput, setRevInput] = useState(target > 0 ? (target / 1000).toString() : '');
   useEffect(() => { setRevInput(target > 0 ? (target / 1000).toString() : ''); }, [target]);
   const mask = (v: string) => showNumbers ? v : '••••';
+  // Admin có thể sửa cả khi locked; viewer thì không
+  const canEdit = isAdmin === true; // viewer luôn không sửa được (data-admin-only ẩn nút)
 
   return (
     <div className={`rounded-xl border-2 p-3 space-y-2 ${locked ? 'border-amber-500/50 bg-amber-500/5' : 'border-border'}`}>
       <div className="flex items-center justify-between">
         <Badge variant="outline" className="font-bold text-sm">Q{quarter}/{year}</Badge>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={onToggleLock} title={locked ? 'Mở khóa' : 'Khóa quý'}>
+          <Button data-admin-only variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={onToggleLock} title={locked ? 'Mở khóa' : 'Khóa quý'}>
             {locked ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5" />}
           </Button>
-          {!locked && (
-            <Button variant="ghost" size="sm" className="text-xs h-6" onClick={onEdit}>
-              {isEditing ? 'Đóng' : 'Sửa'}
-            </Button>
-          )}
+          <Button data-admin-only variant="ghost" size="sm" className="text-xs h-6" onClick={onEdit}>
+            {isEditing ? 'Đóng' : 'Sửa'}
+          </Button>
         </div>
       </div>
-      {isEditing && !locked ? (
+      {isEditing && canEdit ? (
         <div className="space-y-2">
           <div>
-            <label className="text-xs text-muted-foreground">Doanh thu (×1.000 VND)</label>
+            <label className="text-xs text-muted-foreground">Doanh thu (×1.000 VND){locked && ' — đang sửa quý đã khóa'}</label>
             <Input value={revInput} onChange={e => setRevInput(e.target.value)} placeholder="250000" />
           </div>
-          <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu & cân bằng</Button>
+          <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu</Button>
         </div>
       ) : (
         <>
