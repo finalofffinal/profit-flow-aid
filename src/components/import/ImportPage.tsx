@@ -26,54 +26,25 @@ interface ImportPageProps {
   isQuarterLocked?: (q: number, y: number) => boolean;
 }
 
-type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
-
-export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate }: ImportPageProps) {
+export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked }: ImportPageProps) {
+  const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
   const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
 
+  const currentQLocked = isQuarterLocked ? isQuarterLocked(selQ, selYear) : false;
+
   const timeFiltered = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    
     return activeOrders.filter(o => {
-      const day = o.date.split('T')[0];
-      switch (timeRange) {
-        case 'today': return day === todayStr;
-        case 'week': {
-          const d = new Date(day);
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay() + 1);
-          weekStart.setHours(0, 0, 0, 0);
-          return d >= weekStart && d <= now;
-        }
-        case 'month': {
-          const d = new Date(day);
-          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }
-        case 'quarter': {
-          const d = new Date(day);
-          const q = Math.ceil((now.getMonth() + 1) / 3);
-          const dq = Math.ceil((d.getMonth() + 1) / 3);
-          return dq === q && d.getFullYear() === now.getFullYear();
-        }
-        case 'custom': {
-          if (!customFrom || !customTo) return true;
-          return day >= customFrom && day <= customTo;
-        }
-        default: return true;
-      }
+      const d = new Date(o.date);
+      return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
     });
-  }, [activeOrders, timeRange, customFrom, customTo]);
+  }, [activeOrders, selQ, selYear]);
 
   const filteredOrders = useMemo(() => {
     let list = timeFiltered;
