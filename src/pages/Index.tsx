@@ -212,7 +212,7 @@ function IndexInner() {
           />
         );
       case 'sales':
-        return <SalesPage salesOrders={salesOrders} quarters={quarters} addNotification={addNotification} />;
+        return <SalesPage salesOrders={salesOrders} products={activeProducts} quarters={quarters} addNotification={addNotification} />;
       case 'catalog':
         return (
           <CatalogPage
