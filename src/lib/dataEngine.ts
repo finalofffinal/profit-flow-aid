@@ -217,7 +217,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('hpv')) {
     return {
-      ordersCount: [18, 24], // 6–8 đơn/tháng × 3 tháng
+      ordersCount: [9, 12], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       excludeProduct: (p) => {
         const lp = p.name.toLowerCase();
         return lp.includes('nam ngư cao cấp 500ml') || lp.includes('nam ngu cao cap 500ml')
@@ -314,7 +314,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('chợ lớn') || has('cho lon')) {
     return {
-      ordersCount: [18, 24], // 6–8 đơn/tháng × 3 tháng
+      ordersCount: [9, 12], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         const brand = (p.brand || '').toLowerCase();
@@ -344,7 +344,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('tada')) {
     return {
-      ordersCount: [21, 27], // 7–9 đơn/tháng × 3 tháng
+      ordersCount: [10, 13], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       maxQtyPerProduct: (p) => {
         const brand = (p.brand || '').toLowerCase();
         if (brand.includes('phúc bình dương') || brand.includes('phuc binh duong')) return 1;
@@ -360,7 +360,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('địa đạo') || has('dia dao')) {
     return {
-      ordersCount: [24, 30], // 8–10 đơn/tháng × 3 tháng
+      ordersCount: [12, 15], // ~4-5 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         const brand = (p.brand || '').toLowerCase();
