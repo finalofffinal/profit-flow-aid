@@ -320,28 +320,94 @@ function ProductCard({
   );
 }
 
-// ─── History Dialog ───────────────────────────────────────
-function PriceHistoryDialog({ product, open, onClose }: { product: Product | null; open: boolean; onClose: () => void }) {
+// ─── History Dialog (5 editable slots) ───────────────────
+function PriceHistoryDialog({
+  product, open, onClose, onUpdateEntry,
+}: {
+  product: Product | null; open: boolean; onClose: () => void;
+  onUpdateEntry: (productId: string, index: number, entry: { date: string; buyPrice: number }) => void;
+}) {
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editBuy, setEditBuy] = useState('');
   if (!product) return null;
+
+  // Always show 5 slots — fill with empty entries
+  const slots: (typeof product.priceHistory[number] | null)[] = [
+    ...product.priceHistory.slice(0, 5),
+    ...Array(Math.max(0, 5 - product.priceHistory.length)).fill(null),
+  ].slice(0, 5);
+
+  const startEdit = (i: number, h: typeof product.priceHistory[number] | null) => {
+    setEditIdx(i);
+    setEditDate(h?.date.split('T')[0] || new Date().toISOString().split('T')[0]);
+    setEditBuy(h ? formatPriceForInput(h.buyPrice) : '');
+  };
+
+  const saveEdit = () => {
+    if (editIdx === null) return;
+    const buyVND = parsePriceInput(editBuy);
+    if (buyVND <= 0 || !editDate) { setEditIdx(null); return; }
+    onUpdateEntry(product.id, editIdx, { date: new Date(editDate).toISOString(), buyPrice: buyVND });
+    setEditIdx(null);
+  };
+
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">Lịch sử giá — {product.name}</DialogTitle>
+          <DialogDescription className="text-xs">Sửa giá nhập + ngày. Giá bán tự cập nhật để giữ nguyên % lợi nhuận.</DialogDescription>
         </DialogHeader>
-        {product.priceHistory.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">Chưa có lịch sử</p>
-        ) : (
-          <div className="space-y-2">
-            {product.priceHistory.slice(0, 5).map((h, i) => (
-              <div key={i} className="flex justify-between text-xs border-b border-border pb-1">
-                <span className="text-muted-foreground">{new Date(h.date).toLocaleDateString('vi-VN')}</span>
-                <span>Nhập: <span className="font-semibold text-destructive">{formatVND(h.buyPrice)}</span></span>
-                <span>Bán: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatVND(h.sellPrice)}</span></span>
+        <div className="space-y-2">
+          {slots.map((h, i) => {
+            const isEditing = editIdx === i;
+            const isEmpty = !h;
+            if (isEditing) {
+              return (
+                <div key={i} className="rounded-lg border-2 border-primary p-2 space-y-2">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Ô #{i + 1}</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px]">Ngày</Label>
+                      <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-8 text-xs" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">Giá nhập (×1000)</Label>
+                      <Input value={editBuy} onChange={e => setEditBuy(e.target.value)} placeholder="VD: 85.5" className="h-8 text-xs" />
+                    </div>
+                  </div>
+                  <div className="flex gap-1 justify-end">
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditIdx(null)}><X className="h-3 w-3" /></Button>
+                    <Button size="sm" className="h-7 text-xs" onClick={saveEdit}><Check className="h-3 w-3 mr-1" />Lưu</Button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={i} className={`rounded-lg border p-2 flex items-center justify-between text-xs ${isEmpty ? 'border-dashed border-muted text-muted-foreground' : 'border-border'}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-muted-foreground">#{i + 1}</span>
+                  {isEmpty ? (
+                    <span className="italic">— trống —</span>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">{new Date(h!.date).toLocaleDateString('vi-VN')}</span>
+                      <span>Nhập <span className="font-semibold text-destructive">{formatVND(h!.buyPrice)}</span></span>
+                      <span>Bán <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatVND(h!.sellPrice)}</span></span>
+                    </>
+                  )}
+                </div>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => startEdit(i, h)}>
+                  <Pencil className="h-3 w-3 mr-1" />{isEmpty ? 'Thêm' : 'Sửa'}
+                </Button>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-muted-foreground text-center">
+          ⚠️ Chỉ áp dụng cho đơn nhập tự động được sinh sau khi sửa. Đơn cũ giữ giá gốc.
+        </p>
       </DialogContent>
     </Dialog>
   );
