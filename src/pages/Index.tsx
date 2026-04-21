@@ -25,7 +25,7 @@ function IndexInner() {
   const { quarter: selQ, year: selYear } = usePeriod();
 
   const { theme, toggleTheme } = useTheme();
-  const { products, activeProducts, deletedProducts, addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct, moveProduct, copyProduct } = useProducts();
+  const { products, activeProducts, deletedProducts, addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct, moveProduct, copyProduct, reorderProducts, updatePriceHistoryEntry } = useProducts();
   const { suppliers, activeSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } = useSuppliers();
   const { notifications, addNotification, markRead, markAllRead, unreadCount } = useNotifications();
   const { quarters, setQuarterTarget, setQuarterLock, rebalanceQuarters } = useQuarters();
@@ -205,6 +205,8 @@ function IndexInner() {
             permanentDeleteProduct={permanentDeleteProduct}
             moveProduct={moveProduct}
             copyProduct={copyProduct}
+            reorderProducts={reorderProducts}
+            updatePriceHistoryEntry={updatePriceHistoryEntry}
             addSupplier={addSupplier}
             updateSupplier={updateSupplier}
             deleteSupplier={deleteSupplier}

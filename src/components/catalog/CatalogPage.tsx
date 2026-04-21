@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Search, ChevronDown, ChevronRight, GripVertical, Copy, Pencil, Trash, RotateCcw, Package, History, Undo2, Filter } from 'lucide-react';
+import { Plus, Trash2, Search, ChevronDown, ChevronRight, GripVertical, Copy, Pencil, Trash, RotateCcw, Package, History, Undo2, Filter, Check, X } from 'lucide-react';
 import { Product, Supplier } from '@/types';
 import { formatVND, formatPriceForInput, parsePriceInput } from '@/lib/currency';
 import { PARENT_UNITS, CHILD_UNITS } from '@/lib/constants';
@@ -15,6 +15,9 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CatalogPageProps {
   products: Product[];
@@ -28,6 +31,8 @@ interface CatalogPageProps {
   permanentDeleteProduct: (id: string) => void;
   moveProduct: (productId: string, newSupplierId: string) => void;
   copyProduct: (productId: string, targetSupplierId: string) => void;
+  reorderProducts: (orderedIds: string[]) => void;
+  updatePriceHistoryEntry: (productId: string, index: number, entry: { date: string; buyPrice: number }) => void;
   addSupplier: (name: string) => Supplier;
   updateSupplier: (id: string, name: string) => void;
   deleteSupplier: (id: string) => void;
@@ -208,6 +213,7 @@ function ProductFormDialog({
 }
 
 // ─── Product Card (collapsed by default) ──────────────────
+// ─── Sortable Product Card (drag-drop enabled) ───────────
 function ProductCard({
   product, suppliers, onEdit, onDelete, onCopy, onCopySameSupplier, onHistoryView,
 }: {
@@ -218,6 +224,7 @@ function ProductCard({
   onCopySameSupplier: (productId: string) => void;
   onHistoryView: (p: Product) => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product.id });
   const [expanded, setExpanded] = useState(false);
   const rate = product.conversionRate || 1;
   const hasChild = rate > 1;
@@ -229,19 +236,30 @@ function ProductCard({
   const parentProfitPct = product.buyPrice > 0 ? ((parentProfit / product.buyPrice) * 100).toFixed(1) : '0';
   const otherSuppliers = suppliers.filter(s => s.id !== product.supplierId && !s.deletedAt);
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto' as any,
+  };
+
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-all">
+    <div ref={setNodeRef} style={style} className="rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-all">
       {/* Collapsed header */}
-      <button className="flex w-full items-center gap-2 p-3 text-left" onClick={() => setExpanded(!expanded)}>
-        <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/40" />
-        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-        <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="font-bold text-sm truncate">{product.name || 'Chưa đặt tên'}</span>
-          {product.brand && (
-            <Badge variant="secondary" className="text-[10px] font-semibold shrink-0 hidden sm:inline-flex">{product.brand}</Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+      <div className="flex w-full items-center gap-2 p-3">
+        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 hover:bg-muted/40 rounded" title="Kéo để sắp xếp">
+          <GripVertical className="h-4 w-4 text-muted-foreground/60" />
+        </button>
+        <button className="flex flex-1 items-center gap-2 text-left min-w-0" onClick={() => setExpanded(!expanded)}>
+          {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="font-bold text-sm truncate">{product.name || 'Chưa đặt tên'}</span>
+            {product.brand && (
+              <Badge variant="secondary" className="text-[10px] font-semibold shrink-0 hidden sm:inline-flex">{product.brand}</Badge>
+            )}
+          </div>
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(product)}><Pencil className="h-3.5 w-3.5" /></Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -264,7 +282,7 @@ function ProductCard({
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryView(product)}><History className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onDelete(product.id)}><Trash className="h-3.5 w-3.5" /></Button>
         </div>
-      </button>
+      </div>
 
       {/* Expanded details */}
       {expanded && (
@@ -302,28 +320,94 @@ function ProductCard({
   );
 }
 
-// ─── History Dialog ───────────────────────────────────────
-function PriceHistoryDialog({ product, open, onClose }: { product: Product | null; open: boolean; onClose: () => void }) {
+// ─── History Dialog (5 editable slots) ───────────────────
+function PriceHistoryDialog({
+  product, open, onClose, onUpdateEntry,
+}: {
+  product: Product | null; open: boolean; onClose: () => void;
+  onUpdateEntry: (productId: string, index: number, entry: { date: string; buyPrice: number }) => void;
+}) {
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editBuy, setEditBuy] = useState('');
   if (!product) return null;
+
+  // Always show 5 slots — fill with empty entries
+  const slots: (typeof product.priceHistory[number] | null)[] = [
+    ...product.priceHistory.slice(0, 5),
+    ...Array(Math.max(0, 5 - product.priceHistory.length)).fill(null),
+  ].slice(0, 5);
+
+  const startEdit = (i: number, h: typeof product.priceHistory[number] | null) => {
+    setEditIdx(i);
+    setEditDate(h?.date.split('T')[0] || new Date().toISOString().split('T')[0]);
+    setEditBuy(h ? formatPriceForInput(h.buyPrice) : '');
+  };
+
+  const saveEdit = () => {
+    if (editIdx === null) return;
+    const buyVND = parsePriceInput(editBuy);
+    if (buyVND <= 0 || !editDate) { setEditIdx(null); return; }
+    onUpdateEntry(product.id, editIdx, { date: new Date(editDate).toISOString(), buyPrice: buyVND });
+    setEditIdx(null);
+  };
+
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">Lịch sử giá — {product.name}</DialogTitle>
+          <DialogDescription className="text-xs">Sửa giá nhập + ngày. Giá bán tự cập nhật để giữ nguyên % lợi nhuận.</DialogDescription>
         </DialogHeader>
-        {product.priceHistory.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">Chưa có lịch sử</p>
-        ) : (
-          <div className="space-y-2">
-            {product.priceHistory.slice(0, 5).map((h, i) => (
-              <div key={i} className="flex justify-between text-xs border-b border-border pb-1">
-                <span className="text-muted-foreground">{new Date(h.date).toLocaleDateString('vi-VN')}</span>
-                <span>Nhập: <span className="font-semibold text-destructive">{formatVND(h.buyPrice)}</span></span>
-                <span>Bán: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatVND(h.sellPrice)}</span></span>
+        <div className="space-y-2">
+          {slots.map((h, i) => {
+            const isEditing = editIdx === i;
+            const isEmpty = !h;
+            if (isEditing) {
+              return (
+                <div key={i} className="rounded-lg border-2 border-primary p-2 space-y-2">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Ô #{i + 1}</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px]">Ngày</Label>
+                      <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-8 text-xs" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">Giá nhập (×1000)</Label>
+                      <Input value={editBuy} onChange={e => setEditBuy(e.target.value)} placeholder="VD: 85.5" className="h-8 text-xs" />
+                    </div>
+                  </div>
+                  <div className="flex gap-1 justify-end">
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditIdx(null)}><X className="h-3 w-3" /></Button>
+                    <Button size="sm" className="h-7 text-xs" onClick={saveEdit}><Check className="h-3 w-3 mr-1" />Lưu</Button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={i} className={`rounded-lg border p-2 flex items-center justify-between text-xs ${isEmpty ? 'border-dashed border-muted text-muted-foreground' : 'border-border'}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-muted-foreground">#{i + 1}</span>
+                  {isEmpty ? (
+                    <span className="italic">— trống —</span>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">{new Date(h!.date).toLocaleDateString('vi-VN')}</span>
+                      <span>Nhập <span className="font-semibold text-destructive">{formatVND(h!.buyPrice)}</span></span>
+                      <span>Bán <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatVND(h!.sellPrice)}</span></span>
+                    </>
+                  )}
+                </div>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => startEdit(i, h)}>
+                  <Pencil className="h-3 w-3 mr-1" />{isEmpty ? 'Thêm' : 'Sửa'}
+                </Button>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-muted-foreground text-center">
+          ⚠️ Chỉ áp dụng cho đơn nhập tự động được sinh sau khi sửa. Đơn cũ giữ giá gốc.
+        </p>
       </DialogContent>
     </Dialog>
   );
@@ -389,12 +473,15 @@ function TrashDialog({
 export function CatalogPage({
   products, activeProducts, deletedProducts, suppliers,
   addProduct, updateProduct, softDeleteProduct, restoreProduct, permanentDeleteProduct,
-  moveProduct, copyProduct, addSupplier, updateSupplier, deleteSupplier,
+  moveProduct, copyProduct, reorderProducts, updatePriceHistoryEntry,
+  addSupplier, updateSupplier, deleteSupplier,
   restoreSupplier, permanentDeleteSupplier, addNotification,
 }: CatalogPageProps) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [search, setSearch] = useState('');
   const [filterNCC, setFilterNCC] = useState<string>('all');
   const [filterUnit, setFilterUnit] = useState<string>('all');
+  const [filterBrand, setFilterBrand] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [showTrash, setShowTrash] = useState(false);
@@ -408,16 +495,21 @@ export function CatalogPage({
   const activeSuppliers = useMemo(() => suppliers.filter(s => !s.deletedAt), [suppliers]);
   const deletedSuppliers = useMemo(() => suppliers.filter(s => s.deletedAt), [suppliers]);
 
-  // All unique units for filter
+  // All unique units + brands for filters
   const allUnits = useMemo(() => {
     const units = new Set(activeProducts.map(p => p.unit).filter(Boolean));
     return Array.from(units);
+  }, [activeProducts]);
+  const allBrands = useMemo(() => {
+    const brands = new Set(activeProducts.map(p => p.brand).filter(Boolean));
+    return Array.from(brands).sort();
   }, [activeProducts]);
 
   const filtered = useMemo(() => {
     let list = activeProducts;
     if (filterNCC !== 'all') list = list.filter(p => p.supplierId === filterNCC);
     if (filterUnit !== 'all') list = list.filter(p => p.unit === filterUnit);
+    if (filterBrand !== 'all') list = list.filter(p => p.brand === filterBrand);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(p =>
@@ -429,7 +521,7 @@ export function CatalogPage({
       );
     }
     return list;
-  }, [activeProducts, filterNCC, filterUnit, search]);
+  }, [activeProducts, filterNCC, filterUnit, filterBrand, search]);
 
   const groupedBySupplier = useMemo(() => {
     const groups: { supplier: Supplier; products: Product[] }[] = [];
@@ -437,11 +529,35 @@ export function CatalogPage({
     for (const sid of sids) {
       const supplier = activeSuppliers.find(s => s.id === sid);
       if (!supplier) continue;
-      const prods = filtered.filter(p => p.supplierId === sid);
+      const prods = filtered.filter(p => p.supplierId === sid)
+        .sort((a, b) => {
+          const oa = a.order ?? 999999;
+          const ob = b.order ?? 999999;
+          if (oa !== ob) return oa - ob;
+          return a.createdAt.localeCompare(b.createdAt);
+        });
       if (prods.length > 0 || filterNCC === 'all') groups.push({ supplier, products: prods });
     }
     return groups;
   }, [filtered, activeSuppliers, filterNCC]);
+
+  const handleDragEnd = useCallback((supplierId: string, prodIds: string[]) => (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = prodIds.indexOf(active.id as string);
+    const newIdx = prodIds.indexOf(over.id as string);
+    if (oldIdx < 0 || newIdx < 0) {
+      // Cross-supplier drop: move product
+      const overProd = activeProducts.find(p => p.id === over.id);
+      if (overProd && overProd.supplierId !== supplierId) {
+        moveProduct(active.id as string, overProd.supplierId);
+        addNotification(`Đã chuyển sang ${overProd.supplierId}`, 'info');
+      }
+      return;
+    }
+    const next = arrayMove(prodIds, oldIdx, newIdx);
+    reorderProducts(next);
+  }, [reorderProducts, activeProducts, moveProduct, addNotification]);
 
   const toggleCollapse = (id: string) => {
     setCollapsedSuppliers(prev => {
@@ -559,6 +675,13 @@ export function CatalogPage({
               {activeSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Select value={filterBrand} onValueChange={setFilterBrand}>
+            <SelectTrigger className="w-32 h-9 text-sm"><SelectValue placeholder="Nhãn hàng" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả nhãn</SelectItem>
+              {allBrands.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={filterUnit} onValueChange={setFilterUnit}>
             <SelectTrigger className="w-28 h-9 text-sm"><Filter className="mr-1 h-3 w-3" /><SelectValue placeholder="Đơn vị" /></SelectTrigger>
             <SelectContent>
@@ -610,20 +733,24 @@ export function CatalogPage({
                 {prods.length === 0 ? (
                   <p className="py-4 text-center text-xs text-muted-foreground">Chưa có sản phẩm. Kéo thả sản phẩm vào đây.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {prods.map(p => (
-                      <ProductCard
-                        key={p.id}
-                        product={p}
-                        suppliers={activeSuppliers}
-                        onEdit={(prod) => { setEditingProduct(prod); setShowForm(true); }}
-                        onDelete={handleDelete}
-                        onCopy={copyProduct}
-                        onCopySameSupplier={handleCopySameSupplier}
-                        onHistoryView={setHistoryProduct}
-                      />
-                    ))}
-                  </div>
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(supplier.id, prods.map(p => p.id))}>
+                    <SortableContext items={prods.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2">
+                        {prods.map(p => (
+                          <ProductCard
+                            key={p.id}
+                            product={p}
+                            suppliers={activeSuppliers}
+                            onEdit={(prod) => { setEditingProduct(prod); setShowForm(true); }}
+                            onDelete={handleDelete}
+                            onCopy={copyProduct}
+                            onCopySameSupplier={handleCopySameSupplier}
+                            onHistoryView={setHistoryProduct}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
             )}
@@ -654,7 +781,7 @@ export function CatalogPage({
         onPermanentDeleteSupplier={permanentDeleteSupplier}
       />
 
-      <PriceHistoryDialog product={historyProduct} open={!!historyProduct} onClose={() => setHistoryProduct(null)} />
+      <PriceHistoryDialog product={historyProduct} open={!!historyProduct} onClose={() => setHistoryProduct(null)} onUpdateEntry={updatePriceHistoryEntry} />
 
       <Dialog open={showAddNCC} onOpenChange={v => !v && setShowAddNCC(false)}>
         <DialogContent className="max-w-sm">

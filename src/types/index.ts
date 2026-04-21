@@ -25,6 +25,8 @@ export interface Product {
   notes: string;
   stock: number;
   priceHistory: PriceHistoryEntry[];
+  /** Sort order within supplier group; lower = first. Optional for backwards compat. */
+  order?: number;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
