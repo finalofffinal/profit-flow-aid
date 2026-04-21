@@ -49,8 +49,8 @@ export function getTetClosedLabel(dateStr: string): string | null {
 }
 
 /**
- * Tự nhiên hơn: cuối tuần KHÔNG phải lúc nào cũng cao đột biến.
- * Random theo từng tuần, có ngày T7/CN cao, có ngày bình thường.
+ * Doanh thu mỗi ngày phải KHÁC BIỆT RÕ — không quá đều.
+ * Cuối tuần KHÔNG mặc định cao bất thường, đôi khi còn thấp hơn ngày thường (mưa, vắng).
  */
 function getRevenueWeight(dateStr: string, rand: () => number): number {
   if (isTetClosedDay(dateStr)) return 0;
@@ -62,49 +62,43 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const lunar = getLunarParts(d);
 
-  // Cuối tuần: 50% là cao nhẹ, 30% bình thường, 20% thấp (mưa, vắng khách)
-  let weeklyBoost = 1.0;
+  // Phân phối rộng — mỗi ngày khác biệt rõ:
+  // Cuối tuần: 35% cao, 35% bình thường, 30% thấp
+  // Ngày thường: 25% cao, 50% bình thường, 25% thấp
+  let weeklyBoost: number;
+  const r = rand();
   if (dow === 0 || dow === 6) {
-    const r = rand();
-    if (r < 0.5) weeklyBoost = 1.10 + rand() * 0.15;       // 1.10–1.25
-    else if (r < 0.8) weeklyBoost = 0.95 + rand() * 0.10;  // 0.95–1.05
-    else weeklyBoost = 0.80 + rand() * 0.10;               // 0.80–0.90
+    if (r < 0.35) weeklyBoost = 1.05 + rand() * 0.20;
+    else if (r < 0.70) weeklyBoost = 0.85 + rand() * 0.20;
+    else weeklyBoost = 0.55 + rand() * 0.25;
   } else {
-    // Ngày thường: dao động 0.85–1.15
-    weeklyBoost = 0.85 + rand() * 0.30;
+    if (r < 0.25) weeklyBoost = 1.05 + rand() * 0.20;
+    else if (r < 0.75) weeklyBoost = 0.80 + rand() * 0.25;
+    else weeklyBoost = 0.50 + rand() * 0.30;
   }
 
-  // Trong tháng: đầu tháng (lương) cao hơn nhẹ
   let monthlyWeight = 1.0;
-  if (day <= 5) monthlyWeight = 1.08;
-  else if (day <= 10) monthlyWeight = 1.04;
+  if (day <= 5) monthlyWeight = 1.10;
+  else if (day <= 10) monthlyWeight = 1.05;
   else if (day <= 20) monthlyWeight = 1.0;
   else if (day <= 25) monthlyWeight = 0.95;
-  else monthlyWeight = 0.92;
+  else monthlyWeight = 0.90;
 
-  // Lễ Việt Nam
   let holidayBoost = 1.0;
-  // Trước Tết Âm (tháng Chạp ÂL): tăng dần
   if (lunar.month === 12 && lunar.day >= 15 && lunar.day <= 19) holidayBoost = 1.15;
   if (lunar.month === 12 && lunar.day >= 20 && lunar.day <= 24) holidayBoost = 1.30 + (lunar.day - 20) * 0.04;
   if (lunar.month === 12 && lunar.day >= 25) holidayBoost = 1.55 + (lunar.day - 25) * 0.05;
-  // Sau Tết: phục hồi nhẹ
   if (lunar.month === 1 && lunar.day >= 7 && lunar.day <= 15) holidayBoost = 1.10;
-  // Rằm tháng Giêng / tháng 7
   if ((lunar.month === 1 || lunar.month === 7) && lunar.day >= 13 && lunar.day <= 15) {
     holidayBoost = Math.max(holidayBoost, 1.18);
   }
-  // 30/4 - 1/5
   if (mmdd === '04-30' || mmdd === '05-01') holidayBoost = Math.max(holidayBoost, 1.25);
-  // Quốc khánh
   if (mmdd === '09-01' || mmdd === '09-02') holidayBoost = Math.max(holidayBoost, 1.18);
-  // Trung thu
   if (lunar.month === 8 && lunar.day >= 10 && lunar.day <= 15) holidayBoost = Math.max(holidayBoost, 1.18);
-  // Noel + Tết Tây
   if (month === 12 && day >= 22) holidayBoost = Math.max(holidayBoost, 1.15 + (day - 22) * 0.02);
 
-  // Nhiễu nhỏ ±10%
-  const noise = 0.90 + rand() * 0.20;
+  // Nhiễu lớn ±25%
+  const noise = 0.75 + rand() * 0.50;
   return weeklyBoost * monthlyWeight * holidayBoost * noise;
 }
 
