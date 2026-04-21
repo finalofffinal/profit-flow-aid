@@ -180,14 +180,18 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   const n = supplierName.toLowerCase();
   const has = (s: string) => n.includes(s.toLowerCase());
 
-  if (has('vifon')) return { ordersCount: [2, 2], maxQtyPerProduct: () => 3 };
+  // QUY ƯỚC: maxQtyPerProduct/maxQtyPerQuarter trả `undefined` = KHÔNG có rule cứng cho SP đó.
+  // Caller dùng default mềm (3) khi tạo đơn ban đầu, NHƯNG khi rebalance scale lên/xuống
+  // sẽ KHÔNG clamp (cho phép tăng tự nhiên). Chỉ SP có rule cứng (số cụ thể) mới bị clamp.
+
+  if (has('vifon')) return { ordersCount: [2, 2] };
 
   if (has('liên thành') || has('lien thanh')) {
     return { ordersCount: [1, 1], maxQtyPerProduct: () => 1 };
   }
 
   if (has('ánh 3 miền') || has('anh 3 mien')) {
-    return { ordersCount: [2, 2], maxQtyPerProduct: () => 3 };
+    return { ordersCount: [2, 2] };
   }
 
   if (has('cô lan') || has('co lan')) {
@@ -199,11 +203,11 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (lp.includes('miến dong')) return 10;
         if (lp.includes('bún tàu') || lp.includes('bun tau')) return 1;
         if (lp.includes('măng') || lp.includes('mang')) return 2;
-        return 3;
+        return undefined;
       },
       minQtyPerOrder: (p) => {
         const lp = p.name.toLowerCase();
-        if (lp.includes('miến dong')) return 10; // bắt buộc 10 đơn vị/đơn
+        if (lp.includes('miến dong')) return 10;
         return undefined;
       },
     };
@@ -236,15 +240,13 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       },
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
-        // Bin & Bon: tối đa 20/quý, mỗi đơn ≥5 và ≤10 (chia 2-4 đơn)
         if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 10;
         if (lp.includes('nhất ca') || lp.includes('nhat ca')) return 1;
         if (lp.includes('tương ớt 500ml') || lp.includes('tuong ot 500ml')) return 1;
-        return 5;
+        return undefined;
       },
       minQtyPerOrder: (p) => {
         const lp = p.name.toLowerCase();
-        // Bin & Bon: trong 1 đơn ≥5 đơn vị lớn
         if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 5;
         return undefined;
       },
@@ -257,12 +259,12 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       maxQtyPerQuarter: (p) => {
         const lp = p.name.toLowerCase();
         if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
-        return 3; // các SP còn lại tối đa 3 đơn vị/quý
+        return undefined;
       },
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
-        return 3;
+        return undefined;
       },
     };
   }
@@ -277,7 +279,9 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         if (lp.includes('cốt') || lp.includes('cot')) return 6;
-        return 3; // tinh luyện, nuôi
+        if (lp.includes('tinh luyện') || lp.includes('tinh luyen')
+          || lp.includes('nuôi') || lp.includes('nuoi')) return 3;
+        return undefined;
       },
     };
   }
@@ -303,9 +307,9 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (lp.includes('phèn') || lp.includes('phen')) return 3;
         if (lp.includes('đường trắng') || lp.includes('duong trang')) {
           if (brand.includes('biên hòa') || brand.includes('bien hoa')) return 2;
-          return 2; // brand "Khác" cũng 2
+          return 2;
         }
-        return 2;
+        return undefined;
       },
     };
   }
