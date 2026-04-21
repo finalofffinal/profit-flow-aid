@@ -365,8 +365,13 @@ export function generateQuarterData(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // Q1+Q4 = high revenue quarters -> import slightly heavier on adjacent quarters too
+  // Import budget = 80–110% of autoTargetRevenue (theo yêu cầu cân bằng thị trường)
+  // Q1 + Q4 lệch nhẹ về phía cao (dự trữ Tết), Q2/Q3 lệch về phía thấp.
   const isHighRevenueQuarter = quarter.quarter === 1 || quarter.quarter === 4;
+  const importBudgetRatio = isHighRevenueQuarter
+    ? 0.95 + rand() * 0.15  // 0.95–1.10
+    : 0.80 + rand() * 0.15; // 0.80–0.95
+  const targetImportTotal = autoTargetRevenue * importBudgetRatio;
   const importMultiplier = isHighRevenueQuarter ? 1.15 : 0.95;
 
   for (const [sid, prods] of supplierProducts) {
