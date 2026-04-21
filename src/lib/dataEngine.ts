@@ -1035,6 +1035,58 @@ export function generateQuarterData(
     });
   }
 
+  // ============================================================================
+  // FIX-UP PASS: đảm bảo tổng sales = autoTargetRevenue chính xác 100%.
+  // Phân bổ phần chênh lệch (do round/clamp) đều cho các đơn không phải Tết.
+  // ============================================================================
+  const nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
+  const currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
+  const salesGap = autoTargetRevenue - currentSalesTotal;
+
+  if (Math.abs(salesGap) > 0 && nonTetOrders.length > 0 && currentSalesTotal > 0) {
+    // Scale tỉ lệ — giữ nguyên cấu trúc items nhưng nhân hệ số sao cho tổng khớp.
+    const scale = autoTargetRevenue / currentSalesTotal;
+    let allocated = 0;
+    for (let i = 0; i < nonTetOrders.length; i++) {
+      const o = nonTetOrders[i];
+      const isLast = i === nonTetOrders.length - 1;
+      let newOrderTotal: number;
+      if (isLast) {
+        newOrderTotal = autoTargetRevenue - allocated;
+      } else {
+        newOrderTotal = Math.round((o.totalRevenue * scale) / 1000) * 1000;
+      }
+      newOrderTotal = Math.max(0, newOrderTotal);
+      const itemScale = o.totalRevenue > 0 ? newOrderTotal / o.totalRevenue : 1;
+      let itemAlloc = 0;
+      for (let j = 0; j < o.items.length; j++) {
+        const it = o.items[j];
+        const isLastItem = j === o.items.length - 1;
+        let newTotal: number;
+        if (isLastItem) {
+          newTotal = newOrderTotal - itemAlloc;
+        } else {
+          newTotal = Math.max(0, it.total * itemScale);
+        }
+        newTotal = Math.max(0, newTotal);
+        // Cập nhật lợi nhuận theo tỉ lệ (giữ margin)
+        const prevTotal = it.total;
+        if (prevTotal > 0) {
+          const margin = it.profit / prevTotal;
+          it.total = newTotal;
+          it.profit = newTotal * margin;
+        } else {
+          it.total = newTotal;
+        }
+        itemAlloc += newTotal;
+      }
+      o.totalRevenue = newOrderTotal;
+      o.totalProfit = o.items.reduce((s, it) => s + it.profit, 0);
+      o.profitPercent = newOrderTotal > 0 ? Math.round((o.totalProfit / newOrderTotal) * 1000) / 10 : 0;
+      allocated += newOrderTotal;
+    }
+  }
+
   return { importOrders, salesOrders, inventoryBatches };
 }
 
