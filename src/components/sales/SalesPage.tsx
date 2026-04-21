@@ -131,21 +131,11 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
             <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa
           </div>
         )}
-        <div className="flex gap-1.5 overflow-x-auto">
-          {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
-            <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
-              onClick={() => setTimeRange(r)}>
-              {{ today: 'Hôm nay', week: 'Tuần', month: 'Tháng', quarter: 'Quý', all: 'Tất cả', custom: 'Tùy chọn' }[r]}
-            </Button>
-          ))}
-        </div>
-
-        {timeRange === 'custom' && (
-          <div className="flex gap-2">
-            <Input type="date" className="h-8 text-xs" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-            <Input type="date" className="h-8 text-xs" value={customTo} onChange={e => setCustomTo(e.target.value)} />
-          </div>
-        )}
+        <TimeRangeFilter
+          value={timeRange} onChange={setTimeRange}
+          customFrom={customFrom} onCustomFromChange={setCustomFrom}
+          customTo={customTo} onCustomToChange={setCustomTo}
+        />
 
         {/* Cumulative revenue banner - high contrast for dark mode */}
         <div className="flex items-center justify-between bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
