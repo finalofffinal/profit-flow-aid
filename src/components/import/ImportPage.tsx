@@ -303,14 +303,14 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                           <span className="font-bold text-foreground">· {formatVND(order.total)}</span>
                         </div>
                       </div>
-                      {order.tag !== 'auto' && !order.locked && !currentQLocked && (
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          {onUpdateOrder && (
+                      {!order.locked && !currentQLocked && (
+                        <div data-admin-only className="flex items-center gap-0.5 shrink-0">
+                          {order.tag !== 'auto' && onUpdateOrder && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); setEditingOrderId(order.id); }}>
                               <Pencil className="h-3.5 w-3.5 text-primary" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }} title={order.tag === 'auto' ? 'Xóa đơn tự động này' : 'Xóa đơn'}>
                             <Trash className="h-3.5 w-3.5 text-destructive" />
                           </Button>
                         </div>
