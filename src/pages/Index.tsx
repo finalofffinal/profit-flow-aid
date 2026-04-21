@@ -193,6 +193,7 @@ function IndexInner() {
             permanentDeleteOrder={permanentDeleteImportOrder}
             addNotification={addNotification}
             onUpdateOrderDate={updateImportOrderDate}
+            onUpdateOrder={updateImportOrder}
             isQuarterLocked={isQuarterLocked}
             quarters={quarters}
             onAutoReplenish={handleAutoReplenish}
