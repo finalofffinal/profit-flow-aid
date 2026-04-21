@@ -896,10 +896,12 @@ export function generateQuarterData(
 
     if (items.length === 0) continue;
 
-    // Khớp chính xác doanh thu ngày — chỉnh item cuối
+    // Chỉ chỉnh chênh lệch nhỏ (rounding). Nếu thiếu kho thật → chấp nhận doanh thu thấp
+    // hơn target để thể hiện độ trễ giữa nhập và bán hàng.
     const rawTotal = items.reduce((s, it) => s + it.total, 0);
     const diff = targetDayRevenue - rawTotal;
-    if (Math.abs(diff) > 0) {
+    const tolerableAdjust = Math.max(5000, targetDayRevenue * 0.02);
+    if (Math.abs(diff) > 0 && Math.abs(diff) <= tolerableAdjust) {
       const last = items[items.length - 1];
       last.total = Math.max(0, last.total + diff);
       last.profit = last.total - last.buyPrice * last.quantity;
