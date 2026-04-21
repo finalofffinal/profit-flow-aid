@@ -184,6 +184,23 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           </div>
         )}
 
+        {isShort && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-destructive">Nhập hàng Q{selQ}/{selYear} chưa đủ ({Math.round(importRatio * 100)}% doanh thu)</div>
+              <div className="text-muted-foreground">
+                Đã nhập {formatCompactVND(currentQTotalImport)} / Mục tiêu {formatCompactVND(targetRev)} · Thiếu ~{formatCompactVND(shortfall)}
+              </div>
+            </div>
+            {onCreateSupplementaryOrder && (
+              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleCreateSupplementary}>
+                <Wand2 className="mr-1 h-3.5 w-3.5" /> Tạo đơn bù
+              </Button>
+            )}
+          </div>
+        )}
+
         <TimeRangeFilter
           value={timeRange} onChange={setTimeRange}
           customFrom={customFrom} onCustomFromChange={setCustomFrom}
@@ -214,8 +231,11 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           </Select>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
           <span>Tổng: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
+          {targetRev > 0 && !currentQLocked && (
+            <span>· Tỉ lệ nhập/DT Q{selQ}: <span className={`font-bold ${importRatio < 0.80 ? 'text-destructive' : importRatio > 1.20 ? 'text-amber-600' : 'text-emerald-600'}`}>{Math.round(importRatio * 100)}%</span></span>
+          )}
         </div>
       </div>
 
