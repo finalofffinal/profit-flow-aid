@@ -167,6 +167,16 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
             <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
           </Button>
+          {onAutoReplenish && !currentQLocked && (
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAutoReplenish(selQ, selYear)} title="Tạo lại đơn auto với cấu trúc ngẫu nhiên khác">
+              <Shuffle className="mr-1 h-3.5 w-3.5" /> Ngẫu nhiên
+            </Button>
+          )}
+          {onClearAutoOrders && !currentQLocked && (
+            <Button size="sm" variant="outline" className="h-8 text-xs text-destructive" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả đơn auto của quý hiện tại (sẽ tự sinh lại theo doanh thu)">
+              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa đơn auto
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
