@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Notification } from '@/types';
 import { usePeriod, AVAILABLE_YEARS } from '@/contexts/PeriodContext';
+import { AdminAuthButton } from '@/components/auth/AdminAuthButton';
 
 interface HeaderProps {
   theme: 'light' | 'dark';
@@ -91,6 +92,7 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
 
         {/* Right */}
         <div className="flex items-center gap-1">
+          <AdminAuthButton />
           {/* Sync status */}
           <div title={online ? 'Đã đồng bộ Cloud' : 'Mất kết nối Cloud'} className={`hidden md:flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${online ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-destructive/15 text-destructive'}`}>
             {online ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
