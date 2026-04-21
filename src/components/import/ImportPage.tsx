@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { usePeriod } from '@/contexts/PeriodContext';
 
 interface ImportPageProps {
   importOrders: ImportOrder[];
@@ -22,56 +23,28 @@ interface ImportPageProps {
   permanentDeleteOrder: (id: string) => void;
   addNotification: (msg: string, type?: any) => void;
   onUpdateOrderDate?: (id: string, newDate: string) => void;
+  isQuarterLocked?: (q: number, y: number) => boolean;
 }
 
-type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
-
-export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate }: ImportPageProps) {
+export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked }: ImportPageProps) {
+  const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
   const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
 
+  const currentQLocked = isQuarterLocked ? isQuarterLocked(selQ, selYear) : false;
+
   const timeFiltered = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    
     return activeOrders.filter(o => {
-      const day = o.date.split('T')[0];
-      switch (timeRange) {
-        case 'today': return day === todayStr;
-        case 'week': {
-          const d = new Date(day);
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay() + 1);
-          weekStart.setHours(0, 0, 0, 0);
-          return d >= weekStart && d <= now;
-        }
-        case 'month': {
-          const d = new Date(day);
-          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }
-        case 'quarter': {
-          const d = new Date(day);
-          const q = Math.ceil((now.getMonth() + 1) / 3);
-          const dq = Math.ceil((d.getMonth() + 1) / 3);
-          return dq === q && d.getFullYear() === now.getFullYear();
-        }
-        case 'custom': {
-          if (!customFrom || !customTo) return true;
-          return day >= customFrom && day <= customTo;
-        }
-        default: return true;
-      }
+      const d = new Date(o.date);
+      return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
     });
-  }, [activeOrders, timeRange, customFrom, customTo]);
+  }, [activeOrders, selQ, selYear]);
 
   const filteredOrders = useMemo(() => {
     let list = timeFiltered;
@@ -148,24 +121,17 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={() => setShowAdd(true)}>
+          <Button size="sm" className="h-8 text-xs" onClick={() => {
+            if (currentQLocked) { addNotification(`Quý ${selQ}/${selYear} đã khóa, không thể thêm đơn`, 'warning'); return; }
+            setShowAdd(true);
+          }} disabled={currentQLocked}>
             <Plus className="mr-1 h-3.5 w-3.5" /> Thêm đơn nhập
           </Button>
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto">
-          {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
-            <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
-              onClick={() => setTimeRange(r)}>
-              {{ today: 'Hôm nay', week: 'Tuần', month: 'Tháng', quarter: 'Quý', all: 'Tất cả', custom: 'Tùy chọn' }[r]}
-            </Button>
-          ))}
-        </div>
-
-        {timeRange === 'custom' && (
-          <div className="flex gap-2">
-            <Input type="date" className="h-8 text-xs" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-            <Input type="date" className="h-8 text-xs" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+        {currentQLocked && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
           </div>
         )}
 

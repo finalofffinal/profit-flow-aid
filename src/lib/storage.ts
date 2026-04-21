@@ -12,7 +12,6 @@ const KEYS = {
   inventoryBatches: 'scp_inventory_batches',
 } as const;
 
-// Local load (synchronous, for initial state)
 function loadLocal<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -23,86 +22,95 @@ function loadLocal<T>(key: string, fallback: T): T {
   }
 }
 
-// Save to both localStorage AND Supabase
 function save<T>(key: string, data: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error('localStorage save failed:', e);
-  }
-  // Fire-and-forget Supabase sync
-  saveToSupabase(key, data);
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.error('localStorage save failed:', e); }
+  if (key !== KEYS.theme) saveToSupabase(key, data);
 }
 
-// Products
 export const loadProducts = () => loadLocal<Product[]>(KEYS.products, []);
 export const saveProducts = (data: Product[]) => save(KEYS.products, data);
 
-// Suppliers
 const DEFAULT_SUPPLIER: Supplier = { id: 'default-khac', name: 'Khác', deletedAt: null, createdAt: new Date().toISOString() };
 export const loadSuppliers = () => {
   const suppliers = loadLocal<Supplier[]>(KEYS.suppliers, [DEFAULT_SUPPLIER]);
-  if (!suppliers.find(s => s.id === 'default-khac')) {
-    suppliers.unshift(DEFAULT_SUPPLIER);
-  }
+  if (!suppliers.find(s => s.id === 'default-khac')) suppliers.unshift(DEFAULT_SUPPLIER);
   return suppliers;
 };
 export const saveSuppliers = (data: Supplier[]) => save(KEYS.suppliers, data);
 
-// Quarters
 export const loadQuarters = () => loadLocal<QuarterData[]>(KEYS.quarters, []);
 export const saveQuarters = (data: QuarterData[]) => save(KEYS.quarters, data);
 
-// Notifications
 export const loadNotifications = () => loadLocal<Notification[]>(KEYS.notifications, []);
 export const saveNotifications = (data: Notification[]) => save(KEYS.notifications, data);
 
-// Theme
 export const loadTheme = () => loadLocal<'light' | 'dark'>(KEYS.theme, 'light');
 export const saveTheme = (theme: 'light' | 'dark') => save(KEYS.theme, theme);
 
-// Import Orders
 export const loadImportOrders = () => loadLocal<ImportOrder[]>(KEYS.importOrders, []);
 export const saveImportOrders = (data: ImportOrder[]) => save(KEYS.importOrders, data);
 
-// Sales Orders
 export const loadSalesOrders = () => loadLocal<SaleOrder[]>(KEYS.salesOrders, []);
 export const saveSalesOrders = (data: SaleOrder[]) => save(KEYS.salesOrders, data);
 
-// Inventory Batches
 export const loadInventoryBatches = () => loadLocal<InventoryBatch[]>(KEYS.inventoryBatches, []);
 export const saveInventoryBatches = (data: InventoryBatch[]) => save(KEYS.inventoryBatches, data);
 
-// Sync from Supabase → localStorage (call on app init)
-export async function syncFromSupabase(): Promise<boolean> {
-  let synced = false;
-  for (const [, key] of Object.entries(KEYS)) {
-    if (key === 'scp_theme') continue; // theme is local preference
-    try {
-      const data = await loadFromSupabase(key, null);
-      if (data !== null) {
-        localStorage.setItem(key, JSON.stringify(data));
-        synced = true;
-      }
-    } catch {
-      // Supabase unavailable, continue with localStorage
-    }
-  }
-  return synced;
+/** Sync from Supabase → localStorage. Returns map of keys that had remote data. */
+export async function syncFromSupabase(): Promise<Record<string, boolean>> {
+  const result: Record<string, boolean> = {};
+  await Promise.all(
+    Object.entries(KEYS)
+      .filter(([, k]) => k !== KEYS.theme)
+      .map(async ([, key]) => {
+        try {
+          const data = await loadFromSupabase(key, null);
+          if (data !== null) {
+            localStorage.setItem(key, JSON.stringify(data));
+            result[key] = true;
+          }
+        } catch { /* offline ok */ }
+      })
+  );
+  return result;
 }
 
-// Storage usage
-export function getStorageUsage(): { used: number; total: number; percent: number } {
+export interface StorageBreakdown {
+  key: string;
+  label: string;
+  bytes: number;
+  count: number;
+}
+
+const LABELS: Record<string, string> = {
+  scp_products: 'Sản phẩm',
+  scp_suppliers: 'Nhà cung cấp',
+  scp_quarters: 'Mục tiêu quý',
+  scp_notifications: 'Thông báo',
+  scp_import_orders: 'Đơn nhập hàng',
+  scp_sales_orders: 'Đơn bán hàng',
+  scp_inventory_batches: 'Lô hàng tồn kho',
+};
+
+export function getStorageUsage(): {
+  used: number; total: number; percent: number; breakdown: StorageBreakdown[];
+} {
   let used = 0;
+  const breakdown: StorageBreakdown[] = [];
   for (const key of Object.values(KEYS)) {
+    if (key === KEYS.theme) continue;
     const item = localStorage.getItem(key);
-    if (item) used += item.length * 2;
+    const bytes = item ? item.length * 2 : 0;
+    used += bytes;
+    let count = 0;
+    try { if (item) count = (JSON.parse(item) as unknown[])?.length || 0; } catch {}
+    breakdown.push({ key, label: LABELS[key] || key, bytes, count });
   }
+  breakdown.sort((a, b) => b.bytes - a.bytes);
   const total = 5 * 1024 * 1024;
-  return { used, total, percent: Math.round((used / total) * 100) };
+  return { used, total, percent: Math.round((used / total) * 100), breakdown };
 }
 
-// Backup / Restore
 export function exportBackup(): string {
   return JSON.stringify({
     products: loadProducts(),
@@ -113,7 +121,7 @@ export function exportBackup(): string {
     salesOrders: loadSalesOrders(),
     inventoryBatches: loadInventoryBatches(),
     exportedAt: new Date().toISOString(),
-    version: '3.0',
+    version: '4.0',
   }, null, 2);
 }
 
@@ -128,7 +136,5 @@ export function importBackup(json: string): boolean {
     if (data.salesOrders) saveSalesOrders(data.salesOrders);
     if (data.inventoryBatches) saveInventoryBatches(data.inventoryBatches);
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }

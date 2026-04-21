@@ -8,7 +8,7 @@ export interface Supplier {
 export interface PriceHistoryEntry {
   buyPrice: number;
   sellPrice: number;
-  date: string; // user-selected date, NOT auto
+  date: string;
 }
 
 export interface Product {
@@ -16,11 +16,11 @@ export interface Product {
   name: string;
   brand: string;
   supplierId: string;
-  unit: string; // parent unit: Thùng, Lốc, Kg...
+  unit: string;
   buyPrice: number;
   sellPrice: number;
-  conversionRate: number; // child units per parent (default 1)
-  conversionUnit: string; // child unit name
+  conversionRate: number;
+  conversionUnit: string;
   netWeights: string[];
   notes: string;
   stock: number;
@@ -42,17 +42,14 @@ export interface QuarterData {
   quarter: number;
   year: number;
   targetRevenue: number;
-  targetProfitPercent: number;
+  targetProfitPercent: number; // legacy, unused in UI
+  locked?: boolean;
 }
 
 export type TabId = 'dashboard' | 'import' | 'inventory' | 'sales' | 'catalog';
 
-// ─── Unified Tag System ───────────────────────────────────
-// Import tags: auto (tự động), special (đặc biệt), supplementary (bổ sung), upgraded (nâng cấp)
-// Sale payment: cash (tiền mặt), transfer (chuyển khoản)
 export type ImportTag = 'auto' | 'special' | 'supplementary' | 'upgraded';
 export type PaymentMethod = 'cash' | 'transfer';
-// Keep backward compat
 export type OrderTag = ImportTag;
 
 export interface ImportOrderItem {
@@ -63,8 +60,8 @@ export interface ImportOrderItem {
   unit: string;
   conversionUnit: string;
   conversionRate: number;
-  quantity: number; // parent units
-  buyPrice: number; // per parent unit snapshot
+  quantity: number;
+  buyPrice: number;
   total: number;
 }
 
@@ -77,7 +74,7 @@ export interface ImportOrder {
   total: number;
   tag: ImportTag;
   locked: boolean;
-  images: string[]; // base64 compressed images for supplementary tag
+  images: string[];
   deletedAt: string | null;
   createdAt: string;
 }
@@ -86,10 +83,10 @@ export interface SaleItem {
   productId: string;
   productName: string;
   supplierId: string;
-  unit: string; // sell unit (child or parent)
+  unit: string;
   quantity: number;
-  sellPrice: number; // per unit snapshot
-  buyPrice: number; // per unit snapshot (cost)
+  sellPrice: number;
+  buyPrice: number;
   total: number;
   profit: number;
   profitPercent: number;

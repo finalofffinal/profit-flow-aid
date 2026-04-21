@@ -9,12 +9,13 @@ interface AppSidebarProps {
   onTabChange: (tab: TabId) => void;
 }
 
+// New order: Tổng quan → Danh mục → Nhập hàng → Kho hàng → Bán hàng
 const tabs: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
+  { id: 'catalog', label: 'Danh mục', icon: Tag },
   { id: 'import', label: 'Nhập hàng', icon: Truck },
   { id: 'inventory', label: 'Kho hàng', icon: Warehouse },
   { id: 'sales', label: 'Bán hàng', icon: ShoppingCart },
-  { id: 'catalog', label: 'Danh mục', icon: Tag },
 ];
 
 export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
@@ -22,24 +23,14 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
 
   return (
     <aside
-      className={`hidden md:flex flex-col border-r transition-all duration-200 ${
-        collapsed ? 'w-14' : 'w-52'
-      }`}
+      className={`hidden md:flex flex-col border-r transition-all duration-200 ${collapsed ? 'w-14' : 'w-52'}`}
       style={{ background: 'hsl(var(--sidebar-background))' }}
     >
-      {/* Toggle */}
       <div className={`flex items-center border-b p-2 ${collapsed ? 'justify-center' : 'justify-end'}`} style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-sidebar-foreground hover:bg-sidebar-accent"
-          onClick={() => setCollapsed(!collapsed)}
-        >
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-sidebar-foreground hover:bg-sidebar-accent" onClick={() => setCollapsed(!collapsed)}>
           {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </Button>
       </div>
-
-      {/* Nav items */}
       <nav className="flex flex-1 flex-col gap-1 p-2">
         {tabs.map(tab => {
           const Icon = tab.icon;
@@ -48,17 +39,14 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-sidebar-accent text-sidebar-primary'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
               } ${collapsed ? 'justify-center px-0' : ''}`}
             >
               <Icon className="h-4.5 w-4.5 shrink-0" />
               {!collapsed && <span>{tab.label}</span>}
             </button>
           );
-
           if (collapsed) {
             return (
               <Tooltip key={tab.id}>
