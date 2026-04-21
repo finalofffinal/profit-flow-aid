@@ -440,12 +440,14 @@ function generateSupplierImports(
   const autoCount = Math.max(0, total - manualOrdersCount);
   if (autoCount === 0) return { orders: [], batches: [] };
 
-  // Schedule order days (rải đều có jitter)
+  // Schedule order days — DỒN VỀ ĐẦU/GIỮA QUÝ để gối đầu (có hàng sẵn cho bán)
+  // Phân bổ trong 70% đầu của quý thay vì rải đều cả quý
+  const usableDays = Math.max(1, Math.floor(days.length * 0.7));
   const dayIdxs: number[] = [];
   for (let i = 0; i < autoCount; i++) {
-    const base = Math.floor(((i + 0.5) / autoCount) * days.length);
-    const jitter = Math.floor((rand() - 0.5) * (days.length / autoCount * 0.6));
-    dayIdxs.push(Math.min(days.length - 1, Math.max(0, base + jitter)));
+    const base = Math.floor(((i + 0.5) / autoCount) * usableDays);
+    const jitter = Math.floor((rand() - 0.5) * (usableDays / autoCount * 0.5));
+    dayIdxs.push(Math.min(usableDays - 1, Math.max(0, base + jitter)));
   }
   dayIdxs.sort((a, b) => a - b);
 
@@ -689,8 +691,9 @@ export function generateQuarterData(
   // - NCC nhỏ (≤10 SP) chiếm 10–15% tổng nhập
   // - NCC lớn (>10 SP) chiếm 85–90% tổng nhập
   // Khi scale, CLAMP qty về maxQtyPerProduct/maxQtyPerQuarter để KHÔNG phá rule đặc biệt.
+  // GỐI ĐẦU: tăng tỉ lệ nhập 95–115% (cao hơn doanh thu 1 chút để có tồn kho phục vụ quý sau)
   const isHighRev = quarter.quarter === 1 || quarter.quarter === 4;
-  const importBudgetRatio = isHighRev ? 0.95 + rand() * 0.15 : 0.80 + rand() * 0.15;
+  const importBudgetRatio = isHighRev ? 1.05 + rand() * 0.10 : 0.95 + rand() * 0.10;
   const targetImportTotal = autoTargetRevenue * importBudgetRatio;
   const smallShareRatio = 0.10 + rand() * 0.05; // 10–15%
   const largeShareRatio = 1 - smallShareRatio;
