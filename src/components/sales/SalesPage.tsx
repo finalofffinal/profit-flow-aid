@@ -116,8 +116,13 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
     if (tagFilter !== 'all') {
       result = result.filter(ds => ds.orders.some(o => o.tag === tagFilter));
     }
+    if (brandFilter !== 'all') {
+      result = result.filter(ds =>
+        ds.orders.some(o => o.items.some(it => productBrandMap.get(it.productId) === brandFilter))
+      );
+    }
     return result;
-  }, [dailySales, search, tagFilter]);
+  }, [dailySales, search, tagFilter, brandFilter, productBrandMap]);
 
   const totalRevenue = filtered.reduce((s, d) => s + d.totalRevenue, 0);
   const totalProfit = filtered.reduce((s, d) => s + d.totalProfit, 0);
@@ -138,6 +143,14 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
         <div className="flex items-center gap-2">
           <h2 className="text-base font-bold">Bán hàng</h2>
           <div className="flex-1" />
+          {undoStack.length > 0 && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => {
+              setUndoStack(prev => prev.slice(0, -1));
+              addNotification?.('Đã hoàn tác (chỉ trong UI)', 'info');
+            }}>
+              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
+            </Button>
+          )}
           {currentQLocked && (
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportPdf}>
               <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
@@ -193,6 +206,15 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
               <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
             </SelectContent>
           </Select>
+          {allBrands.length > 0 && (
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-28 h-8"><SelectValue placeholder="Nhãn" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả nhãn</SelectItem>
+                {allBrands.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
