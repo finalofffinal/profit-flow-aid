@@ -842,29 +842,44 @@ export function generateQuarterData(
     // Track SP đã bán hôm nay (để cap 1 đơn vị lớn / SP / ngày)
     const dailyParentSold = new Map<string, number>();
 
+    // YÊU CẦU: 10–15 SP DUY NHẤT mỗi ngày (đa dạng giỏ hàng)
+    const targetDistinctProducts = 10 + Math.floor(rand() * 6); // 10..15
+
     // Shuffle CHỈ trong tập SP đang còn hàng → bán ra phụ thuộc kho thực (độ trễ tự nhiên)
-    // Không ưu tiên SP biên lợi nhuận cao — duyệt theo thứ tự ngẫu nhiên hoàn toàn.
     const inStock = activeProducts.filter(p => (stockMap.get(p.id) || 0) > 0);
     const shuffled = [...inStock].sort(() => rand() - 0.5);
+    // Cắt giới hạn 10-15 SP DUY NHẤT cho ngày hôm nay
+    const dailyPool = shuffled.slice(0, Math.min(targetDistinctProducts, shuffled.length));
 
-    for (let i = 0; i < shuffled.length && remaining > 3000; i++) {
-      const product = shuffled[i];
+    for (let i = 0; i < dailyPool.length && remaining > 3000; i++) {
+      const product = dailyPool[i];
       const rate = product.conversionRate || 1;
       const hasChild = rate > 1;
       const sellPerChild = product.sellPrice / rate;
       const buyPerChild = product.buyPrice / rate;
       if (sellPerChild <= 0) continue;
 
-      // 1 đơn vị lớn / SP / ngày
-      const maxChildUnitsToday = hasChild ? rate : 1;
+      // YÊU CẦU: SP có conversionRate ≥ 10 → bán 20–60% đơn vị lớn (tức 0.2*rate .. 0.6*rate child units)
+      // SP khác: tối đa 1 đơn vị lớn / ngày
+      let maxChildUnitsToday: number;
+      let minChildUnitsToday = 1;
+      if (hasChild && rate >= 10) {
+        const minPct = 0.20 + rand() * 0.10; // 20–30%
+        const maxPct = 0.40 + rand() * 0.20; // 40–60%
+        minChildUnitsToday = Math.max(1, Math.floor(rate * minPct));
+        maxChildUnitsToday = Math.max(minChildUnitsToday, Math.floor(rate * maxPct));
+      } else {
+        maxChildUnitsToday = hasChild ? rate : 1;
+      }
+
       const alreadySold = dailyParentSold.get(product.id) || 0;
       if (alreadySold >= maxChildUnitsToday) continue;
       const remainingCapToday = maxChildUnitsToday - alreadySold;
 
       // Lượng cần bán ước tính
-      const remainingProds = shuffled.length - i;
-      const portion = remaining / Math.max(1, Math.min(remainingProds, 20));
-      let qty = Math.max(1, Math.round(portion / sellPerChild));
+      const remainingProds = dailyPool.length - i;
+      const portion = remaining / Math.max(1, remainingProds);
+      let qty = Math.max(minChildUnitsToday, Math.round(portion / sellPerChild));
       qty = Math.min(qty, remainingCapToday);
 
       // Stock cứng — KHÔNG tạo virtual stock. Hết hàng → bỏ qua SP này.
