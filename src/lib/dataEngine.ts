@@ -217,7 +217,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('hpv')) {
     return {
-      ordersCount: [18, 24], // 6–8 đơn/tháng × 3 tháng
+      ordersCount: [9, 12], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       excludeProduct: (p) => {
         const lp = p.name.toLowerCase();
         return lp.includes('nam ngư cao cấp 500ml') || lp.includes('nam ngu cao cap 500ml')
@@ -314,7 +314,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('chợ lớn') || has('cho lon')) {
     return {
-      ordersCount: [18, 24], // 6–8 đơn/tháng × 3 tháng
+      ordersCount: [9, 12], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         const brand = (p.brand || '').toLowerCase();
@@ -344,7 +344,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('tada')) {
     return {
-      ordersCount: [21, 27], // 7–9 đơn/tháng × 3 tháng
+      ordersCount: [10, 13], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       maxQtyPerProduct: (p) => {
         const brand = (p.brand || '').toLowerCase();
         if (brand.includes('phúc bình dương') || brand.includes('phuc binh duong')) return 1;
@@ -360,7 +360,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('địa đạo') || has('dia dao')) {
     return {
-      ordersCount: [24, 30], // 8–10 đơn/tháng × 3 tháng
+      ordersCount: [12, 15], // ~4-5 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
       maxQtyPerProduct: (p) => {
         const lp = p.name.toLowerCase();
         const brand = (p.brand || '').toLowerCase();
@@ -456,11 +456,12 @@ function generateSupplierImports(
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
   if (isLargeSupplier) {
-    // NCC lớn (>10 SP, 18-30 đơn/quý):
-    // Mỗi đơn 4-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP qua nhiều lượt.
-    const targetItemsPerOrder = Math.max(4, Math.min(7, Math.round((eligible.length * 1.4) / autoCount)));
+    // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
+    // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
+    // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
+    const targetItemsPerOrder = Math.max(5, Math.min(7, Math.ceil(eligible.length / autoCount) + 1));
     const totalSlots = targetItemsPerOrder * autoCount;
-    const passes = Math.ceil(totalSlots / eligible.length);
+    const passes = Math.max(1, Math.ceil(totalSlots / eligible.length));
 
     let slotCursor = 0;
     for (let pass = 0; pass < passes; pass++) {
@@ -841,29 +842,44 @@ export function generateQuarterData(
     // Track SP đã bán hôm nay (để cap 1 đơn vị lớn / SP / ngày)
     const dailyParentSold = new Map<string, number>();
 
+    // YÊU CẦU: 10–15 SP DUY NHẤT mỗi ngày (đa dạng giỏ hàng)
+    const targetDistinctProducts = 10 + Math.floor(rand() * 6); // 10..15
+
     // Shuffle CHỈ trong tập SP đang còn hàng → bán ra phụ thuộc kho thực (độ trễ tự nhiên)
-    // Không ưu tiên SP biên lợi nhuận cao — duyệt theo thứ tự ngẫu nhiên hoàn toàn.
     const inStock = activeProducts.filter(p => (stockMap.get(p.id) || 0) > 0);
     const shuffled = [...inStock].sort(() => rand() - 0.5);
+    // Cắt giới hạn 10-15 SP DUY NHẤT cho ngày hôm nay
+    const dailyPool = shuffled.slice(0, Math.min(targetDistinctProducts, shuffled.length));
 
-    for (let i = 0; i < shuffled.length && remaining > 3000; i++) {
-      const product = shuffled[i];
+    for (let i = 0; i < dailyPool.length && remaining > 3000; i++) {
+      const product = dailyPool[i];
       const rate = product.conversionRate || 1;
       const hasChild = rate > 1;
       const sellPerChild = product.sellPrice / rate;
       const buyPerChild = product.buyPrice / rate;
       if (sellPerChild <= 0) continue;
 
-      // 1 đơn vị lớn / SP / ngày
-      const maxChildUnitsToday = hasChild ? rate : 1;
+      // YÊU CẦU: SP có conversionRate ≥ 10 → bán 20–60% đơn vị lớn (tức 0.2*rate .. 0.6*rate child units)
+      // SP khác: tối đa 1 đơn vị lớn / ngày
+      let maxChildUnitsToday: number;
+      let minChildUnitsToday = 1;
+      if (hasChild && rate >= 10) {
+        const minPct = 0.20 + rand() * 0.10; // 20–30%
+        const maxPct = 0.40 + rand() * 0.20; // 40–60%
+        minChildUnitsToday = Math.max(1, Math.floor(rate * minPct));
+        maxChildUnitsToday = Math.max(minChildUnitsToday, Math.floor(rate * maxPct));
+      } else {
+        maxChildUnitsToday = hasChild ? rate : 1;
+      }
+
       const alreadySold = dailyParentSold.get(product.id) || 0;
       if (alreadySold >= maxChildUnitsToday) continue;
       const remainingCapToday = maxChildUnitsToday - alreadySold;
 
       // Lượng cần bán ước tính
-      const remainingProds = shuffled.length - i;
-      const portion = remaining / Math.max(1, Math.min(remainingProds, 20));
-      let qty = Math.max(1, Math.round(portion / sellPerChild));
+      const remainingProds = dailyPool.length - i;
+      const portion = remaining / Math.max(1, remainingProds);
+      let qty = Math.max(minChildUnitsToday, Math.round(portion / sellPerChild));
       qty = Math.min(qty, remainingCapToday);
 
       // Stock cứng — KHÔNG tạo virtual stock. Hết hàng → bỏ qua SP này.
@@ -974,8 +990,9 @@ export function computeCarryOverStock(
 
 /**
  * Tạo NHIỀU đơn nhập "bổ sung" (tag = 'supplementary') để bù số tiền thiếu.
- * Chia đều cho 2-4 NCC đủ tư cách (không manual-only) — KHÔNG dồn vào 1 NCC.
- * Tránh đơn quá nhiều tiền: mỗi đơn ~3-6 SP, tổng ≤ shortfall/numSuppliers * 1.2.
+ * - Chia đều cho TẤT CẢ NCC đủ tư cách (không manual-only) — KHÔNG dồn vào vài NCC.
+ * - Mỗi SP tối đa 3 đơn vị lớn / đơn bù.
+ * - Trải đều TẤT CẢ sản phẩm của NCC, không chỉ vài SP.
  */
 export function generateSupplementaryOrder(
   quarter: number,
@@ -994,7 +1011,7 @@ export function generateSupplementaryOrder(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // Chọn NCC đủ tư cách (không manual-only), ưu tiên NCC nhiều SP
+  // Chọn TẤT CẢ NCC đủ tư cách (không manual-only)
   type Cand = { sup: Supplier; prods: Product[]; rule: SupplierRuleResult };
   const candidates: Cand[] = [];
   for (const [sid, prods] of supplierProducts) {
@@ -1008,40 +1025,48 @@ export function generateSupplementaryOrder(
   }
   if (candidates.length === 0) return null;
 
-  // Sắp giảm dần theo số SP, lấy 2-4 NCC
-  candidates.sort((a, b) => b.prods.length - a.prods.length);
-  const numToUse = Math.min(candidates.length, Math.max(2, Math.min(4, candidates.length)));
-  const chosen = candidates.slice(0, numToUse);
-
+  // Phân bổ ngân sách theo tỉ trọng số SP của mỗi NCC (NCC nhiều SP → nhận nhiều hơn)
+  const totalProds = candidates.reduce((s, c) => s + c.prods.length, 0);
   const rand = seededRandom(quarter * 991 + year * 41 + Math.floor(shortfall / 1000));
   const days = getDaysInQuarter(quarter, year);
   const importDate = days[Math.floor(days.length * 0.1)];
-  const perSupplierBudget = shortfall / numToUse;
 
   const results: ImportOrder[] = [];
+  const MAX_QTY_PER_PRODUCT = 3; // Yêu cầu: tối đa 3 đơn vị lớn / SP / đơn bù
 
-  for (const { sup, prods, rule } of chosen) {
+  for (const { sup, prods, rule } of candidates) {
+    // Tỉ trọng theo số SP của NCC này
+    const supplierBudget = shortfall * (prods.length / totalProds);
+
+    // Trải đều TẤT CẢ SP: shuffle nhẹ rồi bao phủ toàn bộ
     const shuffled = [...prods].sort(() => rand() - 0.5);
-    // Mỗi đơn 3-6 SP để tránh đơn quá ít/quá nhiều SP
-    const pickCount = Math.min(shuffled.length, Math.max(3, Math.min(6, Math.ceil(shuffled.length / 4))));
-    const picked = shuffled.slice(0, pickCount);
 
     const items: ImportOrderItem[] = [];
-    let acc = 0;
-    for (const p of picked) {
-      if (acc >= perSupplierBudget * 1.1) break;
-      const remain = perSupplierBudget - acc;
-      const slotsLeft = Math.max(1, picked.length - items.length);
-      const targetSpend = remain / slotsLeft;
-      let qty = Math.max(1, Math.round(targetSpend / Math.max(1, p.buyPrice)));
-      // Tôn trọng rule cứng nếu có
+    // Pass 1: gán mỗi SP qty = 1 (bao phủ toàn bộ)
+    for (const p of shuffled) {
+      let qty = 1;
       const hardMax = rule.maxQtyPerProduct?.(p);
       if (hardMax !== undefined) qty = Math.min(qty, hardMax);
-      const minReq = rule.minQtyPerOrder?.(p);
-      if (minReq !== undefined) qty = Math.max(qty, minReq);
+      if (qty <= 0) continue;
       items.push(buildItem(p, sup, qty));
-      acc += p.buyPrice * qty;
     }
+
+    // Pass 2: tăng dần qty (vòng tròn) cho đến khi đạt ngân sách hoặc chạm trần 3
+    let acc = items.reduce((s, it) => s + it.total, 0);
+    let safety = items.length * MAX_QTY_PER_PRODUCT;
+    let cursor = 0;
+    while (acc < supplierBudget && safety-- > 0 && items.length > 0) {
+      const it = items[cursor % items.length];
+      cursor++;
+      const prod = prods.find(p => p.id === it.productId)!;
+      const hardMax = rule.maxQtyPerProduct?.(prod);
+      const cap = Math.min(MAX_QTY_PER_PRODUCT, hardMax ?? MAX_QTY_PER_PRODUCT);
+      if (it.quantity >= cap) continue;
+      it.quantity += 1;
+      it.total = it.buyPrice * it.quantity;
+      acc += it.buyPrice;
+    }
+
     if (items.length === 0) continue;
 
     results.push({
