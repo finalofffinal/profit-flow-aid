@@ -2,15 +2,12 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { InventoryBatch, Product, Supplier } from '@/types';
 import { BUSINESS_INFO } from '@/lib/constants';
+import { useVietnameseFont, PDF_FONT } from '@/lib/fonts';
 
 function formatVNDNumber(amount: number): string {
   return Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
-/**
- * Inventory PDF — for a locked quarter.
- * Total stock value + per-supplier breakdown with products + qty.
- */
 export function exportInventoryPdf(
   batches: InventoryBatch[],
   products: Product[],
@@ -19,20 +16,24 @@ export function exportInventoryPdf(
   year: number
 ) {
   const doc = new jsPDF('p', 'mm', 'a4');
+  useVietnameseFont(doc);
   const pageWidth = doc.internal.pageSize.getWidth();
 
   const qBatches = batches.filter(b => b.quarter === quarter && b.year === year);
 
+  doc.setFont(PDF_FONT, 'bold');
   doc.setFontSize(11);
-  doc.text(`HO KINH DOANH: ${BUSINESS_INFO.name}`, 14, 20);
+  doc.text(`HỘ KINH DOANH: ${BUSINESS_INFO.name}`, 14, 20);
+  doc.setFont(PDF_FONT, 'normal');
   doc.setFontSize(9);
   doc.text(`MST: ${BUSINESS_INFO.taxId}`, 14, 26);
-  doc.text(`Dia chi: ${BUSINESS_INFO.address}, ${BUSINESS_INFO.stall}`, 14, 32);
+  doc.text(`Địa chỉ: ${BUSINESS_INFO.address}, ${BUSINESS_INFO.stall}`, 14, 32);
 
+  doc.setFont(PDF_FONT, 'bold');
   doc.setFontSize(14);
-  doc.text(`KIEM KE KHO HANG - QUY ${quarter}/${year}`, pageWidth / 2, 44, { align: 'center' });
+  doc.text(`KIỂM KÊ KHO HÀNG - QUÝ ${quarter}/${year}`, pageWidth / 2, 44, { align: 'center' });
+  doc.setFont(PDF_FONT, 'normal');
 
-  // Group by supplier
   const bySupplier = new Map<string, InventoryBatch[]>();
   for (const b of qBatches) {
     if (!bySupplier.has(b.supplierId)) bySupplier.set(b.supplierId, []);
@@ -42,15 +43,14 @@ export function exportInventoryPdf(
   const grandTotal = qBatches.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
 
   doc.setFontSize(10);
-  doc.text(`Tong gia tri ton kho: ${formatVNDNumber(grandTotal)} VND`, 14, 54);
-  doc.text(`So nha cung cap: ${bySupplier.size}`, 14, 60);
+  doc.text(`Tổng giá trị tồn kho: ${formatVNDNumber(grandTotal)} VNĐ`, 14, 54);
+  doc.text(`Số nhà cung cấp: ${bySupplier.size}`, 14, 60);
 
   const tableData: string[][] = [];
   for (const [sid, batches] of bySupplier) {
     const supplier = suppliers.find(s => s.id === sid);
-    const supplierName = supplier?.name || 'Khac';
+    const supplierName = supplier?.name || 'Khác';
 
-    // Aggregate by product
     const productMap = new Map<string, { name: string; brand: string; qty: number; value: number; unit: string }>();
     for (const b of batches) {
       const product = products.find(p => p.id === b.productId);
@@ -72,14 +72,15 @@ export function exportInventoryPdf(
     }
   }
 
-  tableData.push(['', `TONG CONG TON KHO Q${quarter}/${year}`, formatVNDNumber(grandTotal)]);
+  tableData.push(['', `TỔNG CỘNG TỒN KHO Q${quarter}/${year}`, formatVNDNumber(grandTotal)]);
 
   autoTable(doc, {
     startY: 68,
-    head: [['Nha cung cap', 'San pham', 'Gia tri / So luong']],
+    head: [['Nhà cung cấp', 'Sản phẩm', 'Giá trị / Số lượng']],
     body: tableData,
-    styles: { fontSize: 7, cellPadding: 1.5 },
-    headStyles: { fillColor: [50, 50, 80], fontSize: 8 },
+    styles: { font: PDF_FONT, fontSize: 7, cellPadding: 1.5 },
+    headStyles: { font: PDF_FONT, fontStyle: 'bold', fillColor: [50, 50, 80], fontSize: 8 },
+    bodyStyles: { font: PDF_FONT },
     columnStyles: {
       0: { cellWidth: 50, fontStyle: 'bold' },
       1: { cellWidth: 80 },
