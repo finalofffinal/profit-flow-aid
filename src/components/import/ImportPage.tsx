@@ -159,8 +159,8 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           <Badge variant="outline" className="font-bold">{filteredOrders.length} đơn</Badge>
           <div className="flex-1" />
           {undoStack.length > 0 && (
-            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo}>
-              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo} title="Ctrl+Z">
+              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác ({undoStack.length})
             </Button>
           )}
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
