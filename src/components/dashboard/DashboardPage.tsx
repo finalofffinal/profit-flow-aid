@@ -194,21 +194,9 @@ export function DashboardPage({
             {showNumbers ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-xs text-muted-foreground">Doanh thu Q{selectedQ}</p>
-            <p className="text-xl md:text-2xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Định mức Q{selectedQ}</p>
-            <p className="text-xl md:text-2xl font-black text-foreground">{mask(formatVND(currentQTarget))}</p>
-          </div>
-        </div>
-        <div className="mt-2">
-          <Progress value={currentQProgress} className="h-2" />
-          <p className="text-[11px] text-muted-foreground mt-1 text-right">
-            {currentQProgress.toFixed(1)}% — Cần đạt đúng {mask(formatCompactVND(currentQTarget))}
-          </p>
+        <div className="mt-3">
+          <p className="text-xs text-muted-foreground">Doanh thu Q{selectedQ}</p>
+          <p className="text-2xl md:text-3xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
         </div>
       </div>
 
