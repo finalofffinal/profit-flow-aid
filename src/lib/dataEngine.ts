@@ -663,7 +663,9 @@ export function generateQuarterData(
     return { importOrders: [], salesOrders: [], inventoryBatches: [] };
   }
 
-  const rand = seededRandom(quarter.quarter * 7919 + quarter.year * 31);
+  // regenSeed cho phép tạo lại ngẫu nhiên với cấu trúc khác. Mặc định ổn định theo Q/Y.
+  const regenSeed = (quarter as any).regenSeed || 0;
+  const rand = seededRandom(quarter.quarter * 7919 + quarter.year * 31 + regenSeed * 13);
   const days = getDaysInQuarter(quarter.quarter, quarter.year);
   const activeProducts = products.filter(p => !p.deletedAt && p.sellPrice > 0);
   if (activeProducts.length === 0) {
