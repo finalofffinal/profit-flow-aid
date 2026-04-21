@@ -527,3 +527,114 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
     </Dialog>
   );
 }
+
+function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
+  order: ImportOrder;
+  products: Product[];
+  suppliers: Supplier[];
+  onClose: () => void;
+  onSubmit: (updates: Partial<ImportOrder>) => void;
+}) {
+  const [date, setDate] = useState(order.date.split('T')[0]);
+  const [tag, setTag] = useState<ImportTag>(order.tag);
+  const [supplierId, setSupplierId] = useState(order.supplierId);
+  const [items, setItems] = useState(order.items.map(it => ({ productId: it.productId, quantity: it.quantity })));
+
+  const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
+
+  const total = useMemo(() => items.reduce((s, it) => {
+    const p = products.find(pp => pp.id === it.productId);
+    return s + (p ? p.buyPrice * it.quantity : 0);
+  }, 0), [items, products]);
+
+  const handleSubmit = () => {
+    const supplier = suppliers.find(s => s.id === supplierId);
+    if (!supplier) return;
+    const newItems: ImportOrder['items'] = items
+      .filter(it => it.productId && it.quantity > 0)
+      .map(it => {
+        const p = products.find(pp => pp.id === it.productId)!;
+        return {
+          productId: p.id, productName: p.name,
+          supplierId: p.supplierId, supplierName: supplier.name,
+          unit: p.unit, conversionUnit: p.conversionUnit || p.unit,
+          conversionRate: p.conversionRate || 1,
+          quantity: it.quantity, buyPrice: p.buyPrice,
+          total: p.buyPrice * it.quantity,
+        };
+      });
+    if (newItems.length === 0) return;
+    onSubmit({
+      date, tag, supplierId, supplierName: supplier.name,
+      items: newItems,
+    });
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Sửa đơn nhập</DialogTitle>
+          <DialogDescription>Chỉnh ngày, NCC, tag, sản phẩm và số lượng</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Nhà cung cấp</Label>
+              <Select value={supplierId} onValueChange={(v) => { setSupplierId(v); setItems([]); }}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Ngày nhập</Label>
+              <Input className="mt-1" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Tag</Label>
+            <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
+                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold">Sản phẩm ({items.length})</Label>
+              <Button variant="outline" size="sm" onClick={() => setItems(prev => [...prev, { productId: '', quantity: 1 }])} disabled={!supplierId}>
+                <Plus className="mr-1 h-3 w-3" /> Thêm SP
+              </Button>
+            </div>
+            {items.map((it, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Select value={it.productId} onValueChange={v => { const u = [...items]; u[i].productId = v; setItems(u); }}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                  <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input className="w-20" type="number" min={1} value={it.quantity}
+                  onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                  onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            {items.length > 0 && (
+              <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
+                Tổng: {formatVND(total)}
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Hủy</Button>
+          <Button onClick={handleSubmit} disabled={!supplierId || items.length === 0}>Lưu</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
