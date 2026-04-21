@@ -207,6 +207,7 @@ function IndexInner() {
             isQuarterLocked={isQuarterLocked}
             quarters={quarters}
             onAutoReplenish={handleAutoReplenish}
+            onCreateSupplementaryOrder={handleCreateSupplementary}
           />
         );
       case 'inventory':
