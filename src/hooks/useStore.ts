@@ -304,7 +304,7 @@ export function useImportOrders() {
   const activeOrders = useMemo(() => orders.filter(o => !o.deletedAt), [orders]);
   const deletedOrders = useMemo(() => orders.filter(o => o.deletedAt), [orders]);
 
-  return { orders, activeOrders, deletedOrders, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, setOrders };
+  return { orders, activeOrders, deletedOrders, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, updateOrder, setOrders };
 }
 
 export function useSalesOrders() {
