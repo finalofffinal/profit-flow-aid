@@ -94,6 +94,40 @@ export function useProducts() {
     });
   }, [setProducts]);
 
+  /** Reorder products: receives a flat array with new order positions for products in the same supplier */
+  const reorderProducts = useCallback((orderedIds: string[]) => {
+    setProducts(prev => prev.map(p => {
+      const idx = orderedIds.indexOf(p.id);
+      if (idx < 0) return p;
+      return { ...p, order: idx, updatedAt: new Date().toISOString() };
+    }));
+  }, [setProducts]);
+
+  /** Update price history entry at index; back-fills sellPrice to keep profit ratio. */
+  const updatePriceHistoryEntry = useCallback((productId: string, index: number, entry: { date: string; buyPrice: number }) => {
+    setProducts(prev => prev.map(p => {
+      if (p.id !== productId) return p;
+      const history = [...(p.priceHistory || [])];
+      const old = history[index];
+      if (!old) return p;
+      // Preserve profit margin: newSell = newBuy * (oldSell / oldBuy) when oldBuy > 0
+      const ratio = old.buyPrice > 0 ? old.sellPrice / old.buyPrice : 1;
+      const newSell = Math.round(entry.buyPrice * ratio);
+      history[index] = { date: entry.date, buyPrice: entry.buyPrice, sellPrice: newSell };
+      // Sort by date desc
+      history.sort((a, b) => b.date.localeCompare(a.date));
+      // If this is the latest entry, also update product's current price
+      const latest = history[0];
+      return {
+        ...p,
+        priceHistory: history.slice(0, 5),
+        buyPrice: latest.buyPrice,
+        sellPrice: latest.sellPrice,
+        updatedAt: new Date().toISOString(),
+      };
+    }));
+  }, [setProducts]);
+
   const activeProducts = useMemo(() => products.filter(p => !p.deletedAt), [products]);
   const deletedProducts = useMemo(() => products.filter(p => p.deletedAt), [products]);
 
@@ -101,7 +135,7 @@ export function useProducts() {
     products, activeProducts, deletedProducts,
     addProduct, updateProduct, softDeleteProduct,
     restoreProduct, permanentDeleteProduct,
-    moveProduct, copyProduct, setProducts,
+    moveProduct, copyProduct, reorderProducts, updatePriceHistoryEntry, setProducts,
   };
 }
 
