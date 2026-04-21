@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
@@ -29,9 +29,10 @@ interface ImportPageProps {
   isQuarterLocked?: (q: number, y: number) => boolean;
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
+  onCreateSupplementaryOrder?: (q: number, y: number, shortfall: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onCreateSupplementaryOrder }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
