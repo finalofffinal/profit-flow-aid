@@ -25,12 +25,13 @@ interface ImportPageProps {
   permanentDeleteOrder: (id: string) => void;
   addNotification: (msg: string, type?: any) => void;
   onUpdateOrderDate?: (id: string, newDate: string) => void;
+  onUpdateOrder?: (id: string, updates: Partial<ImportOrder>) => void;
   isQuarterLocked?: (q: number, y: number) => boolean;
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
