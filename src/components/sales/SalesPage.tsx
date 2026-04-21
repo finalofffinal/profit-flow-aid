@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { TimeRangeFilter, TimeRange, filterByTimeRange } from '@/components/common/TimeRangeFilter';
 import { exportSalesPdf } from '@/lib/exportPdf';
 
 interface SalesPageProps {
@@ -18,7 +19,7 @@ interface SalesPageProps {
   addNotification?: (msg: string, type?: any) => void;
 }
 
-type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
+
 
 export function SalesPage({ salesOrders, products = [], quarters, addNotification }: SalesPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
@@ -55,38 +56,8 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
   const activeOrders = salesOrders.filter(o => !o.deletedAt);
 
   const timeFiltered = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    
-    return activeOrders.filter(o => {
-      const day = o.date.split('T')[0];
-      switch (timeRange) {
-        case 'today': return day === todayStr;
-        case 'week': {
-          const d = new Date(day);
-          const weekStart = new Date(now);
-          weekStart.setDate(now.getDate() - now.getDay() + 1);
-          weekStart.setHours(0, 0, 0, 0);
-          return d >= weekStart && d <= now;
-        }
-        case 'month': {
-          const d = new Date(day);
-          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }
-        case 'quarter': {
-          const d = new Date(day);
-          const q = Math.ceil((now.getMonth() + 1) / 3);
-          const dq = Math.ceil((d.getMonth() + 1) / 3);
-          return dq === q && d.getFullYear() === now.getFullYear();
-        }
-        case 'custom': {
-          if (!customFrom || !customTo) return true;
-          return day >= customFrom && day <= customTo;
-        }
-        default: return true;
-      }
-    });
-  }, [activeOrders, timeRange, customFrom, customTo]);
+    return filterByTimeRange(activeOrders, timeRange, selQ, selYear, customFrom, customTo);
+  }, [activeOrders, timeRange, selQ, selYear, customFrom, customTo]);
 
   const dailySales = useMemo(() => {
     const map = new Map<string, DailySales>();
