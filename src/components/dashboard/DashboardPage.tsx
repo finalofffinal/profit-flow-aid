@@ -359,7 +359,7 @@ export function DashboardPage({
         <Button variant="outline" size="sm" className="flex-1" onClick={handleBackup}>
           <Download className="mr-2 h-4 w-4" /> Sao lưu JSON
         </Button>
-        <Button variant="outline" size="sm" className="flex-1" onClick={handleRestore}>
+        <Button data-admin-only variant="outline" size="sm" className="flex-1" onClick={handleRestore}>
           <Upload className="mr-2 h-4 w-4" /> Khôi phục
         </Button>
       </div>
