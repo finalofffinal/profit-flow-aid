@@ -495,16 +495,21 @@ export function CatalogPage({
   const activeSuppliers = useMemo(() => suppliers.filter(s => !s.deletedAt), [suppliers]);
   const deletedSuppliers = useMemo(() => suppliers.filter(s => s.deletedAt), [suppliers]);
 
-  // All unique units for filter
+  // All unique units + brands for filters
   const allUnits = useMemo(() => {
     const units = new Set(activeProducts.map(p => p.unit).filter(Boolean));
     return Array.from(units);
+  }, [activeProducts]);
+  const allBrands = useMemo(() => {
+    const brands = new Set(activeProducts.map(p => p.brand).filter(Boolean));
+    return Array.from(brands).sort();
   }, [activeProducts]);
 
   const filtered = useMemo(() => {
     let list = activeProducts;
     if (filterNCC !== 'all') list = list.filter(p => p.supplierId === filterNCC);
     if (filterUnit !== 'all') list = list.filter(p => p.unit === filterUnit);
+    if (filterBrand !== 'all') list = list.filter(p => p.brand === filterBrand);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(p =>
@@ -516,7 +521,7 @@ export function CatalogPage({
       );
     }
     return list;
-  }, [activeProducts, filterNCC, filterUnit, search]);
+  }, [activeProducts, filterNCC, filterUnit, filterBrand, search]);
 
   const groupedBySupplier = useMemo(() => {
     const groups: { supplier: Supplier; products: Product[] }[] = [];
