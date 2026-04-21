@@ -93,8 +93,8 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
     const order = activeOrders.find(o => o.id === id);
     deleteOrder(id);
     if (order) {
-      setUndoStack(prev => [...prev, { action: 'delete_order', data: id }]);
-      addNotification(`Đã xóa đơn nhập ${order.supplierName}`, 'info');
+      setUndoStack(prev => [...prev, { action: 'delete_order', data: id, label: `đơn nhập ${order.supplierName}` }].slice(-20));
+      addNotification(`Đã xóa đơn nhập ${order.supplierName} · Ctrl+Z để hoàn tác`, 'info');
     }
   };
 
@@ -105,8 +105,21 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
       restoreOrder(last.data);
     }
     setUndoStack(prev => prev.slice(0, -1));
-    addNotification('Đã hoàn tác', 'info');
+    addNotification(`Đã hoàn tác: ${last.label || 'hành động'}`, 'success');
   };
+
+  // Ctrl+Z keyboard shortcut
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && undoStack.length > 0) {
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoStack]);
 
   const handleDateChange = (orderId: string, newDate: string) => {
     if (onUpdateOrderDate) {
@@ -114,6 +127,26 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
       addNotification('Đã cập nhật ngày đơn hàng', 'info');
     }
     setEditingDate(null);
+  };
+
+  // ===== Cảnh báo nhập thiếu so với doanh thu cần tạo =====
+  // Tổng nhập trong quý hiện tại / Doanh thu mục tiêu Q. Chuẩn: 80–115%.
+  const currentQTotalImport = useMemo(() => {
+    return activeOrders.filter(o => {
+      const d = new Date(o.date);
+      return Math.ceil((d.getMonth() + 1) / 3) === selQ && d.getFullYear() === selYear;
+    }).reduce((s, o) => s + o.total, 0);
+  }, [activeOrders, selQ, selYear]);
+
+  const targetRev = currentQuarter?.targetRevenue || 0;
+  const importRatio = targetRev > 0 ? currentQTotalImport / targetRev : 1;
+  const isShort = targetRev > 0 && importRatio < 0.80 && !currentQLocked;
+  const shortfall = Math.max(0, targetRev * 0.95 - currentQTotalImport);
+
+  const handleCreateSupplementary = () => {
+    if (!onCreateSupplementaryOrder || shortfall <= 0) return;
+    onCreateSupplementaryOrder(selQ, selYear, shortfall);
+    addNotification(`Đang tạo đơn bù ~${formatCompactVND(shortfall)} cho Q${selQ}/${selYear}`, 'success');
   };
 
   const totalImport = filteredOrders.reduce((s, o) => s + o.total, 0);
