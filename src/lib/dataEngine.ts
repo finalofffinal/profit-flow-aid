@@ -99,7 +99,7 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
     return map;
   }
 
-  // Allocate then enforce exact sum on the last non-zero day
+  // Allocate then enforce EXACT sum on the last non-zero day
   let allocated = 0;
   let lastNonZeroIdx = -1;
   for (let i = 0; i < days.length; i++) {
@@ -108,7 +108,7 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
       continue;
     }
     const raw = (weights[i] / weightSum) * totalRevenue;
-    const amount = roundRevenue(Math.max(50000, raw));
+    const amount = Math.max(50000, Math.round(raw / 1000) * 1000);
     map.set(days[i], amount);
     allocated += amount;
     lastNonZeroIdx = i;
