@@ -1,12 +1,18 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { SaleOrder } from '@/types';
-import { BUSINESS_INFO, IMPORT_TAG_LABELS } from '@/lib/constants';
+import { BUSINESS_INFO } from '@/lib/constants';
 
 function formatVNDNumber(amount: number): string {
-  return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+const WEEKDAYS = ['Chu nhat', 'Thu hai', 'Thu ba', 'Thu tu', 'Thu nam', 'Thu sau', 'Thu bay'];
+
+/**
+ * Sales PDF — NO tags (TM/CK/auto), NO profit info.
+ * Format: Day-by-day breakdown of products, quantities, totals; quarter total at end.
+ */
 export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters: number[] = [1, 2, 3, 4]) {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -53,31 +59,31 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
       const dayOrders = dayMap.get(day)!;
       const dateObj = new Date(day);
       const dateStr = dateObj.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+      const weekday = WEEKDAYS[dateObj.getDay()];
       const dayTotal = dayOrders.reduce((s, o) => s + o.totalRevenue, 0);
       quarterTotal += dayTotal;
 
-      const tagLabel = dayOrders.some(o => o.tag !== 'auto')
-        ? dayOrders.filter(o => o.tag !== 'auto').map(o => IMPORT_TAG_LABELS[o.tag] || 'TM').join(', ')
-        : 'TM';
-      tableData.push([tagLabel, dateStr, `Doanh thu ngay ${dateStr}`, formatVNDNumber(dayTotal)]);
+      // Day header row (no tag, no payment method)
+      tableData.push([dateStr, `${weekday}, ngay ${dateStr}`, formatVNDNumber(dayTotal)]);
 
+      // Items grouped per product
       for (const order of dayOrders) {
         for (const item of order.items) {
-          tableData.push(['', '', `  ${item.productName} x${item.quantity} ${item.unit}`, formatVNDNumber(item.total)]);
+          tableData.push(['', `  ${item.productName} x${item.quantity} ${item.unit}`, formatVNDNumber(item.total)]);
         }
       }
     }
 
-    tableData.push(['', '', `TONG CONG QUY ${q}`, formatVNDNumber(quarterTotal)]);
+    tableData.push(['', `TONG CONG QUY ${q}`, formatVNDNumber(quarterTotal)]);
 
     autoTable(doc, {
       startY: currentY,
-      head: [['Chung tu', 'Ngay thang', 'Dien giai', 'So tien (VND)']],
+      head: [['Ngay thang', 'Dien giai', 'So tien (VND)']],
       body: tableData,
       styles: { fontSize: 7, cellPadding: 1.5 },
       headStyles: { fillColor: [50, 50, 80], fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 25 }, 1: { cellWidth: 22 }, 2: { cellWidth: 90 }, 3: { cellWidth: 35, halign: 'right' },
+        0: { cellWidth: 25 }, 1: { cellWidth: 115 }, 2: { cellWidth: 35, halign: 'right' },
       },
       didParseCell: (data) => {
         if (data.row.index === tableData.length - 1 && data.section === 'body') {
