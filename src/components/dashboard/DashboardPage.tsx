@@ -149,6 +149,37 @@ export function DashboardPage({
     addNotification(`Đã tạo định mức năm ${selectedYear}: ${(totalAnnual / 1_000_000).toFixed(0)} triệu`, 'quarter_update');
   };
 
+  /**
+   * Kiến nghị: Giữ nguyên các quý đã sửa thủ công (locked OR có target>0 do user đặt),
+   * tự động phân bổ phần còn lại cho các quý chưa sửa theo trọng số mùa vụ
+   * (Q1+Q4 cao hơn) sao cho TỔNG = MAX_YEARLY_REVENUE.
+   */
+  const handleSuggest = () => {
+    const weights = [0.30, 0.18, 0.20, 0.32];
+    // "Giữ nguyên" = locked. Các quý chưa locked sẽ được điều chỉnh.
+    const lockedQuarters = [1, 2, 3, 4].filter(q => getQ(q)?.locked);
+    const lockedSum = lockedQuarters.reduce((s, q) => s + (getQ(q)?.targetRevenue || 0), 0);
+    const adjustableQs = [1, 2, 3, 4].filter(q => !getQ(q)?.locked);
+    if (adjustableQs.length === 0) {
+      addNotification('Tất cả 4 quý đã khóa — không còn quý nào để điều chỉnh', 'warning');
+      return;
+    }
+    const remaining = Math.max(0, MAX_YEARLY_REVENUE - lockedSum);
+    const wSum = adjustableQs.reduce((s, q) => s + weights[q - 1], 0) || 1;
+    let allocated = 0;
+    adjustableQs.forEach((q, idx) => {
+      let rev: number;
+      if (idx === adjustableQs.length - 1) {
+        rev = Math.max(0, remaining - allocated);
+      } else {
+        rev = Math.round((remaining * weights[q - 1] / wSum) / 1000) * 1000;
+      }
+      setQuarterTarget(q, selectedYear, rev);
+      allocated += rev;
+    });
+    addNotification(`Kiến nghị: giữ ${lockedQuarters.length} quý đã khóa, cân chỉnh ${adjustableQs.length} quý còn lại để đạt 1 tỷ`, 'quarter_update');
+  };
+
   const handleExport = (type: 'pdf' | 'excel') => {
     if (lockedQs.length === 0) {
       addNotification('Cần khóa ít nhất 1 quý trước khi xuất', 'warning');
