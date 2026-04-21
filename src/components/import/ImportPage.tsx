@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar } from 'lucide-react';
-import { ImportOrder, Supplier, Product, ImportTag } from '@/types';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2 } from 'lucide-react';
+import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { TimeRangeFilter, TimeRange, filterByTimeRange } from '@/components/common/TimeRangeFilter';
+import { exportImportPdf } from '@/lib/exportImportPdf';
 
 interface ImportPageProps {
   importOrders: ImportOrder[];
@@ -24,9 +26,11 @@ interface ImportPageProps {
   addNotification: (msg: string, type?: any) => void;
   onUpdateOrderDate?: (id: string, newDate: string) => void;
   isQuarterLocked?: (q: number, y: number) => boolean;
+  quarters?: QuarterData[];
+  onAutoReplenish?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -36,15 +40,51 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
 
   const currentQLocked = isQuarterLocked ? isQuarterLocked(selQ, selYear) : false;
+  const currentQuarter = quarters?.find(q => q.quarter === selQ && q.year === selYear);
 
   const timeFiltered = useMemo(() => {
-    return activeOrders.filter(o => {
+    return filterByTimeRange(activeOrders, timeRange, selQ, selYear, customFrom, customTo);
+  }, [activeOrders, timeRange, selQ, selYear, customFrom, customTo]);
+
+  // Revenue gap detection: check if total auto imports + manual fall short of supporting target revenue
+  const revenueGap = useMemo(() => {
+    if (!currentQuarter || currentQuarter.locked || currentQuarter.targetRevenue <= 0) return null;
+    const qOrders = activeOrders.filter(o => {
       const d = new Date(o.date);
       return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
     });
-  }, [activeOrders, selQ, selYear]);
+    const totalImport = qOrders.reduce((s, o) => s + o.total, 0);
+    // Heuristic: total imports should be at least 50% of target revenue (cost basis)
+    const expectedMinImport = currentQuarter.targetRevenue * 0.5;
+    if (totalImport < expectedMinImport * 0.7) {
+      return { totalImport, expectedMinImport, target: currentQuarter.targetRevenue };
+    }
+    return null;
+  }, [activeOrders, currentQuarter, selQ, selYear]);
+
+  const handleExportPdf = () => {
+    exportImportPdf(importOrders, products, selQ, selYear);
+    addNotification(`Đã xuất PDF Nhập hàng Q${selQ}/${selYear}`, 'success');
+  };
+
+  const handleAutoReplenish = () => {
+    if (currentQLocked) {
+      // Replenish next non-locked quarter instead
+      const nextQ = quarters?.find(q => !q.locked && (q.year > selYear || (q.year === selYear && q.quarter > selQ)));
+      if (nextQ && onAutoReplenish) {
+        onAutoReplenish(nextQ.quarter, nextQ.year);
+        addNotification(`Đã chuyển bù sang Q${nextQ.quarter}/${nextQ.year} (quý này đã khóa)`, 'info');
+      }
+    } else if (onAutoReplenish) {
+      onAutoReplenish(selQ, selYear);
+      addNotification(`Đã tạo lại đơn nhập tự động cho Q${selQ}/${selYear}`, 'success');
+    }
+  };
 
   const filteredOrders = useMemo(() => {
     let list = timeFiltered;
