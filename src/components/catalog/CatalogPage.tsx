@@ -213,6 +213,7 @@ function ProductFormDialog({
 }
 
 // ─── Product Card (collapsed by default) ──────────────────
+// ─── Sortable Product Card (drag-drop enabled) ───────────
 function ProductCard({
   product, suppliers, onEdit, onDelete, onCopy, onCopySameSupplier, onHistoryView,
 }: {
@@ -223,6 +224,7 @@ function ProductCard({
   onCopySameSupplier: (productId: string) => void;
   onHistoryView: (p: Product) => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product.id });
   const [expanded, setExpanded] = useState(false);
   const rate = product.conversionRate || 1;
   const hasChild = rate > 1;
@@ -234,19 +236,30 @@ function ProductCard({
   const parentProfitPct = product.buyPrice > 0 ? ((parentProfit / product.buyPrice) * 100).toFixed(1) : '0';
   const otherSuppliers = suppliers.filter(s => s.id !== product.supplierId && !s.deletedAt);
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto' as any,
+  };
+
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-all">
+    <div ref={setNodeRef} style={style} className="rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-all">
       {/* Collapsed header */}
-      <button className="flex w-full items-center gap-2 p-3 text-left" onClick={() => setExpanded(!expanded)}>
-        <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/40" />
-        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-        <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="font-bold text-sm truncate">{product.name || 'Chưa đặt tên'}</span>
-          {product.brand && (
-            <Badge variant="secondary" className="text-[10px] font-semibold shrink-0 hidden sm:inline-flex">{product.brand}</Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+      <div className="flex w-full items-center gap-2 p-3">
+        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 hover:bg-muted/40 rounded" title="Kéo để sắp xếp">
+          <GripVertical className="h-4 w-4 text-muted-foreground/60" />
+        </button>
+        <button className="flex flex-1 items-center gap-2 text-left min-w-0" onClick={() => setExpanded(!expanded)}>
+          {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="font-bold text-sm truncate">{product.name || 'Chưa đặt tên'}</span>
+            {product.brand && (
+              <Badge variant="secondary" className="text-[10px] font-semibold shrink-0 hidden sm:inline-flex">{product.brand}</Badge>
+            )}
+          </div>
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(product)}><Pencil className="h-3.5 w-3.5" /></Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -269,7 +282,7 @@ function ProductCard({
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onHistoryView(product)}><History className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onDelete(product.id)}><Trash className="h-3.5 w-3.5" /></Button>
         </div>
-      </button>
+      </div>
 
       {/* Expanded details */}
       {expanded && (
