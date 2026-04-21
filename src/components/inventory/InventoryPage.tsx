@@ -134,11 +134,9 @@ export function InventoryPage(props: InventoryPageProps) {
           <h2 className="text-base font-bold">Kho hàng</h2>
           <Badge variant="outline" className="font-bold">{filtered.length} lô</Badge>
           <div className="flex-1" />
-          {currentQLocked && (
-            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
-              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
-            </Button>
-          )}
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
+            <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+          </Button>
         </div>
 
         {currentQLocked && (
