@@ -355,6 +355,21 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
 
       {/* Add Import Dialog */}
       <AddImportDialog open={showAdd} onClose={() => setShowAdd(false)} suppliers={suppliers.filter(s => !s.deletedAt)} products={products} onSubmit={(order) => { addOrder(order); addNotification(`Đã thêm đơn nhập từ ${order.supplierName}`, 'info'); }} />
+
+      {/* Edit Import Dialog */}
+      {editingOrderId && onUpdateOrder && (
+        <EditImportDialog
+          order={activeOrders.find(o => o.id === editingOrderId)!}
+          products={products}
+          suppliers={suppliers.filter(s => !s.deletedAt)}
+          onClose={() => setEditingOrderId(null)}
+          onSubmit={(updates) => {
+            onUpdateOrder(editingOrderId, updates);
+            addNotification(`Đã cập nhật đơn nhập`, 'info');
+            setEditingOrderId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
