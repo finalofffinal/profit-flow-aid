@@ -62,11 +62,16 @@ export async function saveToSupabaseImmediate<T>(key: string, value: T): Promise
 
 /**
  * Subscribe to realtime changes on app_data.
- * Callback fires whenever ANY row is inserted/updated/deleted by another client.
- * We ignore echoes of our own recent writes (within 5s) to avoid feedback loops.
+ * Uses ONE shared Supabase channel with multiple JS-level listeners to avoid
+ * the "cannot add postgres_changes callbacks after subscribe()" error.
  */
-export function subscribeRealtime(onChange: (key: string, value: unknown) => void) {
-  const channel = supabase
+type RealtimeListener = (key: string, value: unknown) => void;
+const listeners = new Set<RealtimeListener>();
+let sharedChannel: ReturnType<typeof supabase.channel> | null = null;
+
+function ensureChannel() {
+  if (sharedChannel) return sharedChannel;
+  sharedChannel = supabase
     .channel('app_data_changes')
     .on(
       'postgres_changes',
@@ -75,11 +80,21 @@ export function subscribeRealtime(onChange: (key: string, value: unknown) => voi
         const row = (payload.new || payload.old) as { key?: string; value?: unknown };
         if (!row?.key) return;
         const lastWrite = lastLocalWrite.get(row.key) || 0;
-        // Skip if this came from our own recent write (echo)
         if (Date.now() - lastWrite < 5000) return;
-        onChange(row.key, row.value);
+        listeners.forEach(l => {
+          try { l(row.key!, row.value); } catch (e) { console.warn('Realtime listener error:', e); }
+        });
       }
     )
     .subscribe();
-  return () => { supabase.removeChannel(channel); };
+  return sharedChannel;
+}
+
+export function subscribeRealtime(onChange: RealtimeListener) {
+  ensureChannel();
+  listeners.add(onChange);
+  return () => {
+    listeners.delete(onChange);
+    // Keep the shared channel alive across hook unmounts to avoid resubscribe churn.
+  };
 }
