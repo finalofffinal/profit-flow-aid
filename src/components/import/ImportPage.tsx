@@ -121,24 +121,17 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={() => setShowAdd(true)}>
+          <Button size="sm" className="h-8 text-xs" onClick={() => {
+            if (currentQLocked) { addNotification(`Quý ${selQ}/${selYear} đã khóa, không thể thêm đơn`, 'warning'); return; }
+            setShowAdd(true);
+          }} disabled={currentQLocked}>
             <Plus className="mr-1 h-3.5 w-3.5" /> Thêm đơn nhập
           </Button>
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto">
-          {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
-            <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
-              onClick={() => setTimeRange(r)}>
-              {{ today: 'Hôm nay', week: 'Tuần', month: 'Tháng', quarter: 'Quý', all: 'Tất cả', custom: 'Tùy chọn' }[r]}
-            </Button>
-          ))}
-        </div>
-
-        {timeRange === 'custom' && (
-          <div className="flex gap-2">
-            <Input type="date" className="h-8 text-xs" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-            <Input type="date" className="h-8 text-xs" value={customTo} onChange={e => setCustomTo(e.target.value)} />
+        {currentQLocked && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
           </div>
         )}
 
