@@ -365,8 +365,13 @@ export function generateQuarterData(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // Q1+Q4 = high revenue quarters -> import slightly heavier on adjacent quarters too
+  // Import budget = 80–110% of autoTargetRevenue (theo yêu cầu cân bằng thị trường)
+  // Q1 + Q4 lệch nhẹ về phía cao (dự trữ Tết), Q2/Q3 lệch về phía thấp.
   const isHighRevenueQuarter = quarter.quarter === 1 || quarter.quarter === 4;
+  const importBudgetRatio = isHighRevenueQuarter
+    ? 0.95 + rand() * 0.15  // 0.95–1.10
+    : 0.80 + rand() * 0.15; // 0.80–0.95
+  const targetImportTotal = autoTargetRevenue * importBudgetRatio;
   const importMultiplier = isHighRevenueQuarter ? 1.15 : 0.95;
 
   for (const [sid, prods] of supplierProducts) {
@@ -502,6 +507,39 @@ export function generateQuarterData(
             quarter: quarter.quarter,
             year: quarter.year,
           });
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // REBALANCE IMPORTS — đưa tổng nhập về 80–110% doanh thu mục tiêu
+  // ============================================================================
+  const currentImportTotal = importOrders.reduce((s, o) => s + o.total, 0);
+  if (currentImportTotal > 0 && targetImportTotal > 0) {
+    const scale = targetImportTotal / currentImportTotal;
+    // Chỉ scale nếu lệch >5% để tránh nhiễu nhỏ
+    if (Math.abs(scale - 1) > 0.05) {
+      for (const order of importOrders) {
+        for (const it of order.items) {
+          // scale quantity, giữ buyPrice nguyên (snapshot)
+          const newQty = Math.max(1, Math.round(it.quantity * scale));
+          // cập nhật stock theo chênh lệch
+          const rate = it.conversionRate || 1;
+          const stockDelta = (newQty - it.quantity) * rate;
+          stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + stockDelta);
+          it.quantity = newQty;
+          it.total = it.buyPrice * newQty;
+        }
+        order.total = order.items.reduce((s, it) => s + it.total, 0);
+      }
+      // Cập nhật batches tương ứng
+      for (const batch of inventoryBatches) {
+        const order = importOrders.find(o => o.id === batch.importOrderId);
+        const it = order?.items.find(x => x.productId === batch.productId);
+        if (it) {
+          batch.quantity = it.quantity;
+          batch.originalQuantity = it.quantity;
         }
       }
     }

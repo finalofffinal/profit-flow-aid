@@ -53,7 +53,8 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
     return filterByTimeRange(activeOrders, timeRange, selQ, selYear, customFrom, customTo);
   }, [activeOrders, timeRange, selQ, selYear, customFrom, customTo]);
 
-  // Revenue gap detection: check if total auto imports + manual fall short of supporting target revenue
+  // Revenue gap detection: total nhập nên nằm trong dải 80–110% doanh thu mục tiêu.
+  // Nếu < 70% target -> cảnh báo thiếu hàng tạo doanh thu.
   const revenueGap = useMemo(() => {
     if (!currentQuarter || currentQuarter.locked || currentQuarter.targetRevenue <= 0) return null;
     const qOrders = activeOrders.filter(o => {
@@ -61,9 +62,8 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
       return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
     });
     const totalImport = qOrders.reduce((s, o) => s + o.total, 0);
-    // Heuristic: total imports should be at least 50% of target revenue (cost basis)
-    const expectedMinImport = currentQuarter.targetRevenue * 0.5;
-    if (totalImport < expectedMinImport * 0.7) {
+    const expectedMinImport = currentQuarter.targetRevenue * 0.80; // dải dưới
+    if (totalImport < expectedMinImport) {
       return { totalImport, expectedMinImport, target: currentQuarter.targetRevenue };
     }
     return null;
