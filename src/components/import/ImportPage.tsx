@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar } from 'lucide-react';
-import { ImportOrder, Supplier, Product, ImportTag } from '@/types';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2 } from 'lucide-react';
+import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { TimeRangeFilter, TimeRange, filterByTimeRange } from '@/components/common/TimeRangeFilter';
+import { exportImportPdf } from '@/lib/exportImportPdf';
 
 interface ImportPageProps {
   importOrders: ImportOrder[];
@@ -24,9 +26,11 @@ interface ImportPageProps {
   addNotification: (msg: string, type?: any) => void;
   onUpdateOrderDate?: (id: string, newDate: string) => void;
   isQuarterLocked?: (q: number, y: number) => boolean;
+  quarters?: QuarterData[];
+  onAutoReplenish?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, isQuarterLocked, quarters, onAutoReplenish }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -36,15 +40,51 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [undoStack, setUndoStack] = useState<{ action: string; data: any }[]>([]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
 
   const currentQLocked = isQuarterLocked ? isQuarterLocked(selQ, selYear) : false;
+  const currentQuarter = quarters?.find(q => q.quarter === selQ && q.year === selYear);
 
   const timeFiltered = useMemo(() => {
-    return activeOrders.filter(o => {
+    return filterByTimeRange(activeOrders, timeRange, selQ, selYear, customFrom, customTo);
+  }, [activeOrders, timeRange, selQ, selYear, customFrom, customTo]);
+
+  // Revenue gap detection: check if total auto imports + manual fall short of supporting target revenue
+  const revenueGap = useMemo(() => {
+    if (!currentQuarter || currentQuarter.locked || currentQuarter.targetRevenue <= 0) return null;
+    const qOrders = activeOrders.filter(o => {
       const d = new Date(o.date);
       return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
     });
-  }, [activeOrders, selQ, selYear]);
+    const totalImport = qOrders.reduce((s, o) => s + o.total, 0);
+    // Heuristic: total imports should be at least 50% of target revenue (cost basis)
+    const expectedMinImport = currentQuarter.targetRevenue * 0.5;
+    if (totalImport < expectedMinImport * 0.7) {
+      return { totalImport, expectedMinImport, target: currentQuarter.targetRevenue };
+    }
+    return null;
+  }, [activeOrders, currentQuarter, selQ, selYear]);
+
+  const handleExportPdf = () => {
+    exportImportPdf(importOrders, products, selQ, selYear);
+    addNotification(`Đã xuất PDF Nhập hàng Q${selQ}/${selYear}`, 'success');
+  };
+
+  const handleAutoReplenish = () => {
+    if (currentQLocked) {
+      // Replenish next non-locked quarter instead
+      const nextQ = quarters?.find(q => !q.locked && (q.year > selYear || (q.year === selYear && q.quarter > selQ)));
+      if (nextQ && onAutoReplenish) {
+        onAutoReplenish(nextQ.quarter, nextQ.year);
+        addNotification(`Đã chuyển bù sang Q${nextQ.quarter}/${nextQ.year} (quý này đã khóa)`, 'info');
+      }
+    } else if (onAutoReplenish) {
+      onAutoReplenish(selQ, selYear);
+      addNotification(`Đã tạo lại đơn nhập tự động cho Q${selQ}/${selYear}`, 'success');
+    }
+  };
 
   const filteredOrders = useMemo(() => {
     let list = timeFiltered;
@@ -117,6 +157,11 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
               <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
             </Button>
           )}
+          {currentQLocked && (
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
+              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+            </Button>
+          )}
           <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
@@ -134,6 +179,24 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
             <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
           </div>
         )}
+
+        {revenueGap && onAutoReplenish && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Wand2 className="h-3.5 w-3.5 shrink-0" />
+              <span>Hàng nhập không đủ tạo doanh thu Q{selQ} ({formatCompactVND(revenueGap.totalImport)} / cần ≥{formatCompactVND(revenueGap.expectedMinImport)})</span>
+            </div>
+            <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={handleAutoReplenish}>
+              <Wand2 className="mr-1 h-3 w-3" /> Tạo bù
+            </Button>
+          </div>
+        )}
+
+        <TimeRangeFilter
+          value={timeRange} onChange={setTimeRange}
+          customFrom={customFrom} onCustomFromChange={setCustomFrom}
+          customTo={customTo} onCustomToChange={setCustomTo}
+        />
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -160,7 +223,7 @@ export function ImportPage({ activeOrders, deletedOrders, suppliers, products, a
         </div>
 
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>Tổng nhập: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
+          <span>Tổng: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
         </div>
       </div>
 

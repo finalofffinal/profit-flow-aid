@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText } from 'lucide-react';
-import { SaleOrder, DailySales, ImportTag, PaymentMethod } from '@/types';
+import { Search, ChevronDown, ChevronRight, Filter, Camera, X, FileText, FileDown, Lock } from 'lucide-react';
+import { SaleOrder, DailySales, ImportTag, PaymentMethod, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS, PAYMENT_LABELS } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
@@ -8,14 +8,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { usePeriod } from '@/contexts/PeriodContext';
+import { exportSalesPdf } from '@/lib/exportPdf';
 
 interface SalesPageProps {
   salesOrders: SaleOrder[];
+  quarters?: QuarterData[];
+  addNotification?: (msg: string, type?: any) => void;
 }
 
 type TimeRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'custom';
 
-export function SalesPage({ salesOrders }: SalesPageProps) {
+export function SalesPage({ salesOrders, quarters, addNotification }: SalesPageProps) {
+  const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
@@ -23,6 +28,14 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
   const [customTo, setCustomTo] = useState('');
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [viewingImages, setViewingImages] = useState<string[] | null>(null);
+
+  const currentQ = quarters?.find(q => q.quarter === selQ && q.year === selYear);
+  const currentQLocked = !!currentQ?.locked;
+
+  const handleExportPdf = () => {
+    exportSalesPdf(salesOrders, selYear, [selQ]);
+    addNotification?.(`Đã xuất PDF Bán hàng Q${selQ}/${selYear}`, 'success');
+  };
 
   const activeOrders = salesOrders.filter(o => !o.deletedAt);
 
@@ -107,6 +120,20 @@ export function SalesPage({ salesOrders }: SalesPageProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-bold">Bán hàng</h2>
+          <div className="flex-1" />
+          {currentQLocked && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExportPdf}>
+              <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+            </Button>
+          )}
+        </div>
+        {currentQLocked && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+            <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa
+          </div>
+        )}
         <div className="flex gap-1.5 overflow-x-auto">
           {(['today', 'week', 'month', 'quarter', 'all', 'custom'] as TimeRange[]).map(r => (
             <Button key={r} size="sm" variant={timeRange === r ? 'default' : 'outline'} className="h-7 text-xs shrink-0"
