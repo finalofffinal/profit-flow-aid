@@ -168,20 +168,20 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
             <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
           </Button>
           {onAutoReplenish && !currentQLocked && (
-            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAutoReplenish(selQ, selYear)} title="Tạo lại đơn auto với cấu trúc ngẫu nhiên khác">
+            <Button data-admin-only size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAutoReplenish(selQ, selYear)} title="Tạo lại đơn auto với cấu trúc ngẫu nhiên khác">
               <Shuffle className="mr-1 h-3.5 w-3.5" /> Ngẫu nhiên
             </Button>
           )}
           {onClearAutoOrders && !currentQLocked && (
-            <Button size="sm" variant="outline" className="h-8 text-xs text-destructive" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả đơn auto của quý hiện tại (sẽ tự sinh lại theo doanh thu)">
-              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa đơn auto
+            <Button data-admin-only size="sm" variant="outline" className="h-8 text-xs text-destructive" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả đơn auto của quý hiện tại (sẽ tự sinh lại theo doanh thu)">
+              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa tất cả auto
             </Button>
           )}
-          <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
+          <Button data-admin-only size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
           </Button>
-          <Button size="sm" className="h-8 text-xs" onClick={() => {
+          <Button data-admin-only size="sm" className="h-8 text-xs" onClick={() => {
             if (currentQLocked) { addNotification(`Quý ${selQ}/${selYear} đã khóa, không thể thêm đơn`, 'warning'); return; }
             setShowAdd(true);
           }} disabled={currentQLocked}>
@@ -303,14 +303,14 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                           <span className="font-bold text-foreground">· {formatVND(order.total)}</span>
                         </div>
                       </div>
-                      {order.tag !== 'auto' && !order.locked && !currentQLocked && (
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          {onUpdateOrder && (
+                      {!order.locked && !currentQLocked && (
+                        <div data-admin-only className="flex items-center gap-0.5 shrink-0">
+                          {order.tag !== 'auto' && onUpdateOrder && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); setEditingOrderId(order.id); }}>
                               <Pencil className="h-3.5 w-3.5 text-primary" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }} title={order.tag === 'auto' ? 'Xóa đơn tự động này' : 'Xóa đơn'}>
                             <Trash className="h-3.5 w-3.5 text-destructive" />
                           </Button>
                         </div>

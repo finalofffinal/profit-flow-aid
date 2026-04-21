@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Eye, EyeOff, Download, Upload, TrendingUp, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle, Lock, Unlock, LayoutDashboard, Tag, Truck, Warehouse, ShoppingCart } from 'lucide-react';
+import { Eye, EyeOff, Download, Upload, TrendingUp, Package, AlertTriangle, ChevronDown, ChevronUp, FileText, FileSpreadsheet, HardDrive, Shuffle, Lock, Unlock, LayoutDashboard, Tag, Truck, Warehouse, ShoppingCart, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { exportSalesPdf } from '@/lib/exportPdf';
 import { exportSalesExcel } from '@/lib/exportExcel';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { usePeriod } from '@/contexts/PeriodContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardPageProps {
   quarters: QuarterData[];
@@ -32,6 +33,7 @@ export function DashboardPage({
   salesOrders, importOrders, addNotification, onDataRestore, onTabChange,
 }: DashboardPageProps) {
   const { quarter: selectedQ, year: selectedYear } = usePeriod();
+  const { isAdmin } = useAuth();
   const [showNumbers, setShowNumbers] = useState(true);
   const [editingQ, setEditingQ] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
@@ -147,6 +149,37 @@ export function DashboardPage({
     addNotification(`Đã tạo định mức năm ${selectedYear}: ${(totalAnnual / 1_000_000).toFixed(0)} triệu`, 'quarter_update');
   };
 
+  /**
+   * Kiến nghị: Giữ nguyên các quý đã sửa thủ công (locked OR có target>0 do user đặt),
+   * tự động phân bổ phần còn lại cho các quý chưa sửa theo trọng số mùa vụ
+   * (Q1+Q4 cao hơn) sao cho TỔNG = MAX_YEARLY_REVENUE.
+   */
+  const handleSuggest = () => {
+    const weights = [0.30, 0.18, 0.20, 0.32];
+    // "Giữ nguyên" = locked. Các quý chưa locked sẽ được điều chỉnh.
+    const lockedQuarters = [1, 2, 3, 4].filter(q => getQ(q)?.locked);
+    const lockedSum = lockedQuarters.reduce((s, q) => s + (getQ(q)?.targetRevenue || 0), 0);
+    const adjustableQs = [1, 2, 3, 4].filter(q => !getQ(q)?.locked);
+    if (adjustableQs.length === 0) {
+      addNotification('Tất cả 4 quý đã khóa — không còn quý nào để điều chỉnh', 'warning');
+      return;
+    }
+    const remaining = Math.max(0, MAX_YEARLY_REVENUE - lockedSum);
+    const wSum = adjustableQs.reduce((s, q) => s + weights[q - 1], 0) || 1;
+    let allocated = 0;
+    adjustableQs.forEach((q, idx) => {
+      let rev: number;
+      if (idx === adjustableQs.length - 1) {
+        rev = Math.max(0, remaining - allocated);
+      } else {
+        rev = Math.round((remaining * weights[q - 1] / wSum) / 1000) * 1000;
+      }
+      setQuarterTarget(q, selectedYear, rev);
+      allocated += rev;
+    });
+    addNotification(`Kiến nghị: giữ ${lockedQuarters.length} quý đã khóa, cân chỉnh ${adjustableQs.length} quý còn lại để đạt 1 tỷ`, 'quarter_update');
+  };
+
   const handleExport = (type: 'pdf' | 'excel') => {
     if (lockedQs.length === 0) {
       addNotification('Cần khóa ít nhất 1 quý trước khi xuất', 'warning');
@@ -248,7 +281,10 @@ export function DashboardPage({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-bold">Doanh thu năm {selectedYear}</CardTitle>
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
+              <Button data-admin-only variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleSuggest(); }} title="Giữ nguyên các quý đã khóa, tự cân chỉnh các quý còn lại để đạt 1 tỷ">
+                <Lightbulb className="mr-1 h-3 w-3" /> Kiến nghị
+              </Button>
+              <Button data-admin-only variant="outline" size="sm" className="h-7 text-xs" onClick={e => { e.stopPropagation(); handleRandomize(); }}>
                 <Shuffle className="mr-1 h-3 w-3" /> Ngẫu nhiên
               </Button>
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -283,15 +319,14 @@ export function DashboardPage({
                 return (
                   <QuarterCard key={q} quarter={q} year={selectedYear} target={target}
                     actual={actual} progress={progress} showNumbers={showNumbers}
-                    isEditing={isEditing} locked={locked}
+                    isEditing={isEditing} locked={locked} isAdmin={isAdmin}
                     onEdit={() => setEditingQ(isEditing ? null : q)}
                     onToggleLock={() => { setQuarterLock(q, selectedYear, !locked); addNotification(`${!locked ? 'Đã khóa' : 'Đã mở khóa'} Q${q}/${selectedYear}`, 'quarter_update'); }}
                     onSave={(rev) => {
                       setQuarterTarget(q, selectedYear, rev);
-                      // Auto-rebalance other quarters toward 1 tỷ
-                      rebalanceQuarters(selectedYear, q, rev, MAX_YEARLY_REVENUE);
+                      // Note: Manual save no longer auto-rebalances. User can hit "Kiến nghị" to rebalance.
                       setEditingQ(null);
-                      addNotification(`Đã cập nhật Q${q}/${selectedYear} và cân bằng các quý khác`, 'quarter_update');
+                      addNotification(`Đã cập nhật Q${q}/${selectedYear}`, 'quarter_update');
                     }}
                   />
                 );
@@ -324,7 +359,7 @@ export function DashboardPage({
         <Button variant="outline" size="sm" className="flex-1" onClick={handleBackup}>
           <Download className="mr-2 h-4 w-4" /> Sao lưu JSON
         </Button>
-        <Button variant="outline" size="sm" className="flex-1" onClick={handleRestore}>
+        <Button data-admin-only variant="outline" size="sm" className="flex-1" onClick={handleRestore}>
           <Upload className="mr-2 h-4 w-4" /> Khôi phục
         </Button>
       </div>
@@ -399,38 +434,38 @@ export function DashboardPage({
   );
 }
 
-function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isEditing, locked, onEdit, onSave, onToggleLock }: {
+function QuarterCard({ quarter, year, target, actual, progress, showNumbers, isEditing, locked, isAdmin, onEdit, onSave, onToggleLock }: {
   quarter: number; year: number; target: number;
   actual: number; progress: number;
-  showNumbers: boolean; isEditing: boolean; locked: boolean;
+  showNumbers: boolean; isEditing: boolean; locked: boolean; isAdmin?: boolean;
   onEdit: () => void; onSave: (rev: number) => void; onToggleLock: () => void;
 }) {
   const [revInput, setRevInput] = useState(target > 0 ? (target / 1000).toString() : '');
   useEffect(() => { setRevInput(target > 0 ? (target / 1000).toString() : ''); }, [target]);
   const mask = (v: string) => showNumbers ? v : '••••';
+  // Admin có thể sửa cả khi locked; viewer thì không
+  const canEdit = isAdmin === true; // viewer luôn không sửa được (data-admin-only ẩn nút)
 
   return (
     <div className={`rounded-xl border-2 p-3 space-y-2 ${locked ? 'border-amber-500/50 bg-amber-500/5' : 'border-border'}`}>
       <div className="flex items-center justify-between">
         <Badge variant="outline" className="font-bold text-sm">Q{quarter}/{year}</Badge>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={onToggleLock} title={locked ? 'Mở khóa' : 'Khóa quý'}>
+          <Button data-admin-only variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={onToggleLock} title={locked ? 'Mở khóa' : 'Khóa quý'}>
             {locked ? <Lock className="h-3.5 w-3.5 text-amber-600" /> : <Unlock className="h-3.5 w-3.5" />}
           </Button>
-          {!locked && (
-            <Button variant="ghost" size="sm" className="text-xs h-6" onClick={onEdit}>
-              {isEditing ? 'Đóng' : 'Sửa'}
-            </Button>
-          )}
+          <Button data-admin-only variant="ghost" size="sm" className="text-xs h-6" onClick={onEdit}>
+            {isEditing ? 'Đóng' : 'Sửa'}
+          </Button>
         </div>
       </div>
-      {isEditing && !locked ? (
+      {isEditing && canEdit ? (
         <div className="space-y-2">
           <div>
-            <label className="text-xs text-muted-foreground">Doanh thu (×1.000 VND)</label>
+            <label className="text-xs text-muted-foreground">Doanh thu (×1.000 VND){locked && ' — đang sửa quý đã khóa'}</label>
             <Input value={revInput} onChange={e => setRevInput(e.target.value)} placeholder="250000" />
           </div>
-          <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu & cân bằng</Button>
+          <Button size="sm" className="w-full" onClick={() => onSave(parsePriceInput(revInput))}>Lưu</Button>
         </div>
       ) : (
         <>

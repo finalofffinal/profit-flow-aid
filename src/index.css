@@ -159,3 +159,14 @@
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);
   }
 }
+
+/* Read-only mode: hide all admin-only edit controls system-wide */
+body[data-role="viewer"] [data-admin-only],
+html[data-role="viewer"] [data-admin-only] {
+  display: none !important;
+}
+body[data-role="viewer"] [data-admin-disabled] {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
