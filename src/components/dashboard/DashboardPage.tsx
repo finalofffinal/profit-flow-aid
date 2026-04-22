@@ -12,6 +12,7 @@ import { exportBackup, importBackup, getStorageUsage } from '@/lib/storage';
 import { MAX_YEARLY_REVENUE } from '@/lib/constants';
 import { exportSalesPdf } from '@/lib/exportPdf';
 import { exportSalesExcel } from '@/lib/exportExcel';
+import { computeInventorySnapshot } from '@/lib/dataEngine';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { usePeriod } from '@/contexts/PeriodContext';
 import { useAuth } from '@/contexts/AuthContext';
