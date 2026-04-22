@@ -40,9 +40,9 @@ export function exportSalesExcel(salesOrders: SaleOrder[], year: number, quarter
   rows.push([`Hộ kinh doanh: ${BUSINESS_INFO.name.toUpperCase()}`, '', '', 'Mẫu số S2a-HKD']);                    // 1
   rows.push([`Mã số thuế: ${BUSINESS_INFO.taxId}`, '', '', '(Kèm theo Thông tư số 152/2025/TT-BTC']);             // 2
   rows.push([`Địa chỉ: ${BUSINESS_INFO.address}, ${BUSINESS_INFO.stall}`, '', '', 'ngày 31/12/2025 của Bộ Tài chính)']); // 3
-  rows.push([`             ${BUSINESS_INFO.ward || 'Phường Đông Hưng Thuận, TP. Hồ Chí Minh'}`, '', '', '']);     // 4
-  rows.push([`Điện thoại: ${BUSINESS_INFO.phone}`, '', '', '']);                                                  // 5
-  rows.push([`Ngành: ${BUSINESS_INFO.industry || '4719- Bán tạp hóa'}`, '', '', '']);                              // 6
+  rows.push([`             Phường Đông Hưng Thuận, TP. Hồ Chí Minh`, '', '', '']);                                 // 4
+  rows.push([`Điện thoại: ${BUSINESS_INFO.phone}`, '', '', '']);                                                   // 5
+  rows.push([`Ngành: 4719- Bán tạp hóa`, '', '', '']);                                                             // 6
   rows.push(['', '', '', '']);                                                                                     // 7 spacer
 
   // ===== Hàng 8: Tiêu đề chính =====
