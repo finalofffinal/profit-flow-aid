@@ -701,14 +701,20 @@ export function generateQuarterData(
     inventoryBatches.push(...batches);
   }
 
-  // ===== Cân bằng tổng nhập theo TỶ TRỌNG NCC =====
-  // - Tổng nhập = 80–110% doanh thu mục tiêu
-  // - NCC nhỏ (≤10 SP) chiếm 10–15% tổng nhập
-  // - NCC lớn (>10 SP) chiếm 85–90% tổng nhập
-  // Khi scale, CLAMP qty về maxQtyPerProduct/maxQtyPerQuarter để KHÔNG phá rule đặc biệt.
-  // GỐI ĐẦU: tăng tỉ lệ nhập 95–115% (cao hơn doanh thu 1 chút để có tồn kho phục vụ quý sau)
-  const isHighRev = quarter.quarter === 1 || quarter.quarter === 4;
-  const importBudgetRatio = isHighRev ? 1.05 + rand() * 0.10 : 0.95 + rand() * 0.10;
+  // ===== Cân bằng tổng nhập theo CHU KỲ MÙA VỤ =====
+  // Q1: BÁN nhiều (Tết) - NHẬP ÍT (~55%) → kho cuối Q1 cạn
+  // Q2: BÁN ít  - NHẬP RẤT NHIỀU (~150%) → kho cuối Q2 đầy đủ phục vụ Q3
+  // Q3: BÁN ổn định - NHẬP ổn định (~110%) → kho cuối Q3 dư hơn Q2 cho Q4
+  // Q4: BÁN nhiều - NHẬP NHIỀU (~125%) chuẩn bị lễ Tết đầu Q1 năm sau
+  let seasonalRatio: number;
+  switch (quarter.quarter) {
+    case 1: seasonalRatio = 0.50 + rand() * 0.10; break; // 50–60%
+    case 2: seasonalRatio = 1.45 + rand() * 0.15; break; // 145–160%
+    case 3: seasonalRatio = 1.05 + rand() * 0.10; break; // 105–115%
+    case 4: seasonalRatio = 1.20 + rand() * 0.10; break; // 120–130%
+    default: seasonalRatio = 1.0;
+  }
+  const importBudgetRatio = seasonalRatio;
   const targetImportTotal = autoTargetRevenue * importBudgetRatio;
   const smallShareRatio = 0.10 + rand() * 0.05; // 10–15%
   const largeShareRatio = 1 - smallShareRatio;
