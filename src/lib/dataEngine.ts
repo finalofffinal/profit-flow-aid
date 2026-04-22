@@ -726,9 +726,9 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
       };
     case 4:
       // Q4 BẮT BUỘC ratio nhập/doanh thu thực tế trong 120%–150% (gap luôn DƯƠNG).
-      // Target rất cao để vượt cap NCC ở Q4 (cap chặt do bán mạnh).
+      // Cap NCC clamp rất mạnh ở Q4 → phải đẩy target cực cao để vượt cap.
       return {
-        seasonalRatio: 3.20 + rand() * 0.20, // target 320–340% (thực tế ≈130–145%)
+        seasonalRatio: 5.50 + rand() * 0.30, // target 550–580% (thực tế ≈130–148%)
         endingStockRatio: 0.20 + rand() * 0.04,
       };
     default:
