@@ -62,19 +62,20 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const lunar = getLunarParts(d);
 
-  // Phân phối mượt hơn: đỉnh chủ yếu T7/CN, hiếm khi 2 ngày cao liên tiếp.
-  // Cuối tuần: 45% cao, 45% bình thường, 10% thấp
-  // Ngày thường: 12% cao, 65% bình thường, 23% thấp
+  // Phân phối dàn trải: đa số ngày quanh trung bình, đỉnh nhẹ vào T7/CN.
+  // Hạn chế ngày quá thấp (<0.80) và ngày quá cao (>1.25) để tránh bất thường.
   let weeklyBoost: number;
   const r = rand();
   if (dow === 0 || dow === 6) {
-    if (r < 0.45) weeklyBoost = 1.10 + rand() * 0.25;       // 1.10–1.35
-    else if (r < 0.90) weeklyBoost = 0.90 + rand() * 0.15;  // 0.90–1.05
-    else weeklyBoost = 0.70 + rand() * 0.15;                // 0.70–0.85
+    // Cuối tuần: 35% nhỉnh hơn, 60% bình thường, 5% hơi thấp
+    if (r < 0.35) weeklyBoost = 1.08 + rand() * 0.15;       // 1.08–1.23
+    else if (r < 0.95) weeklyBoost = 0.92 + rand() * 0.14;  // 0.92–1.06
+    else weeklyBoost = 0.82 + rand() * 0.08;                // 0.82–0.90
   } else {
-    if (r < 0.12) weeklyBoost = 1.05 + rand() * 0.10;       // 1.05–1.15 (hiếm)
-    else if (r < 0.77) weeklyBoost = 0.85 + rand() * 0.18;  // 0.85–1.03
-    else weeklyBoost = 0.65 + rand() * 0.18;                // 0.65–0.83
+    // Ngày thường: phân bổ hẹp quanh 1.0
+    if (r < 0.10) weeklyBoost = 1.04 + rand() * 0.08;       // 1.04–1.12 (hiếm)
+    else if (r < 0.85) weeklyBoost = 0.90 + rand() * 0.14;  // 0.90–1.04
+    else weeklyBoost = 0.80 + rand() * 0.10;                // 0.80–0.90
   }
 
   let monthlyWeight = 1.0;
@@ -97,8 +98,8 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   if (lunar.month === 8 && lunar.day >= 10 && lunar.day <= 15) holidayBoost = Math.max(holidayBoost, 1.12);
   if (month === 12 && day >= 22) holidayBoost = Math.max(holidayBoost, 1.10 + (day - 22) * 0.015);
 
-  // Nhiễu vừa phải ±15% — tránh ngày bất thường
-  const noise = 0.85 + rand() * 0.30;
+  // Nhiễu nhẹ ±8% — tránh ngày bất thường, vẫn giữ vẻ ngẫu nhiên
+  const noise = 0.92 + rand() * 0.16;
   return weeklyBoost * monthlyWeight * holidayBoost * noise;
 }
 
@@ -122,15 +123,31 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
     return map;
   }
 
-  // Làm mượt: nếu 2 ngày liền nhau đều cao (>1.15× trung bình), kéo ngày sau xuống.
-  const avgWeight = weightSum / Math.max(1, days.filter((_, i) => weights[i] > 0).length);
-  for (let i = 1; i < weights.length; i++) {
-    if (weights[i] === 0 || weights[i - 1] === 0) continue;
-    if (weights[i - 1] > avgWeight * 1.15 && weights[i] > avgWeight * 1.15) {
-      const reduced = avgWeight * (0.80 + rand() * 0.15);
-      weightSum -= (weights[i] - reduced);
-      weights[i] = reduced;
+  // Clamp + làm mượt: kéo các ngày về [0.78×, 1.25×] trung bình của ngày mở cửa
+  const openIdx: number[] = [];
+  for (let i = 0; i < weights.length; i++) if (weights[i] > 0) openIdx.push(i);
+  if (openIdx.length > 0) {
+    const avg0 = weightSum / openIdx.length;
+    const minW = avg0 * 0.78;
+    const maxW = avg0 * 1.25;
+    for (const i of openIdx) {
+      if (weights[i] < minW) weights[i] = minW;
+      else if (weights[i] > maxW) weights[i] = maxW;
     }
+    // Làm mượt 2 lượt: mỗi ngày = 0.6 * chính nó + 0.2 * trước + 0.2 * sau (chỉ áp dụng ngày mở cửa)
+    for (let pass = 0; pass < 2; pass++) {
+      const next = weights.slice();
+      for (let k = 0; k < openIdx.length; k++) {
+        const i = openIdx[k];
+        const prev = k > 0 ? weights[openIdx[k - 1]] : weights[i];
+        const after = k < openIdx.length - 1 ? weights[openIdx[k + 1]] : weights[i];
+        next[i] = weights[i] * 0.6 + prev * 0.2 + after * 0.2;
+      }
+      for (const i of openIdx) weights[i] = next[i];
+    }
+    // Tính lại weightSum
+    weightSum = 0;
+    for (const w of weights) weightSum += w;
   }
 
   let allocated = 0;
