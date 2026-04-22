@@ -1064,6 +1064,75 @@ export function generateQuarterData(
   }
 
   // ==========================================================================
+  // POST-CLAMP IMPORT BOOST (Q2/Q3/Q4)
+  // Cap NCC chặn seasonalRatio không đẩy được. Sau khi scale + clamp, nếu
+  // ratio nhập / doanh thu mục tiêu chưa đạt minRatio thì BƠM thêm bằng cách
+  // duplicate các đơn auto (BỎ QUA cap NCC — đây là yêu cầu nghiệp vụ user).
+  //
+  // Mục tiêu (ratio nhập_thực / doanh_thu_target):
+  //   • Q2: ≥ 1.80   (gap dương rất lớn)
+  //   • Q3: ≥ 1.90   (gap dương lớn nhất)
+  //   • Q4: ≥ 1.30   (gap dương vừa, BẮT BUỘC > 1.20)
+  // ==========================================================================
+  const minRatioByQuarter: Record<number, number> = { 1: 0, 2: 1.80, 3: 1.90, 4: 1.30 };
+  const minRatio = minRatioByQuarter[quarter.quarter] ?? 0;
+  if (minRatio > 0) {
+    const totalSalesTarget = quarter.targetRevenue;
+    const minImportNeeded = totalSalesTarget * minRatio;
+    let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
+
+    if (currentImport < minImportNeeded) {
+      const autoOrdersForBoost = importOrders.filter(o => o.tag === 'auto' && o.total > 0);
+      if (autoOrdersForBoost.length > 0) {
+        // Sort: đơn lớn nhất trước (clone hiệu quả hơn).
+        const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);
+        let cursor = 0;
+        let safety = 200;
+        while (currentImport < minImportNeeded && safety-- > 0) {
+          const src = sortedBoost[cursor % sortedBoost.length];
+          cursor++;
+          // Clone đơn (bỏ qua cap — yêu cầu nghiệp vụ).
+          const clonedId = generateId();
+          const clonedItems: ImportOrderItem[] = src.items.map(it => ({
+            ...it,
+            quantity: it.quantity,
+            total: it.total,
+          }));
+          const clonedOrder: ImportOrder = {
+            ...src,
+            id: clonedId,
+            items: clonedItems,
+            total: src.total,
+            createdAt: src.createdAt,
+          };
+          importOrders.push(clonedOrder);
+          // Thêm batch tồn kho tương ứng.
+          for (const it of clonedItems) {
+            const rate = it.conversionRate || 1;
+            inventoryBatches.push({
+              id: generateId(),
+              importOrderId: clonedId,
+              productId: it.productId,
+              productName: it.productName,
+              supplierId: src.supplierId,
+              supplierName: it.supplierName,
+              unit: it.unit,
+              quantity: it.quantity,
+              originalQuantity: it.quantity,
+              buyPrice: it.buyPrice,
+              date: src.date,
+              quarter: quarter.quarter,
+              year: quarter.year,
+            });
+            stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + it.quantity * rate);
+          }
+          currentImport += src.total;
+        }
+      }
+    }
+  }
+
+  // ==========================================================================
   // SALES — bán dựa trên kho thực, không bù doanh thu ảo vượt kho.
   // ==========================================================================
   for (let dayIdx = 0; dayIdx < days.length; dayIdx++) {
