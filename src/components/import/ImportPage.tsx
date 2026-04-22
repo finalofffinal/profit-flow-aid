@@ -444,9 +444,9 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
           supplierId: product.supplierId, supplierName: supplier.name,
           unit: product.unit, conversionUnit: product.conversionUnit || product.unit,
           conversionRate: product.conversionRate || 1,
-          quantity: Math.min(3, sp.quantity), // Max 3 units per product
+          quantity: Math.max(1, sp.quantity),
           buyPrice: product.buyPrice,
-          total: product.buyPrice * Math.min(3, sp.quantity),
+          total: product.buyPrice * Math.max(1, sp.quantity),
         };
       });
     if (items.length === 0) return;
@@ -466,7 +466,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm đơn nhập hàng</DialogTitle>
-          <DialogDescription>Chọn NCC và sản phẩm từ danh mục (tối đa 3 đơn vị lớn/SP)</DialogDescription>
+          <DialogDescription>Chọn NCC và sản phẩm từ danh mục (số lượng không giới hạn)</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -527,7 +527,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
                   <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
                   <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
                 </Select>
-                <Input className="w-20" type="number" min={1} max={3} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.min(3, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
+                <Input className="w-20" type="number" min={1} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
                 <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
               </div>
             ))}
@@ -586,7 +586,7 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
       });
     if (newItems.length === 0) return;
     onSubmit({
-      date, tag, supplierId, supplierName: supplier.name,
+      date, tag: order.tag === 'auto' ? 'auto' : tag, supplierId, supplierName: supplier.name,
       items: newItems,
     });
   };
@@ -614,14 +614,20 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
           </div>
           <div>
             <Label className="text-xs">Tag</Label>
-            <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
-              </SelectContent>
-            </Select>
+            {order.tag === 'auto' ? (
+              <div className="mt-1 flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
+                ⚙️ Tự động (không thể đổi tag của đơn tự sinh)
+              </div>
+            ) : (
+              <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="special">🔴 Đặc biệt</SelectItem>
+                  <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+                  <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
