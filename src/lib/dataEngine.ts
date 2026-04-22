@@ -122,6 +122,17 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
     return map;
   }
 
+  // Làm mượt: nếu 2 ngày liền nhau đều cao (>1.15× trung bình), kéo ngày sau xuống.
+  const avgWeight = weightSum / Math.max(1, days.filter((_, i) => weights[i] > 0).length);
+  for (let i = 1; i < weights.length; i++) {
+    if (weights[i] === 0 || weights[i - 1] === 0) continue;
+    if (weights[i - 1] > avgWeight * 1.15 && weights[i] > avgWeight * 1.15) {
+      const reduced = avgWeight * (0.80 + rand() * 0.15);
+      weightSum -= (weights[i] - reduced);
+      weights[i] = reduced;
+    }
+  }
+
   let allocated = 0;
   let lastNonZeroIdx = -1;
   for (let i = 0; i < days.length; i++) {
