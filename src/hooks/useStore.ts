@@ -133,26 +133,37 @@ export function useProducts() {
     }));
   }, [setProducts]);
 
-  /** Update price history entry at index; back-fills sellPrice to keep profit ratio. */
+  /**
+   * Update or ADD a price history entry at index. Supports empty slots (index >= length).
+   * Giá lịch sử CHỈ áp dụng cho các đơn nhập thủ công (manual). Đơn tự động luôn dùng baseBuyPrice/baseSellPrice (giá GỐC).
+   * Cập nhật buyPrice/sellPrice hiện tại của sản phẩm để các đơn THỦ CÔNG mới dùng giá mới nhất,
+   * NHƯNG không đụng đến baseBuyPrice/baseSellPrice (giữ nguyên cho auto generator).
+   */
   const updatePriceHistoryEntry = useCallback((productId: string, index: number, entry: { date: string; buyPrice: number }) => {
     setProducts(prev => prev.map(p => {
       if (p.id !== productId) return p;
       const history = [...(p.priceHistory || [])];
-      const old = history[index];
-      if (!old) return p;
-      // Preserve profit margin: newSell = newBuy * (oldSell / oldBuy) when oldBuy > 0
-      const ratio = old.buyPrice > 0 ? old.sellPrice / old.buyPrice : 1;
+      const old = history[index]; // có thể undefined (slot trống)
+      // Preserve profit margin từ entry cũ HOẶC từ giá hiện tại của sản phẩm
+      let ratio = 1;
+      if (old && old.buyPrice > 0) ratio = old.sellPrice / old.buyPrice;
+      else if (p.buyPrice > 0) ratio = p.sellPrice / p.buyPrice;
       const newSell = Math.round(entry.buyPrice * ratio);
-      history[index] = { date: entry.date, buyPrice: entry.buyPrice, sellPrice: newSell };
-      // Sort by date desc
+      const newEntry = { date: entry.date, buyPrice: entry.buyPrice, sellPrice: newSell };
+      if (old) history[index] = newEntry;
+      else history.push(newEntry); // thêm mới vào slot trống
+      // Sort theo ngày desc
       history.sort((a, b) => b.date.localeCompare(a.date));
-      // If this is the latest entry, also update product's current price
-      const latest = history[0];
+      const trimmed = history.slice(0, 5);
+      const latest = trimmed[0];
       return {
         ...p,
-        priceHistory: history.slice(0, 5),
+        priceHistory: trimmed,
+        // Chỉ cập nhật giá "hiện tại" (dùng cho đơn THỦ CÔNG mới), KHÔNG đụng baseBuyPrice/baseSellPrice
         buyPrice: latest.buyPrice,
         sellPrice: latest.sellPrice,
+        baseBuyPrice: p.baseBuyPrice ?? p.buyPrice, // back-fill nếu thiếu
+        baseSellPrice: p.baseSellPrice ?? p.sellPrice,
         updatedAt: new Date().toISOString(),
       };
     }));
