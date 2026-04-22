@@ -242,20 +242,45 @@ export function DashboardPage({
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* ═══ 2 thẻ NỔI BẬT: Nhập hàng + Kho hàng (click để chuyển tab) ═══ */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="shadow-sm border-primary/20">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><TrendingUp className="h-3.5 w-3.5" /> Doanh thu Q{selectedQ}</div>
-            <p className="mt-1 text-lg md:text-xl font-black text-primary">{mask(formatCompactVND(totalRevenue))}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Vốn nhập Q{selectedQ}</div>
-            <p className="mt-1 text-lg md:text-xl font-black">{mask(formatCompactVND(totalImportCost))}</p>
-          </CardContent>
-        </Card>
+        <button
+          type="button"
+          onClick={() => onTabChange('import')}
+          className="group text-left rounded-2xl border-2 border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-background p-4 shadow-md hover:shadow-lg hover:border-amber-500/60 hover:scale-[1.02] active:scale-[0.99] transition-all"
+          title="Mở tab Nhập hàng"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+              <Truck className="h-4 w-4" />
+              Nhập hàng Q{selectedQ}
+            </div>
+            <ChevronUp className="h-4 w-4 rotate-90 text-amber-600/60 group-hover:text-amber-600 transition-colors" />
+          </div>
+          <p className="text-2xl md:text-3xl font-black text-amber-700 dark:text-amber-400">
+            {mask(formatCompactVND(totalImportCost))}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Tổng vốn nhập quý {selectedQ}/{selectedYear}</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onTabChange('inventory')}
+          className="group text-left rounded-2xl border-2 border-purple-500/40 bg-gradient-to-br from-purple-500/15 via-purple-500/5 to-background p-4 shadow-md hover:shadow-lg hover:border-purple-500/60 hover:scale-[1.02] active:scale-[0.99] transition-all"
+          title="Mở tab Kho hàng"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400">
+              <Warehouse className="h-4 w-4" />
+              Kho hàng Q{selectedQ}
+            </div>
+            <ChevronUp className="h-4 w-4 rotate-90 text-purple-600/60 group-hover:text-purple-600 transition-colors" />
+          </div>
+          <p className="text-2xl md:text-3xl font-black text-purple-700 dark:text-purple-400">
+            {mask(formatCompactVND(stockValue))}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Giá trị tồn cuối Q{selectedQ}/{selectedYear}</p>
+        </button>
       </div>
 
       {/* Revenue Chart */}
