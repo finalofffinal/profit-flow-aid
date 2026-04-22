@@ -521,16 +521,23 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
               <Label className="text-xs font-bold">Sản phẩm</Label>
               <Button variant="outline" size="sm" onClick={addItem} disabled={!supplierId}><Plus className="mr-1 h-3 w-3" /> Thêm SP</Button>
             </div>
-            {selectedProducts.map((sp, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Select value={sp.productId} onValueChange={v => { const u = [...selectedProducts]; u[i].productId = v; setSelectedProducts(u); }}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                  <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Input className="w-20" type="number" min={1} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
-              </div>
-            ))}
+            {selectedProducts.map((sp, i) => {
+              const prod = products.find(p => p.id === sp.productId);
+              const lineTotal = prod ? prod.buyPrice * sp.quantity : 0;
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <Select value={sp.productId} onValueChange={v => { const u = [...selectedProducts]; u[i].productId = v; setSelectedProducts(u); }}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                    <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Input className="w-16" type="number" min={1} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
+                  <span className="w-24 shrink-0 text-right text-xs font-bold tabular-nums text-primary">
+                    {lineTotal > 0 ? formatVND(lineTotal) : '—'}
+                  </span>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
+                </div>
+              );
+            })}
 
             {/* Order total */}
             {selectedProducts.length > 0 && (
@@ -636,20 +643,27 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
                 <Plus className="mr-1 h-3 w-3" /> Thêm SP
               </Button>
             </div>
-            {items.map((it, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Select value={it.productId} onValueChange={v => { const u = [...items]; u[i].productId = v; setItems(u); }}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                  <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Input className="w-20" type="number" min={1} value={it.quantity}
-                  onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
-                  onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
+            {items.map((it, i) => {
+              const prod = products.find(p => p.id === it.productId);
+              const lineTotal = prod ? prod.buyPrice * it.quantity : 0;
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <Select value={it.productId} onValueChange={v => { const u = [...items]; u[i].productId = v; setItems(u); }}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                    <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Input className="w-16" type="number" min={1} value={it.quantity}
+                    onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
+                  <span className="w-24 shrink-0 text-right text-xs font-bold tabular-nums text-primary">
+                    {lineTotal > 0 ? formatVND(lineTotal) : '—'}
+                  </span>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                    onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
             {items.length > 0 && (
               <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
                 Tổng: {formatVND(total)}
