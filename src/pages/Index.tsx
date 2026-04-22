@@ -12,7 +12,7 @@ import {
   useProducts, useSuppliers, useNotifications, useTheme,
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
 } from '@/hooks/useStore';
-import { generateQuarterData, computeCarryOverStock, generateSupplementaryOrder } from '@/lib/dataEngine';
+import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { TabId } from '@/types';
