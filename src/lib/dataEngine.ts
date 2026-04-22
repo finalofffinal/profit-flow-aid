@@ -1179,12 +1179,82 @@ export function generateQuarterData(
     });
   }
 
-  // Chỉ fix chênh lệch nhỏ do làm tròn, KHÔNG scale ảo khi thiếu kho thật.
-  const nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
-  const currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
-  const salesGap = autoTargetRevenue - currentSalesTotal;
+  // Nếu còn thiếu doanh thu đáng kể, dùng phần tồn còn lại để bù vào các ngày đã có bán.
+  // Mục tiêu: doanh thu auto của quý phải bám sát target, thay vì đứng dưới rất xa chỉ vì cap/ngày.
+  let nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
+  let currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
+  let salesGap = autoTargetRevenue - currentSalesTotal;
+
+  if (salesGap > 0 && nonTetOrders.length > 0) {
+    const candidateProducts = [...activeProducts]
+      .filter(p => (stockMap.get(p.id) || 0) > 0)
+      .sort((a, b) => {
+        const aSell = (a.baseSellPrice ?? a.sellPrice) / Math.max(1, a.conversionRate || 1);
+        const bSell = (b.baseSellPrice ?? b.sellPrice) / Math.max(1, b.conversionRate || 1);
+        return bSell - aSell;
+      });
+
+    let orderCursor = 0;
+    for (const product of candidateProducts) {
+      if (salesGap <= 3000) break;
+      const stock = stockMap.get(product.id) || 0;
+      if (stock <= 0) continue;
+
+      const rate = product.conversionRate || 1;
+      const sellPerChild = (product.baseSellPrice ?? product.sellPrice) / rate;
+      const buyPerChild = (product.baseBuyPrice ?? product.buyPrice) / rate;
+      if (sellPerChild <= 0) continue;
+
+      let qty = Math.min(stock, Math.ceil(salesGap / sellPerChild));
+      if (qty <= 0) continue;
+
+      while (qty > 0 && salesGap > 3000 && nonTetOrders.length > 0) {
+        const order = nonTetOrders[orderCursor % nonTetOrders.length];
+        orderCursor += 1;
+
+        const addQty = Math.min(qty, Math.max(1, Math.ceil(salesGap / sellPerChild / 3)));
+        const addTotal = addQty * sellPerChild;
+        const addProfit = addTotal - addQty * buyPerChild;
+        const sellUnit = rate > 1 ? (product.conversionUnit || product.unit) : product.unit;
+        const existing = order.items.find(it => it.productId === product.id && it.sellPrice === sellPerChild);
+
+        if (existing) {
+          existing.quantity += addQty;
+          existing.total += addTotal;
+          existing.profit += addProfit;
+          existing.profitPercent = existing.total > 0 ? Math.round((existing.profit / existing.total) * 1000) / 10 : 0;
+        } else {
+          order.items.push({
+            productId: product.id,
+            productName: product.name,
+            supplierId: product.supplierId,
+            unit: sellUnit,
+            quantity: addQty,
+            sellPrice: sellPerChild,
+            buyPrice: buyPerChild,
+            total: addTotal,
+            profit: addProfit,
+            profitPercent: addTotal > 0 ? Math.round((addProfit / addTotal) * 1000) / 10 : 0,
+          });
+        }
+
+        order.totalRevenue += addTotal;
+        order.totalProfit += addProfit;
+        order.profitPercent = order.totalRevenue > 0 ? Math.round((order.totalProfit / order.totalRevenue) * 1000) / 10 : 0;
+
+        qty -= addQty;
+        stockMap.set(product.id, (stockMap.get(product.id) || 0) - addQty);
+        salesGap -= addTotal;
+      }
+    }
+  }
+
+  nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
+  currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
+  salesGap = autoTargetRevenue - currentSalesTotal;
   const tolerableGap = Math.max(5000, autoTargetRevenue * 0.02);
 
+  // Chỉ scale nhẹ phần chênh nhỏ cuối cùng do làm tròn.
   if (Math.abs(salesGap) > 0 && Math.abs(salesGap) <= tolerableGap && nonTetOrders.length > 0 && currentSalesTotal > 0) {
     const scale = autoTargetRevenue / currentSalesTotal;
     let allocated = 0;
@@ -1215,6 +1285,7 @@ export function generateQuarterData(
           const margin = it.profit / prevTotal;
           it.total = newTotal;
           it.profit = newTotal * margin;
+          it.profitPercent = it.total > 0 ? Math.round((it.profit / it.total) * 1000) / 10 : 0;
         } else {
           it.total = newTotal;
         }
@@ -1226,6 +1297,7 @@ export function generateQuarterData(
       allocated += newOrderTotal;
     }
   }
+
 
   return { importOrders, salesOrders, inventoryBatches };
 }
