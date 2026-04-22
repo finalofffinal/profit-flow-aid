@@ -15,51 +15,57 @@ function getDaysInQuarter(q: number, year: number): string[] {
   return days;
 }
 
-function lastDayOfQuarter(q: number, year: number): { day: number; month: number } {
-  const m = q * 3 - 1;
-  const day = new Date(year, m + 1, 0).getDate();
-  return { day, month: m + 1 };
-}
-
 /**
- * S2a-HKD Excel — bám sát template chính thức của Bộ Tài chính.
- * Quy ước trình bày:
- *  - Toàn bộ font Times New Roman, size 12 cho dữ liệu
- *  - Tiêu đề "SỔ CHI TIẾT…": size 14 in đậm, căn giữa, merge 4 cột
- *  - Header bảng (Chứng từ / Diễn giải / Số tiền): in đậm, căn giữa, có border
- *  - Cột A (Kí hiệu) căn giữa, Cột B (Ngày tháng) căn giữa, Cột C (Diễn giải) căn trái, Cột D (Số tiền) căn phải
- *  - Chiều cao hàng đồng nhất 18; hàng tiêu đề 24
+ * S2a-HKD Excel — bám sát CHÍNH XÁC template `s2a_mới-2.xlsx` của user.
+ * Quy ước (đối chiếu cell-by-cell với template):
+ *  - Font: Times New Roman
+ *  - Cột rộng: A=43.78, B=29.33, C=35.78, D=38.66
+ *  - A1 sz=14; D1 sz=14 bold ("Mẫu số S2a-HKD")
+ *  - Hàng 2-6: sz=12 thông tin HKD
+ *  - A8 merge A8:D8: "SỔ CHI TIẾT…" sz=20 bold, center, hàng cao 29.45
+ *  - A9 sz=14 bold "Kỳ kê khai…"; D9 sz=14 bold "(Đơn vị tính: VND)"
+ *  - A10:B10 merge "Chứng từ" sz=16 bold center; C10:C11, D10:D11 merge sz=16 bold center
+ *  - A11/B11 "Kí hiệu"/"Ngày, tháng" sz=14 bold center
+ *  - A12-D12: A B C 1 sz=14 bold center
+ *  - C13 "Ngành nghề: 4719- Bán tạp hóa" sz=12 bold left
+ *  - Data rows: tất cả sz=12, CĂN GIỮA cả 4 cột (theo template), hàng cao 15.6
+ *  - Hàng trống trước "Tổng cộng"; C+D "Tổng cộng (Quý X)" sz=14 bold center, format #,##0
+ *  - Footer C112:D112, C113:D113, C114:D114 merge, center
  */
 export function exportSalesExcel(salesOrders: SaleOrder[], year: number, quarters: number[] = [1, 2, 3, 4]) {
   const wb = XLSX.utils.book_new();
   const rows: any[][] = [];
 
-  // ===== Header thông tin hộ kinh doanh (4 cột: A | B | C | D) =====
+  // ===== Hàng 1-6: Header thông tin HKD =====
   rows.push([`Hộ kinh doanh: ${BUSINESS_INFO.name.toUpperCase()}`, '', '', 'Mẫu số S2a-HKD']);                    // 1
   rows.push([`Mã số thuế: ${BUSINESS_INFO.taxId}`, '', '', '(Kèm theo Thông tư số 152/2025/TT-BTC']);             // 2
   rows.push([`Địa chỉ: ${BUSINESS_INFO.address}, ${BUSINESS_INFO.stall}`, '', '', 'ngày 31/12/2025 của Bộ Tài chính)']); // 3
-  rows.push([`Điện thoại: ${BUSINESS_INFO.phone}`, '', '', '']);                                                  // 4
-  rows.push([`Ngành: ${BUSINESS_INFO.industry}`, '', '', '']);                                                    // 5
-  rows.push(['', '', '', '']);                                                                                    // 6 (spacer)
+  rows.push([`             ${BUSINESS_INFO.ward || 'Phường Đông Hưng Thuận, TP. Hồ Chí Minh'}`, '', '', '']);     // 4
+  rows.push([`Điện thoại: ${BUSINESS_INFO.phone}`, '', '', '']);                                                  // 5
+  rows.push([`Ngành: ${BUSINESS_INFO.industry || '4719- Bán tạp hóa'}`, '', '', '']);                              // 6
+  rows.push(['', '', '', '']);                                                                                     // 7 spacer
 
-  // ===== Tiêu đề chính: merge A:D, căn giữa, size 14 đậm =====
-  rows.push(['SỔ CHI TIẾT DOANH THU BÁN HÀNG, DỊCH VỤ', '', '', '']);                                            // 7
+  // ===== Hàng 8: Tiêu đề chính =====
+  rows.push(['SỔ CHI TIẾT DOANH THU BÁN HÀNG, DỊCH VỤ', '', '', '']);                                              // 8
 
+  // ===== Hàng 9: Kỳ kê khai =====
   const isFullYear = quarters.length === 4;
   const periodLabel = isFullYear
     ? `Kỳ kê khai: Năm ${year}`
     : `Kỳ kê khai: Quý ${quarters.join(', ')} năm ${year}`;
-  rows.push([periodLabel, '', '', '(Đơn vị tính: VND)']);                                                         // 8
-  rows.push(['', '', '', '']);                                                                                    // 9 (spacer)
+  rows.push([periodLabel, '', '', '(Đơn vị tính: VND)']);                                                          // 9
 
-  // ===== Header bảng 2 hàng (merge dọc cho A,C,D; B/cột B tách 2 dòng) =====
-  rows.push(['Chứng từ', '', 'Diễn giải', 'Số tiền']);                                                            // 10
-  rows.push(['Kí hiệu', 'Ngày, tháng', '', '']);                                                                  // 11
-  rows.push(['A', 'B', 'C', '1']);                                                                                // 12
+  // ===== Hàng 10-12: Header bảng =====
+  rows.push(['Chứng từ', '', 'Diễn giải', 'Số tiền']);                                                             // 10
+  rows.push(['Kí hiệu', 'Ngày, tháng', '', '']);                                                                   // 11
+  rows.push(['A', 'B', 'C', 1]);                                                                                   // 12
 
-  // Index hàng đầu tiên của dữ liệu
-  const dataStartRow = rows.length; // sẽ là 12 (0-indexed)
+  // ===== Hàng 13: Ngành nghề =====
+  rows.push(['', '', 'Ngành nghề: 4719- Bán tạp hóa', '']);                                                        // 13
 
+  const dataStartRow = rows.length; // 0-indexed = 13 (Excel row 14)
+
+  // ===== Tính dữ liệu doanh thu theo ngày =====
   const activeSales = salesOrders.filter(o => !o.deletedAt && new Date(o.date).getFullYear() === year);
   const dayTotal = new Map<string, number>();
   for (const o of activeSales) {
@@ -82,7 +88,9 @@ export function exportSalesExcel(salesOrders: SaleOrder[], year: number, quarter
       rows.push(['TM', `${dd}-${mm}`, 'Doanh thu tiền mặt bán lẻ', total]);
     }
 
-    rows.push(['', '', `Cộng quý ${q}`, quarterTotal]);
+    // hàng trống trước tổng cộng
+    rows.push(['', '', '', '']);
+    rows.push(['', '', `Tổng cộng (Quý ${q})`, quarterTotal]);
     subtotalRowIdx.push(rows.length - 1);
     grandTotal += quarterTotal;
 
@@ -92,163 +100,180 @@ export function exportSalesExcel(salesOrders: SaleOrder[], year: number, quarter
   }
 
   if (isFullYear) {
+    rows.push(['', '', '', '']);
     rows.push(['', '', `TỔNG CỘNG NĂM ${year}`, grandTotal]);
     grandTotalRowIdx = rows.length - 1;
   }
 
-  // ===== Footer chữ ký =====
+  // ===== Footer chữ ký (3 hàng, padding bằng hàng trống) =====
   rows.push(['', '', '', '']);
   rows.push(['', '', '', '']);
-  const lastQ = Math.max(...quarters);
-  const { day: lastDay, month: lastMonth } = lastDayOfQuarter(lastQ, year);
-  rows.push(['', '', '', `Ngày ${lastDay} tháng ${lastMonth} năm ${year}`]);
-  rows.push(['', '', '', 'NGƯỜI ĐẠI DIỆN HỘ KINH DOANH/']);
-  rows.push(['', '', '', 'CÁ NHÂN KINH DOANH']);
-  rows.push(['', '', '', '(Ký, ghi rõ họ tên, đóng dấu (nếu có))']);
+  rows.push(['', '', '', '']);
+  rows.push(['', '', '', '']);
+  rows.push(['', '', '', '']);
+  rows.push(['', '', `Ngày … tháng … năm ${year}`, '']);                                                            // footer 1
+  const footerDateRow = rows.length - 1;
+  rows.push(['', '', 'NGƯỜI ĐẠI DIỆN HỘ KINH DOANH/ CÁ NHÂN KINH DOANH', '']);                                     // footer 2
+  const footerRoleRow = rows.length - 1;
+  rows.push(['', '', '(Ký, ghi rõ họ tên, đóng dấu (nếu có))', '']);                                                // footer 3
+  const footerSignRow = rows.length - 1;
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
-  // ===== Cột rộng đồng nhất =====
+  // ===== Cột rộng (chính xác theo template) =====
   ws['!cols'] = [
-    { wch: 12 },  // A: Kí hiệu
-    { wch: 14 },  // B: Ngày tháng
-    { wch: 52 },  // C: Diễn giải
-    { wch: 20 },  // D: Số tiền
+    { wch: 43.78 },  // A
+    { wch: 29.33 },  // B
+    { wch: 35.78 },  // C
+    { wch: 38.66 },  // D
   ];
 
-  // ===== Chiều cao hàng đồng nhất =====
+  // ===== Chiều cao hàng (theo template) =====
   const totalRows = rows.length;
   ws['!rows'] = Array.from({ length: totalRows }, (_, i) => {
-    if (i === 6) return { hpt: 26 }; // tiêu đề chính
-    if (i === 9 || i === 10) return { hpt: 22 }; // header bảng
-    return { hpt: 18 };
+    if (i === 0) return { hpt: 18 };
+    if (i === 1) return { hpt: 17.45 };
+    if (i >= 2 && i <= 5) return { hpt: 15.6 };
+    if (i === 6) return { hpt: 15 };       // spacer trước title
+    if (i === 7) return { hpt: 29.45 };    // SỔ CHI TIẾT
+    if (i === 8) return { hpt: 17.45 };    // Kỳ kê khai
+    if (i === 9) return { hpt: 20.1 };     // Header bảng row 1
+    if (i === 10) return { hpt: 17.45 };   // Header bảng row 2
+    if (i === 11) return { hpt: 21.95 };   // Header bảng row 3 (A B C 1)
+    if (i === 12) return { hpt: 18.6 };    // Ngành nghề
+    return { hpt: 15.6 };                  // data + footer
   });
 
-  // ===== Merge =====
+  // ===== Merge (chính xác theo template) =====
   ws['!merges'] = [
-    // Tiêu đề chính SỔ CHI TIẾT… merge A:D hàng 7 (idx 6)
-    { s: { r: 6, c: 0 }, e: { r: 6, c: 3 } },
-    // Header "Chứng từ" merge A10:B10
-    { s: { r: 9, c: 0 }, e: { r: 9, c: 1 } },
-    // Header "Diễn giải" merge dọc C10:C11
-    { s: { r: 9, c: 2 }, e: { r: 10, c: 2 } },
-    // Header "Số tiền" merge dọc D10:D11
-    { s: { r: 9, c: 3 }, e: { r: 10, c: 3 } },
+    { s: { r: 7, c: 0 }, e: { r: 7, c: 3 } },  // A8:D8 SỔ CHI TIẾT
+    { s: { r: 9, c: 0 }, e: { r: 9, c: 1 } },  // A10:B10 Chứng từ
+    { s: { r: 9, c: 2 }, e: { r: 10, c: 2 } }, // C10:C11 Diễn giải
+    { s: { r: 9, c: 3 }, e: { r: 10, c: 3 } }, // D10:D11 Số tiền
+    // Footer merge C:D
+    { s: { r: footerDateRow, c: 2 }, e: { r: footerDateRow, c: 3 } },
+    { s: { r: footerRoleRow, c: 2 }, e: { r: footerRoleRow, c: 3 } },
+    { s: { r: footerSignRow, c: 2 }, e: { r: footerSignRow, c: 3 } },
   ];
 
   // ===== Style helpers =====
-  const baseFont = { name: 'Times New Roman', sz: 12 };
-  const thinBorder = { style: 'thin' as const, color: { rgb: '000000' } };
-  const allBorders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+  const TNR = 'Times New Roman';
+  const ensure = (addr: string) => {
+    if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+    return ws[addr];
+  };
 
   const range = XLSX.utils.decode_range(ws['!ref']!);
 
-  // Apply font + alignment cho tất cả cell có dữ liệu
+  // Default: tất cả cell có style cơ bản TNR sz12
   for (let R = range.s.r; R <= range.e.r; R++) {
     for (let C = range.s.c; C <= range.e.c; C++) {
       const addr = XLSX.utils.encode_cell({ r: R, c: C });
-      const cell = ws[addr];
-      if (!cell) continue;
-      cell.s = {
-        font: { ...baseFont },
-        alignment: { vertical: 'center', wrapText: true, horizontal: C === 3 ? 'right' : (C === 0 || C === 1 ? 'center' : 'left') },
+      if (!ws[addr]) continue;
+      ws[addr].s = {
+        font: { name: TNR, sz: 12 },
+        alignment: { vertical: 'center', horizontal: 'center', wrapText: false },
       };
     }
   }
 
-  // ===== Header thông tin (hàng 1-5): căn trái, cột D căn trái =====
-  for (let R = 0; R <= 4; R++) {
+  // ===== Hàng 1 (idx 0) =====
+  ensure('A1').s = { font: { name: TNR, sz: 14 }, alignment: { vertical: 'center', horizontal: 'left' } };
+  ensure('D1').s = { font: { name: TNR, sz: 14, bold: true }, alignment: { vertical: 'center', horizontal: 'left' } };
+
+  // ===== Hàng 2-3 (idx 1-2): cột A trái, cột D trái =====
+  for (const R of [1, 2]) {
+    const aAddr = XLSX.utils.encode_cell({ r: R, c: 0 });
+    const dAddr = XLSX.utils.encode_cell({ r: R, c: 3 });
+    if (ws[aAddr]) ws[aAddr].s = { font: { name: TNR, sz: 12 }, alignment: { vertical: 'center', horizontal: 'left' } };
+    if (ws[dAddr]) ws[dAddr].s = { font: { name: TNR, sz: 12 }, alignment: { vertical: 'center', horizontal: 'left' } };
+  }
+
+  // ===== Hàng 4-6 (idx 3-5): cột A trái =====
+  for (const R of [3, 4, 5]) {
+    const aAddr = XLSX.utils.encode_cell({ r: R, c: 0 });
+    if (ws[aAddr]) ws[aAddr].s = { font: { name: TNR, sz: 12 }, alignment: { vertical: 'center', horizontal: 'left' } };
+  }
+
+  // ===== Hàng 8 (idx 7): SỔ CHI TIẾT — sz=20 bold center =====
+  ensure('A8').s = {
+    font: { name: TNR, sz: 20, bold: true },
+    alignment: { vertical: 'center', horizontal: 'center' },
+  };
+
+  // ===== Hàng 9 (idx 8): Kỳ kê khai sz=14 bold left; D9 sz=14 bold right-ish =====
+  ensure('A9').s = {
+    font: { name: TNR, sz: 14, bold: true },
+    alignment: { vertical: 'center', horizontal: 'left' },
+  };
+  ensure('D9').s = {
+    font: { name: TNR, sz: 14, bold: true },
+    alignment: { vertical: 'center', horizontal: 'left' },
+  };
+
+  // ===== Hàng 10 (idx 9): "Chứng từ", "Diễn giải", "Số tiền" sz=16 bold center =====
+  ensure('A10').s = { font: { name: TNR, sz: 16, bold: true }, alignment: { vertical: 'center', horizontal: 'center' } };
+  ensure('C10').s = { font: { name: TNR, sz: 16, bold: true }, alignment: { vertical: 'center', horizontal: 'center' } };
+  ensure('D10').s = { font: { name: TNR, sz: 16, bold: true }, alignment: { vertical: 'center', horizontal: 'center' } };
+
+  // ===== Hàng 11 (idx 10): "Kí hiệu" / "Ngày, tháng" sz=14 bold center =====
+  ensure('A11').s = { font: { name: TNR, sz: 14, bold: true }, alignment: { vertical: 'center', horizontal: 'center' } };
+  ensure('B11').s = { font: { name: TNR, sz: 14, bold: true }, alignment: { vertical: 'center', horizontal: 'center' } };
+
+  // ===== Hàng 12 (idx 11): A B C 1 sz=14 bold center =====
+  for (const C of [0, 1, 2, 3]) {
+    const addr = XLSX.utils.encode_cell({ r: 11, c: C });
+    ensure(addr).s = { font: { name: TNR, sz: 14, bold: true }, alignment: { vertical: 'center', horizontal: 'center' } };
+  }
+
+  // ===== Hàng 13 (idx 12): "Ngành nghề: 4719- Bán tạp hóa" sz=12 bold left ở cột C =====
+  ensure('C13').s = {
+    font: { name: TNR, sz: 12, bold: true },
+    alignment: { vertical: 'center', horizontal: 'left' },
+  };
+
+  // ===== Data rows (TM, subtotal, grand total) — căn giữa, format số =====
+  for (let R = dataStartRow; R < footerDateRow - 4; R++) {
+    const isSubtotal = subtotalRowIdx.includes(R);
+    const isGrand = R === grandTotalRowIdx;
     for (let C = 0; C <= 3; C++) {
       const addr = XLSX.utils.encode_cell({ r: R, c: C });
       if (!ws[addr]) continue;
-      ws[addr].s.alignment = { vertical: 'center', horizontal: C === 3 ? 'left' : 'left', wrapText: false };
-    }
-    // Cột D đầu tiên: "Mẫu số S2a-HKD" in đậm
-    const dAddr = XLSX.utils.encode_cell({ r: R, c: 3 });
-    if (R === 0 && ws[dAddr]) ws[dAddr].s.font = { ...baseFont, bold: true };
-  }
-
-  // ===== Tiêu đề chính (hàng 7, idx 6): căn giữa, size 14, đậm =====
-  const titleAddr = XLSX.utils.encode_cell({ r: 6, c: 0 });
-  if (ws[titleAddr]) {
-    ws[titleAddr].s = {
-      font: { ...baseFont, sz: 14, bold: true },
-      alignment: { vertical: 'center', horizontal: 'center', wrapText: false },
-    };
-  }
-
-  // ===== Kỳ kê khai (hàng 8, idx 7) =====
-  const periodAddr = XLSX.utils.encode_cell({ r: 7, c: 0 });
-  if (ws[periodAddr]) {
-    ws[periodAddr].s = {
-      font: { ...baseFont, italic: true },
-      alignment: { vertical: 'center', horizontal: 'left', wrapText: false },
-    };
-  }
-  const unitAddr = XLSX.utils.encode_cell({ r: 7, c: 3 });
-  if (ws[unitAddr]) {
-    ws[unitAddr].s = {
-      font: { ...baseFont, italic: true },
-      alignment: { vertical: 'center', horizontal: 'right', wrapText: false },
-    };
-  }
-
-  // ===== Header bảng (hàng 10-12, idx 9-11): đậm, căn giữa, có border =====
-  for (let R = 9; R <= 11; R++) {
-    for (let C = 0; C <= 3; C++) {
-      const addr = XLSX.utils.encode_cell({ r: R, c: C });
-      if (!ws[addr]) {
-        ws[addr] = { v: '', t: 's' };
-      }
+      const sz = (isSubtotal || isGrand) ? 14 : 12;
+      const bold = isSubtotal || isGrand;
       ws[addr].s = {
-        font: { ...baseFont, bold: true },
-        alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
-        border: allBorders,
-        fill: { patternType: 'solid', fgColor: { rgb: 'F2F2F2' } },
-      };
-    }
-  }
-
-  // ===== Hàng dữ liệu (TM rows + subtotal + grand total): border, format số =====
-  const lastDataRow = grandTotalRowIdx >= 0 ? grandTotalRowIdx : (subtotalRowIdx[subtotalRowIdx.length - 1] || dataStartRow);
-  for (let R = dataStartRow; R <= lastDataRow; R++) {
-    for (let C = 0; C <= 3; C++) {
-      const addr = XLSX.utils.encode_cell({ r: R, c: C });
-      if (!ws[addr]) {
-        ws[addr] = { v: '', t: 's' };
-      }
-      const isSubtotal = subtotalRowIdx.includes(R);
-      const isGrand = R === grandTotalRowIdx;
-      ws[addr].s = {
-        font: { ...baseFont, bold: isSubtotal || isGrand },
-        alignment: {
-          vertical: 'center',
-          horizontal: C === 3 ? 'right' : (C === 0 || C === 1 ? 'center' : (isSubtotal || isGrand ? 'right' : 'left')),
-          wrapText: false,
-        },
-        border: allBorders,
-        ...(isGrand ? { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2CC' } } } : {}),
+        font: { name: TNR, sz, bold },
+        alignment: { vertical: 'center', horizontal: 'center', wrapText: false },
       };
       if (C === 3 && typeof ws[addr].v === 'number') {
         ws[addr].z = '#,##0';
+        ws[addr].s.numFmt = '#,##0';
       }
     }
   }
 
-  // ===== Footer chữ ký: căn giữa cột D =====
-  for (let R = lastDataRow + 1; R <= range.e.r; R++) {
-    const dAddr = XLSX.utils.encode_cell({ r: R, c: 3 });
-    if (!ws[dAddr]) continue;
-    const v = String(ws[dAddr].v || '');
-    const isDate = v.startsWith('Ngày');
-    const isRole = v.includes('NGƯỜI ĐẠI DIỆN') || v.includes('CÁ NHÂN');
-    ws[dAddr].s = {
-      font: { ...baseFont, italic: isDate, bold: isRole },
-      alignment: { vertical: 'center', horizontal: 'center', wrapText: false },
-    };
+  // ===== Footer =====
+  ensure(XLSX.utils.encode_cell({ r: footerDateRow, c: 2 })).s = {
+    font: { name: TNR, sz: 12 },
+    alignment: { vertical: 'center', horizontal: 'center' },
+  };
+  ensure(XLSX.utils.encode_cell({ r: footerRoleRow, c: 2 })).s = {
+    font: { name: TNR, sz: 14, bold: true },
+    alignment: { vertical: 'center', horizontal: 'center' },
+  };
+  ensure(XLSX.utils.encode_cell({ r: footerSignRow, c: 2 })).s = {
+    font: { name: TNR, sz: 12, italic: true },
+    alignment: { vertical: 'center', horizontal: 'center' },
+  };
+
+  // Đặt chiều cao đặc biệt cho footer
+  if (ws['!rows']) {
+    ws['!rows'][footerDateRow] = { hpt: 17.1 };
+    ws['!rows'][footerRoleRow] = { hpt: 25.5 };
+    ws['!rows'][footerSignRow] = { hpt: 15.6 };
   }
 
-  XLSX.utils.book_append_sheet(wb, ws, 'S2a-HKD');
+  XLSX.utils.book_append_sheet(wb, ws, `S2a-HKD ${year}`);
   const suffix = isFullYear ? `${year}` : `Q${quarters.join('-')}_${year}`;
   XLSX.writeFile(wb, `S2a-HKD_${suffix}.xlsx`, { cellStyles: true });
 }
