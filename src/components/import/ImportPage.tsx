@@ -614,14 +614,20 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
           </div>
           <div>
             <Label className="text-xs">Tag</Label>
-            <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
-              </SelectContent>
-            </Select>
+            {order.tag === 'auto' ? (
+              <div className="mt-1 flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
+                ⚙️ Tự động (không thể đổi tag của đơn tự sinh)
+              </div>
+            ) : (
+              <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="special">🔴 Đặc biệt</SelectItem>
+                  <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+                  <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
