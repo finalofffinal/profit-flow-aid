@@ -586,7 +586,7 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
       });
     if (newItems.length === 0) return;
     onSubmit({
-      date, tag, supplierId, supplierName: supplier.name,
+      date, tag: order.tag === 'auto' ? 'auto' : tag, supplierId, supplierName: supplier.name,
       items: newItems,
     });
   };
