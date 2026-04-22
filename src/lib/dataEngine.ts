@@ -98,8 +98,8 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   if (lunar.month === 8 && lunar.day >= 10 && lunar.day <= 15) holidayBoost = Math.max(holidayBoost, 1.12);
   if (month === 12 && day >= 22) holidayBoost = Math.max(holidayBoost, 1.10 + (day - 22) * 0.015);
 
-  // Nhiễu vừa phải ±15% — tránh ngày bất thường
-  const noise = 0.85 + rand() * 0.30;
+  // Nhiễu nhẹ ±8% — tránh ngày bất thường, vẫn giữ vẻ ngẫu nhiên
+  const noise = 0.92 + rand() * 0.16;
   return weeklyBoost * monthlyWeight * holidayBoost * noise;
 }
 
