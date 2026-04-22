@@ -99,8 +99,19 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
       head: [['Ngày tháng', 'Diễn giải', 'Số tiền (VNĐ)']],
       body: rows.map(r => [r.date, r.desc, r.amount]),
       styles: { font: PDF_FONT, fontSize: 9, cellPadding: 2, valign: 'middle' },
-      headStyles: { font: PDF_FONT, fontStyle: 'bold', fillColor: [40, 50, 80], fontSize: 11, halign: 'center', textColor: [255, 255, 255] },
-      bodyStyles: { font: PDF_FONT },
+      // Header bảng: nền xanh đậm, chữ trắng to (14pt) → tương phản mạnh với day rows
+      headStyles: {
+        font: PDF_FONT,
+        fontStyle: 'bold',
+        fillColor: [25, 35, 70],
+        fontSize: 14,
+        halign: 'center',
+        textColor: [255, 255, 255],
+        cellPadding: 4,
+        lineColor: [255, 255, 255],
+        lineWidth: 0.3,
+      },
+      bodyStyles: { font: PDF_FONT, textColor: [40, 40, 40] },
       columnStyles: {
         0: { cellWidth: 32, halign: 'center' },
         1: { cellWidth: 110 },
@@ -109,14 +120,19 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
       didParseCell: (data) => {
         const row = rows[data.row.index];
         if (!row) return;
-        if (row.kind === 'day') {
+        // Day rows: nền vàng nhạt, chữ nâu sẫm 10pt — KHÁC HẲN header xanh đậm
+        if (row.kind === 'day' && data.row.index !== rows.length - 1) {
           data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fontSize = 11;
-          data.cell.styles.fillColor = [232, 238, 250];
+          data.cell.styles.fontSize = 10;
+          data.cell.styles.fillColor = [252, 245, 220];
+          data.cell.styles.textColor = [120, 60, 10];
         }
+        // Tổng cộng cuối quý
         if (data.row.index === rows.length - 1) {
+          data.cell.styles.fontStyle = 'bold';
           data.cell.styles.fontSize = 12;
-          data.cell.styles.fillColor = [255, 240, 210];
+          data.cell.styles.fillColor = [255, 230, 180];
+          data.cell.styles.textColor = [80, 40, 0];
         }
       },
       margin: { left: 14, right: 14 },

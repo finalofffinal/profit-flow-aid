@@ -229,17 +229,6 @@ export function InventoryPage(props: InventoryPageProps) {
             </p>
           </div>
 
-          {/* Hàng 3: THẺ MỚI — Tổng tiền hàng đang có trong kho */}
-          <div className="rounded-lg border-2 border-primary/30 bg-primary/10 p-2.5 text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-1">
-              <Boxes className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground font-semibold">Tổng tiền hàng đang có trong kho</span>
-            </div>
-            <p className="font-black text-xl text-primary">{formatVND(quarterSummary.stockValue)}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              {Math.round(quarterSummary.totalStockQty)} đv · từ {quarterSummary.batchCount} lô · cuối Q{selQ}/{selYear}
-            </p>
-          </div>
         </div>
       </div>
 
