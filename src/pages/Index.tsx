@@ -244,6 +244,7 @@ function IndexInner() {
             rebalanceQuarters={rebalanceQuarters}
             salesOrders={salesOrders}
             importOrders={importOrders}
+            products={activeProducts}
             addNotification={addNotification}
             onDataRestore={handleDataRestore}
             onTabChange={setActiveTab}
