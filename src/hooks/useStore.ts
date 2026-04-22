@@ -66,6 +66,9 @@ export function useProducts() {
       ...product,
       id: generateId(),
       stock: 0,
+      // Giá GỐC = giá khởi tạo. Auto generator luôn dùng giá này.
+      baseBuyPrice: product.buyPrice,
+      baseSellPrice: product.sellPrice,
       priceHistory: product.buyPrice || product.sellPrice ? [{
         buyPrice: product.buyPrice, sellPrice: product.sellPrice, date: now,
       }] : [],
@@ -78,7 +81,16 @@ export function useProducts() {
   const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
     setProducts(prev => prev.map(p => {
       if (p.id !== id) return p;
-      const updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
+      // Khi catalog edit: KHÔNG cho phép ghi đè baseBuyPrice/baseSellPrice (giữ giá GỐC cho auto)
+      const { baseBuyPrice: _ignBuy, baseSellPrice: _ignSell, ...safeUpdates } = updates;
+      const updated: Product = {
+        ...p,
+        ...safeUpdates,
+        // Đảm bảo base* luôn tồn tại (back-fill cho data cũ)
+        baseBuyPrice: p.baseBuyPrice ?? p.buyPrice,
+        baseSellPrice: p.baseSellPrice ?? p.sellPrice,
+        updatedAt: new Date().toISOString(),
+      };
       if ((updates.buyPrice !== undefined && updates.buyPrice !== p.buyPrice) ||
           (updates.sellPrice !== undefined && updates.sellPrice !== p.sellPrice)) {
         updated.priceHistory = [
