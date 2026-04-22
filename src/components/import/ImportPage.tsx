@@ -303,16 +303,39 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                           <span className="font-bold text-foreground">· {formatVND(order.total)}</span>
                         </div>
                       </div>
-                      {!order.locked && !currentQLocked && (
+                      {!currentQLocked && (
                         <div data-admin-only className="flex items-center gap-0.5 shrink-0">
-                          {order.tag !== 'auto' && onUpdateOrder && (
+                          {/* Khóa/Mở khóa cho đơn auto: khi khóa, regen sẽ giữ nguyên */}
+                          {order.tag === 'auto' && onUpdateOrder && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={e => {
+                                e.stopPropagation();
+                                onUpdateOrder(order.id, { locked: !order.locked });
+                                addNotification(
+                                  order.locked ? 'Đã mở khóa đơn tự động' : 'Đã khóa đơn tự động — sẽ giữ nguyên khi tạo lại',
+                                  'info'
+                                );
+                              }}
+                              title={order.locked ? 'Mở khóa đơn này' : 'Khóa đơn này (giữ nguyên khi Ngẫu nhiên/Tạo đơn bù)'}
+                            >
+                              {order.locked
+                                ? <Lock className="h-3.5 w-3.5 text-amber-600" />
+                                : <Lock className="h-3.5 w-3.5 text-muted-foreground/50" />}
+                            </Button>
+                          )}
+                          {!order.locked && order.tag !== 'auto' && onUpdateOrder && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); setEditingOrderId(order.id); }}>
                               <Pencil className="h-3.5 w-3.5 text-primary" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }} title={order.tag === 'auto' ? 'Xóa đơn tự động này' : 'Xóa đơn'}>
-                            <Trash className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
+                          {!order.locked && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); handleDeleteOrder(order.id); }} title={order.tag === 'auto' ? 'Xóa đơn tự động này' : 'Xóa đơn'}>
+                              <Trash className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       )}
                     </button>

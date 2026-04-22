@@ -95,6 +95,27 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
     return result;
   }, [dailySales, search, tagFilter, brandFilter, productBrandMap]);
 
+  // Doanh thu tích lũy / Lợi nhuận: LUÔN tính trên TOÀN BỘ Q+Năm đang chọn
+  // (không bị filter UI ảnh hưởng) — đảm bảo khớp số trên Dashboard.
+  const quarterRevenue = useMemo(() => {
+    return activeOrders
+      .filter(o => {
+        const d = new Date(o.date);
+        return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
+      })
+      .reduce((s, o) => s + o.totalRevenue, 0);
+  }, [activeOrders, selQ, selYear]);
+
+  const quarterProfit = useMemo(() => {
+    return activeOrders
+      .filter(o => {
+        const d = new Date(o.date);
+        return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
+      })
+      .reduce((s, o) => s + o.totalProfit, 0);
+  }, [activeOrders, selQ, selYear]);
+
+  // Tổng theo bộ lọc hiện tại (để hiển thị thông tin phụ)
   const totalRevenue = filtered.reduce((s, d) => s + d.totalRevenue, 0);
   const totalProfit = filtered.reduce((s, d) => s + d.totalProfit, 0);
 
@@ -137,15 +158,15 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
           customTo={customTo} onCustomToChange={setCustomTo}
         />
 
-        {/* Cumulative revenue banner - high contrast for dark mode */}
+        {/* Doanh thu tích lũy: LUÔN tính trên cả Q+Năm — khớp với Dashboard */}
         <div className="flex items-center justify-between bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
           <div>
-            <p className="text-xs text-muted-foreground font-medium">Doanh thu tích lũy</p>
-            <p className="text-xl font-black text-primary dark:text-primary">{formatCompactVND(totalRevenue)} VND</p>
+            <p className="text-xs text-muted-foreground font-medium">Doanh thu tích lũy Q{selQ}/{selYear}</p>
+            <p className="text-xl font-black text-primary dark:text-primary">{formatCompactVND(quarterRevenue)} VND</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground font-medium">Lợi nhuận</p>
-            <p className="text-xl font-black text-emerald-600 dark:text-emerald-300">{formatCompactVND(totalProfit)} VND</p>
+            <p className="text-xs text-muted-foreground font-medium">Lợi nhuận Q{selQ}</p>
+            <p className="text-xl font-black text-emerald-600 dark:text-emerald-300">{formatCompactVND(quarterProfit)} VND</p>
           </div>
           <Badge variant="outline" className="text-xs font-bold border-primary/40">{filtered.length} ngày</Badge>
         </div>
