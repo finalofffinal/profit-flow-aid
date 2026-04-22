@@ -713,23 +713,19 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
         endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
       };
     case 2:
-      // Q2 doanh thu thấp, nhập rất cao để dồn kho. Target rất cao để vượt cap.
       return {
-        seasonalRatio: 4.00 + rand() * 0.30, // target 400–430% (thực tế ≈170–185%)
-        endingStockRatio: 0.34 + rand() * 0.04,
+        seasonalRatio: 2.10 + rand() * 0.15, // target ~210-225%, thực tế ≈125-135% sau cap
+        endingStockRatio: 0.18 + rand() * 0.04,
       };
     case 3:
-      // Q3 nhập cao nhất, tồn cuối Q3 lớn nhất năm.
       return {
-        seasonalRatio: 4.20 + rand() * 0.30, // target 420–450% (thực tế ≈180–195%)
-        endingStockRatio: 0.38 + rand() * 0.04,
+        seasonalRatio: 2.05 + rand() * 0.15, // target ~205-220%, thực tế ≈123-133%
+        endingStockRatio: 0.20 + rand() * 0.04, // tồn cuối Q3 cao nhất do tích lũy
       };
     case 4:
-      // Q4 BẮT BUỘC ratio nhập/doanh thu thực tế trong 120%–150% (gap luôn DƯƠNG).
-      // Cap NCC clamp rất mạnh ở Q4 → phải đẩy target cực cao để vượt cap.
       return {
-        seasonalRatio: 5.50 + rand() * 0.30, // target 550–580% (thực tế ≈130–148%)
-        endingStockRatio: 0.20 + rand() * 0.04,
+        seasonalRatio: 2.00 + rand() * 0.15, // target ~200-215%, thực tế ≈120-130%
+        endingStockRatio: 0.12 + rand() * 0.04, // thấp hơn Q2/Q3 vì xả mạnh
       };
     default:
       return {
@@ -1065,16 +1061,13 @@ export function generateQuarterData(
 
   // ==========================================================================
   // POST-CLAMP IMPORT BOOST (Q2/Q3/Q4)
-  // Cap NCC chặn seasonalRatio không đẩy được. Sau khi scale + clamp, nếu
-  // ratio nhập / doanh thu mục tiêu chưa đạt minRatio thì BƠM thêm bằng cách
-  // duplicate các đơn auto (BỎ QUA cap NCC — đây là yêu cầu nghiệp vụ user).
-  //
-  // Mục tiêu (ratio nhập_thực / doanh_thu_target):
-  //   • Q2: ≥ 1.80   (gap dương rất lớn)
-  //   • Q3: ≥ 1.90   (gap dương lớn nhất)
-  //   • Q4: ≥ 1.30   (gap dương vừa, BẮT BUỘC > 1.20)
+  // Mục tiêu: tổng gap dương Q2+Q3+Q4 ≈ |gap âm Q1| (~120tr) để cân bằng năm.
+  // Mỗi quý gap dương ≈ 35-45tr → ratio nhập/doanh thu khoảng 1.20-1.27.
+  //   • Q2: ratio ≈ 1.27   (gap dương vừa)
+  //   • Q3: ratio ≈ 1.25   (gap dương vừa, tồn cao nhất do tích lũy từ Q2)
+  //   • Q4: ratio ≈ 1.20   (gap dương nhỏ nhất, BẮT BUỘC > 1.20)
   // ==========================================================================
-  const minRatioByQuarter: Record<number, number> = { 1: 0, 2: 1.80, 3: 1.90, 4: 1.30 };
+  const minRatioByQuarter: Record<number, number> = { 1: 0, 2: 1.27, 3: 1.25, 4: 1.22 };
   const minRatio = minRatioByQuarter[quarter.quarter] ?? 0;
   if (minRatio > 0) {
     const totalSalesTarget = quarter.targetRevenue;
