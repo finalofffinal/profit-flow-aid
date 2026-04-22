@@ -12,7 +12,7 @@ import {
   useProducts, useSuppliers, useNotifications, useTheme,
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
 } from '@/hooks/useStore';
-import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder } from '@/lib/dataEngine';
+import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder, DATA_ENGINE_VERSION } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { TabId } from '@/types';
@@ -111,6 +111,7 @@ function IndexInner() {
   // Stable signature to avoid unnecessary regen (includes regenSeeds + manual data changes)
   const quarterSig = useMemo(
     () => [
+      DATA_ENGINE_VERSION,
       quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
       manualImportSig,
       manualSalesSig,
