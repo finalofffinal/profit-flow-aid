@@ -71,7 +71,12 @@ export function DashboardPage({
     }).reduce((s, o) => s + o.total, 0);
   }, [importOrders, selectedYear, selectedQ]);
 
-  // Giá trị tồn kho cuối quý — dùng CHÍNH XÁC cùng logic với tab Kho hàng (FIFO snapshot).
+  // "Kho hàng Q" = chênh lệch nhập − bán trong quý (đồng bộ với tab Kho hàng).
+  // Số âm = bán nhiều hơn nhập (tiêu hao tồn kho); số dương = nhập nhiều hơn bán (tích kho).
+  const stockNetFlow = useMemo(() => totalImportCost - totalRevenue, [totalImportCost, totalRevenue]);
+  const stockNetIsNegative = stockNetFlow < 0;
+
+  // Giá trị tồn kho cuối quý (FIFO snapshot) — dùng cho phụ chú dưới thẻ.
   const stockValue = useMemo(() => {
     if (products.length === 0) return 0;
     const snapshot = computeInventorySnapshot(selectedQ, selectedYear, products as any, importOrders, salesOrders);
