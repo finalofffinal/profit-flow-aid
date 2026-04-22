@@ -62,43 +62,43 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const lunar = getLunarParts(d);
 
-  // Phân phối rộng — mỗi ngày khác biệt rõ:
-  // Cuối tuần: 35% cao, 35% bình thường, 30% thấp
-  // Ngày thường: 25% cao, 50% bình thường, 25% thấp
+  // Phân phối mượt hơn: đỉnh chủ yếu T7/CN, hiếm khi 2 ngày cao liên tiếp.
+  // Cuối tuần: 45% cao, 45% bình thường, 10% thấp
+  // Ngày thường: 12% cao, 65% bình thường, 23% thấp
   let weeklyBoost: number;
   const r = rand();
   if (dow === 0 || dow === 6) {
-    if (r < 0.35) weeklyBoost = 1.05 + rand() * 0.20;
-    else if (r < 0.70) weeklyBoost = 0.85 + rand() * 0.20;
-    else weeklyBoost = 0.55 + rand() * 0.25;
+    if (r < 0.45) weeklyBoost = 1.10 + rand() * 0.25;       // 1.10–1.35
+    else if (r < 0.90) weeklyBoost = 0.90 + rand() * 0.15;  // 0.90–1.05
+    else weeklyBoost = 0.70 + rand() * 0.15;                // 0.70–0.85
   } else {
-    if (r < 0.25) weeklyBoost = 1.05 + rand() * 0.20;
-    else if (r < 0.75) weeklyBoost = 0.80 + rand() * 0.25;
-    else weeklyBoost = 0.50 + rand() * 0.30;
+    if (r < 0.12) weeklyBoost = 1.05 + rand() * 0.10;       // 1.05–1.15 (hiếm)
+    else if (r < 0.77) weeklyBoost = 0.85 + rand() * 0.18;  // 0.85–1.03
+    else weeklyBoost = 0.65 + rand() * 0.18;                // 0.65–0.83
   }
 
   let monthlyWeight = 1.0;
-  if (day <= 5) monthlyWeight = 1.10;
-  else if (day <= 10) monthlyWeight = 1.05;
+  if (day <= 5) monthlyWeight = 1.06;
+  else if (day <= 10) monthlyWeight = 1.03;
   else if (day <= 20) monthlyWeight = 1.0;
-  else if (day <= 25) monthlyWeight = 0.95;
-  else monthlyWeight = 0.90;
+  else if (day <= 25) monthlyWeight = 0.97;
+  else monthlyWeight = 0.93;
 
   let holidayBoost = 1.0;
-  if (lunar.month === 12 && lunar.day >= 15 && lunar.day <= 19) holidayBoost = 1.15;
-  if (lunar.month === 12 && lunar.day >= 20 && lunar.day <= 24) holidayBoost = 1.30 + (lunar.day - 20) * 0.04;
-  if (lunar.month === 12 && lunar.day >= 25) holidayBoost = 1.55 + (lunar.day - 25) * 0.05;
-  if (lunar.month === 1 && lunar.day >= 7 && lunar.day <= 15) holidayBoost = 1.10;
+  if (lunar.month === 12 && lunar.day >= 15 && lunar.day <= 19) holidayBoost = 1.10;
+  if (lunar.month === 12 && lunar.day >= 20 && lunar.day <= 24) holidayBoost = 1.20 + (lunar.day - 20) * 0.03;
+  if (lunar.month === 12 && lunar.day >= 25) holidayBoost = 1.40 + (lunar.day - 25) * 0.04;
+  if (lunar.month === 1 && lunar.day >= 7 && lunar.day <= 15) holidayBoost = 1.07;
   if ((lunar.month === 1 || lunar.month === 7) && lunar.day >= 13 && lunar.day <= 15) {
-    holidayBoost = Math.max(holidayBoost, 1.18);
+    holidayBoost = Math.max(holidayBoost, 1.12);
   }
-  if (mmdd === '04-30' || mmdd === '05-01') holidayBoost = Math.max(holidayBoost, 1.25);
-  if (mmdd === '09-01' || mmdd === '09-02') holidayBoost = Math.max(holidayBoost, 1.18);
-  if (lunar.month === 8 && lunar.day >= 10 && lunar.day <= 15) holidayBoost = Math.max(holidayBoost, 1.18);
-  if (month === 12 && day >= 22) holidayBoost = Math.max(holidayBoost, 1.15 + (day - 22) * 0.02);
+  if (mmdd === '04-30' || mmdd === '05-01') holidayBoost = Math.max(holidayBoost, 1.18);
+  if (mmdd === '09-01' || mmdd === '09-02') holidayBoost = Math.max(holidayBoost, 1.12);
+  if (lunar.month === 8 && lunar.day >= 10 && lunar.day <= 15) holidayBoost = Math.max(holidayBoost, 1.12);
+  if (month === 12 && day >= 22) holidayBoost = Math.max(holidayBoost, 1.10 + (day - 22) * 0.015);
 
-  // Nhiễu lớn ±25%
-  const noise = 0.75 + rand() * 0.50;
+  // Nhiễu vừa phải ±15% — tránh ngày bất thường
+  const noise = 0.85 + rand() * 0.30;
   return weeklyBoost * monthlyWeight * holidayBoost * noise;
 }
 
@@ -120,6 +120,17 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
   if (weightSum === 0) {
     days.forEach(d => map.set(d, 0));
     return map;
+  }
+
+  // Làm mượt: nếu 2 ngày liền nhau đều cao (>1.15× trung bình), kéo ngày sau xuống.
+  const avgWeight = weightSum / Math.max(1, days.filter((_, i) => weights[i] > 0).length);
+  for (let i = 1; i < weights.length; i++) {
+    if (weights[i] === 0 || weights[i - 1] === 0) continue;
+    if (weights[i - 1] > avgWeight * 1.15 && weights[i] > avgWeight * 1.15) {
+      const reduced = avgWeight * (0.80 + rand() * 0.15);
+      weightSum -= (weights[i] - reduced);
+      weights[i] = reduced;
+    }
   }
 
   let allocated = 0;
@@ -737,7 +748,8 @@ export function generateQuarterData(
       const openingOrderId = generateId();
       const openingDate = '2025-12-31';
       const openingItems: ImportOrderItem[] = [];
-      const targetOpeningRevenue = quarter.targetRevenue * 1.35;
+      // Tồn mở đầu vừa đủ: target × 0.7 (kết hợp với nhập Q1 ~50% sẽ đủ doanh thu + còn ~10-15% tồn cuối quý)
+      const targetOpeningRevenue = quarter.targetRevenue * 0.70;
       const perProductRevenue = targetOpeningRevenue / eligibleProds.length;
 
       for (const p of eligibleProds) {
