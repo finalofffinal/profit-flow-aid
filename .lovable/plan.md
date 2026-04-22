@@ -1,55 +1,83 @@
 
 
-# Sổ Doanh Thu — Giai đoạn 1: Nền tảng & Tab Danh mục
+# Sửa logic Kho hàng + Excel xuất theo template chuẩn
 
-## Tổng quan
-Xây dựng khung ứng dụng hoàn chỉnh với design system Matte Slate & Charcoal, layout responsive (mobile bottom nav + desktop sidebar), header thông tin kinh doanh, và Tab Danh mục với đầy đủ chức năng quản lý sản phẩm/nhà cung cấp.
+## Vấn đề hiện tại
 
----
+1. **Chênh lệch nhập − bán luôn âm ở mọi quý** → phi logic. Q3, Q4 nhập nhiều hơn bán (theo profile đã đặt) nhưng UI vẫn hiện dấu trừ đỏ vì cách tính/format hiển thị sai.
+2. **Thiếu thẻ "Tổng tiền hàng đang có trong kho"** (giá trị tồn thực tế = nhập − đã bán theo FIFO). Đây mới là số quan trọng, không phải chênh lệch dòng tiền.
+3. **Số lượng tồn từng SP hiển thị thô** (vd "1.234 chai") thay vì **"1 thùng + 5 chai"** theo `conversionRate`.
+4. **File Excel xuất ra lệch format** so với template `s2a_mới-2.xlsx` user vừa gửi (căn chỉnh hàng/cột, font size, khoảng cách).
 
-## 1. Design System & Theme
-- Cài đặt font Inter (400-900)
-- Thiết lập CSS tokens HSL cho Light/Dark mode theo spec (Matte Slate, Charcoal, Emerald, Crimson, Gold...)
-- Tạo custom shadows: `card-shadow` (subtle), `card-shadow-lg` (elevated)
-- Glassmorphism cards (opacity 85%, thin drop shadow)
-- Dark/Light toggle với Sun/Moon icon
-- Tiện ích tiền tệ: `parsePriceInput()`, `formatVND()`, `formatCompactVND()` — logic x1000 input
+## Giải pháp (giữ nguyên 100% logic data engine)
 
-## 2. Layout & Navigation
-- **Header**: Thông tin KD collapsible (Hồ Thị Hoa, MST, địa chỉ), đồng hồ realtime HH:MM:SS, badge Q{n}/{year}, ngày dương + âm lịch, theme toggle, notification bell
-- **Mobile (≤768px)**: Bottom navigation 5 tab (Tổng quan, Nhập hàng, Kho hàng, Bán hàng, Danh mục) với icon + label, safe area padding
-- **Desktop (>768px)**: Sidebar collapsible với cùng 5 tab, icon-only khi thu gọn
-- 5 trang placeholder cho các tab chưa triển khai
+### A. Tab Kho hàng — `src/components/inventory/InventoryPage.tsx`
 
-## 3. Tab Danh mục — Quản lý Nhà cung cấp & Sản phẩm
+**Cấu trúc 3 thẻ tổng kết cuối quý** (thay block hiện tại):
 
-### Cấu trúc dữ liệu
-- **Nhà cung cấp (NCC)**: tên, danh sách sản phẩm. NCC mặc định "Khác" cho SP không thuộc NCC nào
-- **Sản phẩm**: tên, nhà cung cấp, đơn vị lớn (tùy nhập: thùng/lốc/kg/bao...), giá nhập, giá bán, khối lượng tịnh (multi-value), ghi chú, lịch sử giá 5 lần
-- **Quy đổi bán lẻ** (tùy chọn): đơn vị nhỏ, tỷ lệ quy đổi, auto-tính giá lẻ + lợi nhuận + % lợi nhuận trên đơn vị nhỏ
+```text
+┌─ Nhập (+) ────────┐  ┌─ Bán (−) ─────────┐
+│  +XXX triệu        │  │  -XXX triệu        │
+│  N đơn · Q đv      │  │  N đơn · Q đv      │
+└────────────────────┘  └────────────────────┘
+┌─ Chênh lệch nhập − bán trong quý ────────────┐
+│  +/-XXX triệu  (xanh nếu +, đỏ nếu −)        │
+└───────────────────────────────────────────────┘
+┌─ 📦 Tổng tiền hàng đang có trong kho ────────┐  ← THẺ MỚI
+│  XXX triệu  (luôn dương, màu primary)         │
+│  N đv · từ M lô · cuối Q1/2026                │
+└───────────────────────────────────────────────┘
+```
 
-### Giao diện
-- **Sticky toolbar**: Nút Thêm SP, Thùng rác, Tìm kiếm, Filter theo NCC — ghim đỉnh màn hình với hiệu ứng blur
-- **Danh sách theo NCC**: Mỗi NCC là section collapsible, bên trong là các thẻ sản phẩm lớn, rõ ràng, tương phản cao
-- **Thẻ sản phẩm**: Hiển thị đầy đủ thông tin (tên, đơn vị lớn/nhỏ, giá nhập/bán, khối lượng tịnh, lợi nhuận/% lợi nhuận). Mỗi thẻ NCC trong SP luôn mở, có thể đóng
+- Sửa logic màu: **chênh lệch dương → xanh emerald + dấu `+`**, âm → đỏ + dấu `−`. Hiện tại đang ép đỏ ở quá nhiều case.
+- Thẻ "Tổng tiền hàng đang có" lấy từ `quarterBatches.reduce((s,b)=>s+b.quantity*b.buyPrice,0)` — đây là kết quả FIFO snapshot từ `computeInventorySnapshot`, đúng nghĩa "hàng nhập rồi mà chưa bán".
 
-### Chức năng
-- **Thêm SP**: Form phân cấp 2 vùng (Parent Unit + Child Unit ẩn/hiện). Tất cả ô có thể bỏ trống
-- **Chỉnh sửa inline**: Sửa mọi trường trực tiếp trên thẻ, thêm/xóa NCC cho SP
-- **Drag & drop**: Kéo SP giữa các NCC, copy SP sang NCC khác
-- **Thùng rác**: Soft delete, khôi phục hoặc xóa vĩnh viễn (chỉ xóa khi stock = 0)
-- **Khối lượng tịnh**: Hỗ trợ nhiều giá trị sẵn có + nhập thủ công
-- **Autocomplete**: Gợi ý tên NCC và tên SP khi nhập
+**Hiển thị tồn theo đơn vị lớn + nhỏ:**
 
-## 4. Persistence
-- localStorage auto-save cho products, suppliers, notifications
-- Notification bell với badge đỏ cho unread, dropdown 20 gần nhất
-- Track: thêm/xóa SP, cập nhật giá
+Trong list từng SP, thay `{info.totalQty}` bằng helper `formatStockUnits(qty, conversionRate, parentUnit, childUnit)`:
 
----
+```text
+qty=1.5, rate=10, parent="thùng", child="chai"
+→ 1.5 * 10 = 15 chai → "1 thùng 5 chai"
 
-## Các giai đoạn tiếp theo (chưa triển khai)
-- **GĐ 2**: Data Engine + Tab Tổng quan (Dashboard, định mức doanh thu, KPI, biểu đồ hình sin)
-- **GĐ 3**: Tab Nhập hàng + Tab Kho (vòng quay nhập-kho, tag màu, FIFO)
-- **GĐ 4**: Tab Bán hàng + Export PDF/Excel + polish cuối
+qty=0.3, rate=12 → 3.6 → "3 chai" (không đủ thùng)
+qty=2, rate=1 → "2 chai" (không có đơn vị lớn)
+```
+
+Hiển thị dạng: **`1 thùng + 5 chai`** ngay bên cạnh số đơn vị quy đổi, font đậm.
+
+### B. Dashboard — `src/components/dashboard/DashboardPage.tsx`
+
+Thẻ "Kho hàng Q" hiện đang hiển thị **chênh lệch (có thể âm)**. Đổi thành hiển thị **giá trị tồn thực tế (luôn dương)** = `stockValue` để khớp với thẻ mới ở tab Kho hàng. Chênh lệch nhập−bán đẩy xuống dòng phụ phía dưới.
+
+### C. Excel S2a-HKD — `src/lib/exportExcel.ts`
+
+Bám sát chính xác template `s2a_mới-2.xlsx`:
+
+| Khu vực | Format chuẩn template |
+|---|---|
+| Toàn file | Times New Roman, size 12 |
+| Header HKD (hàng 1–6) | Căn trái cột A, căn trái cột D, KHÔNG bold trừ "Mẫu số S2a-HKD" |
+| Tiêu đề "SỔ CHI TIẾT…" | Merge A:D, **size 14 bold**, căn giữa, hàng cao 26pt |
+| "Kỳ kê khai" | Italic, căn trái cột A; "(Đơn vị tính: VND)" italic căn phải cột D |
+| Header bảng (3 hàng) | Bold, **căn giữa cả ngang lẫn dọc**, border đầy đủ, fill xám nhạt `#F2F2F2`, hàng cao 22pt |
+| Hàng "Ngành nghề: 4719…" | Italic, căn trái cột C, không border số tiền |
+| Dòng dữ liệu TM | Cột A,B căn giữa · Cột C căn trái · Cột D căn phải, format `#,##0`, border mỏng, hàng cao 18pt đồng đều |
+| "Tổng cộng (Quý X)" | Bold, căn phải, có hàng trống phía trên |
+| Footer chữ ký | Merge C:D, italic dòng ngày, bold dòng "NGƯỜI ĐẠI DIỆN…", italic dòng "(Ký, ghi rõ…)" |
+| Cột rộng | A=12, B=14, C=52, D=20 (giữ nguyên) |
+
+Bổ sung hàng **"Ngành nghề: 4719- Bán tạp hóa"** ngay sau hàng A/B/C/1 (đang thiếu so với template).
+
+## File sẽ sửa
+
+- `src/components/inventory/InventoryPage.tsx` — thêm thẻ tồn kho, helper `formatStockUnits`, sửa màu chênh lệch.
+- `src/components/dashboard/DashboardPage.tsx` — đổi thẻ Kho hàng sang hiển thị giá trị tồn thực.
+- `src/lib/exportExcel.ts` — refactor styling theo template, thêm hàng "Ngành nghề".
+
+## Không động tới
+
+- `src/lib/dataEngine.ts` (giữ 100% logic generation).
+- Logic doanh thu Sales tab, Dashboard targets.
+- Cấu trúc dữ liệu `InventoryBatch`, `ImportOrder`, `SaleOrder`.
 
