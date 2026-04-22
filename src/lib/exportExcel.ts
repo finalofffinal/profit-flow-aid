@@ -105,7 +105,9 @@ export function exportSalesExcel(salesOrders: SaleOrder[], year: number, quarter
     grandTotalRowIdx = rows.length - 1;
   }
 
-  // ===== Footer chữ ký (3 hàng, padding bằng hàng trống) =====
+  const lastDataRow = rows.length - 1;
+
+  // ===== Footer chữ ký (padding bằng hàng trống để cách dữ liệu) =====
   rows.push(['', '', '', '']);
   rows.push(['', '', '', '']);
   rows.push(['', '', '', '']);
