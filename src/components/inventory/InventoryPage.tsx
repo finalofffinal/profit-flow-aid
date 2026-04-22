@@ -192,7 +192,7 @@ export function InventoryPage(props: InventoryPageProps) {
               <span className="text-xs text-muted-foreground">Giá trị tồn kho cuối quý</span>
             </div>
             <p className="font-bold text-lg text-primary">{formatVND(quarterSummary.stockValue)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{quarterSummary.totalStockQty} đv còn lại</p>
+            <p className="text-xs text-muted-foreground mt-1">{Math.round(quarterSummary.totalStockQty)} đv còn lại</p>
           </div>
         </div>
       </div>

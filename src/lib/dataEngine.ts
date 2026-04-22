@@ -769,8 +769,8 @@ export function generateQuarterData(
       const openingOrderId = generateId();
       const openingDate = '2025-12-31';
       const openingItems: ImportOrderItem[] = [];
-      // Tồn mở đầu vừa đủ: target × 0.7 (kết hợp với nhập Q1 ~50% sẽ đủ doanh thu + còn ~10-15% tồn cuối quý)
-      const targetOpeningRevenue = quarter.targetRevenue * 0.70;
+      // Tồn mở đầu = target × 1.05 (đủ bán Q1 + một phần nhỏ tồn cuối kỳ ~3-5%)
+      const targetOpeningRevenue = quarter.targetRevenue * 1.05;
       const perProductRevenue = targetOpeningRevenue / eligibleProds.length;
 
       for (const p of eligibleProds) {
@@ -933,113 +933,8 @@ export function generateQuarterData(
     }
   }
 
-  // ==========================================================================
-  // BƠM KHO theo mục tiêu tồn cuối quý thực tế.
-  // Mục tiêu: stock tiềm năng trước bán >= doanh thu auto của quý + phần tồn mong muốn cuối quý.
-  // ==========================================================================
-  const computePotentialRevenue = () => {
-    let total = 0;
-    for (const p of activeProducts) {
-      const stock = stockMap.get(p.id) || 0;
-      const rate = p.conversionRate || 1;
-      const sellPerChild = p.sellPrice / rate;
-      total += stock * sellPerChild;
-    }
-    return total;
-  };
-
-  const desiredEndingPotential = quarter.targetRevenue * endingStockRatio;
-  const requiredPotential = autoTargetRevenue + desiredEndingPotential;
-  const potential = computePotentialRevenue();
-  if (potential < requiredPotential && autoTargetRevenue > 0) {
-    const deficit = requiredPotential - potential;
-    const largeIds = Array.from(largeSupplierIds);
-    const targetIds = largeIds.length > 0 ? largeIds : Array.from(supplierProducts.keys());
-    if (targetIds.length > 0 && deficit > 0) {
-      const perSupplier = deficit / targetIds.length;
-      for (const sid of targetIds) {
-        const supplier = suppliers.find(s => s.id === sid);
-        if (!supplier) continue;
-        const rule = getSupplierRule(supplier.name);
-        if (rule.manualOnly) continue;
-        const prods = (supplierProducts.get(sid) || []).filter(p => !rule.excludeProduct?.(p));
-        if (prods.length === 0) continue;
-
-        const existingAutoCount = importOrders.filter(o => o.supplierId === sid && o.tag === 'auto').length;
-        const topupCount = Math.max(2, Math.min(6, existingAutoCount || 3));
-        const perOrder = perSupplier / topupCount;
-
-        for (let topupIdx = 0; topupIdx < topupCount; topupIdx++) {
-          const usableLen = Math.max(1, Math.floor(days.length * 0.7));
-          const baseDay = Math.floor(((topupIdx + 0.5) / topupCount) * usableLen);
-          const jitter = Math.floor((rand() - 0.5) * (usableLen / topupCount * 0.5));
-          const dayIdx = Math.min(usableLen - 1, Math.max(0, baseDay + jitter));
-          const topupDate = days[dayIdx];
-
-          const items: ImportOrderItem[] = [];
-          let acc = 0;
-          const maxItemsThisOrder = 4 + Math.floor(rand() * 4);
-          const shuffled = [...prods].sort(() => rand() - 0.5);
-
-          for (const p of shuffled) {
-            if (acc >= perOrder) break;
-            if (items.length >= maxItemsThisOrder) break;
-            items.push(buildItem(p, supplier, 1));
-            acc += p.buyPrice;
-            stockMap.set(p.id, (stockMap.get(p.id) || 0) + (p.conversionRate || 1));
-          }
-
-          let safety = items.length * 3;
-          let cursor = 0;
-          while (acc < perOrder && safety-- > 0 && items.length > 0) {
-            const it = items[cursor % items.length];
-            cursor++;
-            const prod = prods.find(p => p.id === it.productId)!;
-            const hardMax = rule.maxQtyPerProduct?.(prod);
-            const cap = Math.min(3, hardMax ?? 3);
-            if (it.quantity >= cap) continue;
-            it.quantity += 1;
-            it.total = it.buyPrice * it.quantity;
-            acc += it.buyPrice;
-            stockMap.set(prod.id, (stockMap.get(prod.id) || 0) + (prod.conversionRate || 1));
-          }
-          if (items.length === 0) continue;
-
-          const topupOrder: ImportOrder = {
-            id: generateId(),
-            supplierId: supplier.id,
-            supplierName: supplier.name,
-            date: topupDate,
-            items,
-            total: items.reduce((s, it) => s + it.total, 0),
-            tag: 'auto',
-            locked: false,
-            images: [],
-            deletedAt: null,
-            createdAt: topupDate + 'T08:30:00.000Z',
-          };
-          importOrders.push(topupOrder);
-          for (const it of items) {
-            inventoryBatches.push({
-              id: generateId(),
-              productId: it.productId,
-              productName: it.productName,
-              supplierId: supplier.id,
-              supplierName: supplier.name,
-              importOrderId: topupOrder.id,
-              quarter: quarter.quarter,
-              year: quarter.year,
-              quantity: it.quantity,
-              originalQuantity: it.quantity,
-              buyPrice: it.buyPrice,
-              unit: it.unit,
-              date: topupDate,
-            });
-          }
-        }
-      }
-    }
-  }
+  // BƠM KHO bị tắt: hệ số seasonalRatio + tồn mở đầu Q1 đã đủ cung cấp hàng cho doanh thu mục tiêu.
+  // Nếu thiếu, phase scale cuối ở SALES sẽ tự co/giãn để khớp 100% target.
 
   // ==========================================================================
   // REBALANCE FINAL: với mỗi NCC, nếu đơn lớn nhất > 1.6× trung bình
@@ -1402,11 +1297,10 @@ export function generateQuarterData(
   nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
   currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
   salesGap = autoTargetRevenue - currentSalesTotal;
-  const tolerableGap = isFirstQuarter
-    ? Math.max(5000, autoTargetRevenue * 0.08)
-    : Math.max(5000, autoTargetRevenue * 0.02);
+  // Cho phép scale rộng để doanh thu khớp 100% target (cap 30% để tránh xáo trộn lớn)
+  const tolerableGap = Math.max(5000, autoTargetRevenue * 0.30);
 
-  // Chỉ scale nhẹ phần chênh cuối cùng; riêng Q1/2026 cho phép co giãn hơn vì đang bán từ tồn đầu kỳ 2025.
+  // Scale tỉ lệ cho mọi đơn để doanh thu auto khớp đúng autoTargetRevenue.
   if (Math.abs(salesGap) > 0 && Math.abs(salesGap) <= tolerableGap && nonTetOrders.length > 0 && currentSalesTotal > 0) {
     const scale = autoTargetRevenue / currentSalesTotal;
     let allocated = 0;
