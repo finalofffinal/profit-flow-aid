@@ -24,6 +24,7 @@ interface DashboardPageProps {
   rebalanceQuarters: (year: number, keepQ: number, keepRevenue: number, totalAnnual: number) => void;
   salesOrders: SaleOrder[];
   importOrders: ImportOrder[];
+  products?: any[];
   addNotification: (msg: string, type?: any) => void;
   onDataRestore: () => void;
   onTabChange: (tab: TabId) => void;
@@ -31,7 +32,7 @@ interface DashboardPageProps {
 
 export function DashboardPage({
   quarters, setQuarterTarget, setQuarterLock, rebalanceQuarters,
-  salesOrders, importOrders, addNotification, onDataRestore, onTabChange,
+  salesOrders, importOrders, products = [], addNotification, onDataRestore, onTabChange,
 }: DashboardPageProps) {
   const { quarter: selectedQ, year: selectedYear } = usePeriod();
   const { isAdmin } = useAuth();
