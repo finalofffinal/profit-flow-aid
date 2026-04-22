@@ -180,7 +180,7 @@ export function InventoryPage(props: InventoryPageProps) {
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-muted-foreground">Nhập (+)</span>
               </div>
-              <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCompactVND(quarterSummary.totalImport)}</p>
+              <p className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCompactVND(quarterSummary.totalImport)}</p>
               <p className="text-muted-foreground">{quarterSummary.importOrderCount} đơn · {quarterSummary.totalImportQty} đv</p>
             </div>
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-2">
@@ -188,17 +188,19 @@ export function InventoryPage(props: InventoryPageProps) {
                 <TrendingDown className="h-3.5 w-3.5 text-destructive" />
                 <span className="text-muted-foreground">Bán (−)</span>
               </div>
-              <p className="font-bold text-destructive">{formatCompactVND(quarterSummary.totalSalesRevenue)}</p>
+              <p className="font-bold text-destructive">-{formatCompactVND(quarterSummary.totalSalesRevenue)}</p>
               <p className="text-muted-foreground">{quarterSummary.salesOrderCount} đơn · {quarterSummary.totalSalesQty} đv</p>
             </div>
           </div>
-          <div className="rounded-lg bg-primary/10 border border-primary/20 p-2.5 text-center">
+          <div className={`rounded-lg border p-2.5 text-center ${quarterSummary.netIsNegative ? 'bg-destructive/10 border-destructive/20' : 'bg-primary/10 border-primary/20'}`}>
             <div className="flex items-center justify-center gap-1.5 mb-1">
-              <Package className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Giá trị tồn kho cuối quý</span>
+              <Package className={`h-4 w-4 ${quarterSummary.netIsNegative ? 'text-destructive' : 'text-primary'}`} />
+              <span className="text-xs text-muted-foreground">Chênh lệch nhập - bán trong quý</span>
             </div>
-            <p className="font-bold text-lg text-primary">{formatVND(quarterSummary.stockValue)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{Math.round(quarterSummary.totalStockQty)} đv còn lại</p>
+            <p className={`font-bold text-lg ${quarterSummary.netIsNegative ? 'text-destructive' : 'text-primary'}`}>
+              {quarterSummary.netIsNegative ? '-' : '+'}{formatVND(Math.abs(quarterSummary.netQuarterFlow))}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Tồn cuối quý: {formatVND(quarterSummary.stockValue)} · {Math.round(quarterSummary.totalStockQty)} đv còn lại</p>
           </div>
         </div>
       </div>
