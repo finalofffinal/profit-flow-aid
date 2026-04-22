@@ -1203,15 +1203,20 @@ export function generateQuarterData(
       const buyPerChild = baseBuy / rate;
       if (sellPerChild <= 0) continue;
 
+      // Quy tắc bán lẻ: tối đa 10–40% của 1 đơn vị lớn/ngày (theo memory)
+      // SP không có đơn vị con (rate = 1) → tối đa 1 đơn vị/ngày.
       let maxChildUnitsToday: number;
       let minChildUnitsToday = 1;
       if (hasChild && rate >= 10) {
-        const minPct = 0.20 + rand() * 0.10;
-        const maxPct = 0.40 + rand() * 0.20;
+        const minPct = 0.10 + rand() * 0.05;  // 10–15%
+        const maxPct = 0.25 + rand() * 0.15;  // 25–40%
         minChildUnitsToday = Math.max(1, Math.floor(rate * minPct));
         maxChildUnitsToday = Math.max(minChildUnitsToday, Math.floor(rate * maxPct));
+      } else if (hasChild) {
+        // SP có đơn vị con rate nhỏ (<10): tối đa 40% rate, ít nhất 1
+        maxChildUnitsToday = Math.max(1, Math.floor(rate * 0.4));
       } else {
-        maxChildUnitsToday = hasChild ? rate : 1;
+        maxChildUnitsToday = 1;
       }
 
       const alreadySold = dailyParentSold.get(product.id) || 0;
