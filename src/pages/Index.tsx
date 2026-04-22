@@ -87,8 +87,10 @@ function IndexInner() {
     [salesOrders]
   );
 
+  // Auto regen chỉ phụ thuộc vào GIÁ GỐC (baseBuy/baseSell), không phải giá hiện tại.
+  // Catalog edit thay đổi buyPrice/sellPrice sẽ KHÔNG khiến đơn auto regen.
   const productSig = useMemo(
-    () => activeProducts.map(p => `${p.id}-${p.updatedAt}-${p.buyPrice}-${p.sellPrice}-${p.conversionRate}-${p.supplierId}`).sort().join('|'),
+    () => activeProducts.map(p => `${p.id}-${p.baseBuyPrice ?? p.buyPrice}-${p.baseSellPrice ?? p.sellPrice}-${p.conversionRate}-${p.supplierId}`).sort().join('|'),
     [activeProducts]
   );
 
@@ -242,6 +244,7 @@ function IndexInner() {
             rebalanceQuarters={rebalanceQuarters}
             salesOrders={salesOrders}
             importOrders={importOrders}
+            products={activeProducts}
             addNotification={addNotification}
             onDataRestore={handleDataRestore}
             onTabChange={setActiveTab}

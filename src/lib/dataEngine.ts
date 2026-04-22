@@ -634,6 +634,8 @@ function generateSupplierImports(
 }
 
 function buildItem(p: Product, supplier: Supplier, qty: number): ImportOrderItem {
+  // Auto generator dùng GIÁ GỐC (baseBuyPrice). Catalog edit chỉ ảnh hưởng đơn thủ công.
+  const buy = p.baseBuyPrice ?? p.buyPrice;
   return {
     productId: p.id,
     productName: p.name,
@@ -643,8 +645,8 @@ function buildItem(p: Product, supplier: Supplier, qty: number): ImportOrderItem
     conversionUnit: p.conversionUnit || p.unit,
     conversionRate: p.conversionRate || 1,
     quantity: qty,
-    buyPrice: p.buyPrice,
-    total: p.buyPrice * qty,
+    buyPrice: buy,
+    total: buy * qty,
   };
 }
 
@@ -656,12 +658,12 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   switch (quarterNumber) {
     case 1:
       return {
-        seasonalRatio: 0.50 + rand() * 0.20, // 50–70%
+        seasonalRatio: 0.40 + rand() * 0.20, // 40–60% — bán nhiều, nhập ít
         endingStockRatio: 0.02 + rand() * 0.03, // gần như cạn kho
       };
     case 2:
       return {
-        seasonalRatio: 1.30 + rand() * 0.20, // 130–150%
+        seasonalRatio: 1.40 + rand() * 0.20, // 140–160% — nhập rất nhiều để bù
         endingStockRatio: 0.22 + rand() * 0.06, // tồn nhiều
       };
     case 3:
@@ -1094,8 +1096,11 @@ export function generateQuarterData(
       const product = dailyPool[i];
       const rate = product.conversionRate || 1;
       const hasChild = rate > 1;
-      const sellPerChild = product.sellPrice / rate;
-      const buyPerChild = product.buyPrice / rate;
+      // Auto sales dùng GIÁ GỐC (baseBuy/baseSell). Đảm bảo doanh thu auto luôn ổn định.
+      const baseSell = product.baseSellPrice ?? product.sellPrice;
+      const baseBuy = product.baseBuyPrice ?? product.buyPrice;
+      const sellPerChild = baseSell / rate;
+      const buyPerChild = baseBuy / rate;
       if (sellPerChild <= 0) continue;
 
       let maxChildUnitsToday: number;
