@@ -1,6 +1,8 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 import { getLunarParts } from '@/lib/lunar';
 
+export const DATA_ENGINE_VERSION = '2026-04-22-quarter-balance-v4';
+
 function seededRandom(seed: number) {
   let s = seed;
   return () => {
@@ -698,10 +700,10 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   //   • Tổng gap dương Q2+Q3+Q4 đủ bù gap âm Q1 năm sau.
   //
   // Ratio mong muốn (nhập_thực / bán_thực) sau khi bị clamp:
-  //   • Q1: ≈ 0.35  (gap ÂM ≈ -65% bán)
-  //   • Q2: ≈ 1.90  (gap DƯƠNG ≈ +90% bán — nhập gần gấp đôi bán)
-  //   • Q3: ≈ 1.80  (gap DƯƠNG ≈ +80% bán, hơi thấp hơn Q2)
-  //   • Q4: ≈ 1.20  (gap DƯƠNG ≈ +20% bán, thấp hơn Q2/Q3 RÕ RỆT)
+  //   • Q1: ≈ 0.35  (gap ÂM rất lớn)
+  //   • Q2: ≈ 1.45–1.55  (gap DƯƠNG cao)
+  //   • Q3: ≈ 1.50–1.60  (vẫn DƯƠNG cao, gần Q2)
+  //   • Q4: ≈ 1.15–1.25  (vẫn DƯƠNG nhưng thấp hơn Q2/Q3)
   // ⇒ targetRatio đặt = mong muốn / 0.60.
   switch (quarterNumber) {
     case 1:
@@ -711,24 +713,23 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
         endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
       };
     case 2:
-      // Mong muốn 1.90 → target 3.15 để bù hao hụt clamp.
-      // Nhập RẤT NHIỀU (gần 2× doanh thu thực bán), dồn kho cho Q3/Q4.
+      // Q2 doanh thu thấp nhưng nhập rất cao để dồn kho sang Q3.
+      // Target cao hơn để bù hao hụt do clamp theo rule NCC.
       return {
-        seasonalRatio: 3.10 + rand() * 0.20, // target 310–330% (thực tế ≈190%)
-        endingStockRatio: 0.28 + rand() * 0.04, // 28–32%
+        seasonalRatio: 2.40 + rand() * 0.20, // target 240–260% (thực tế ≈145–155%)
+        endingStockRatio: 0.22 + rand() * 0.04, // 22–26%
       };
     case 3:
-      // Mong muốn 1.80 → target 3.00 (hơi thấp hơn Q2 chút).
+      // Q3 tiếp tục nhập cao để gối sang Q4, giữ gap dương cao và gần Q2.
       return {
-        seasonalRatio: 2.95 + rand() * 0.20, // target 295–315% (thực tế ≈180%)
-        endingStockRatio: 0.30 + rand() * 0.04, // 30–34% (cao hơn Q2 chút)
+        seasonalRatio: 2.50 + rand() * 0.20, // target 250–270% (thực tế ≈150–160%)
+        endingStockRatio: 0.24 + rand() * 0.04, // 24–28% (nhỉnh hơn Q2)
       };
     case 4:
-      // Mong muốn 1.20 → target 2.00. Cao điểm: nhập nhiều + bán nhiều,
-      // gap DƯƠNG NHỎ HƠN Q2/Q3 rõ rệt.
-      // Tồn cuối Q4 vẫn CAO NHẤT năm do tích lũy từ Q2/Q3 chuyển sang.
+      // Q4 là mùa bán mạnh: vừa nhập nhiều vừa bán nhiều,
+      // nên gap dương thấp hơn Q2/Q3 nhưng tồn cuối năm vẫn cao nhất.
       return {
-        seasonalRatio: 1.95 + rand() * 0.15, // target 195–210% (thực tế ≈120%)
+        seasonalRatio: 1.90 + rand() * 0.15, // target 190–205% (thực tế ≈115–125%)
         endingStockRatio: 0.36 + rand() * 0.04, // 36–40% (cao nhất năm)
       };
     default:
