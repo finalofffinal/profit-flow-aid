@@ -705,6 +705,13 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   //   • Q3: ≈ 1.55–1.65  (vẫn DƯƠNG cao, nhỉnh hơn Q2)
   //   • Q4: ≈ 1.20–1.30  (vẫn DƯƠNG rõ nhưng thấp hơn Q2/Q3)
   // ⇒ targetRatio đặt = mong muốn / 0.60.
+  switch (quarterNumber) {
+    case 1:
+      // Q1 bán xả tồn 2025, nhập rất ít.
+      return {
+        seasonalRatio: 0.30 + rand() * 0.10, // 30–40% doanh thu
+        endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
+      };
     case 2:
       // Q2 doanh thu thấp nhưng nhập rất cao để dồn kho sang Q3.
       return {
