@@ -406,7 +406,7 @@ function PriceHistoryDialog({
           })}
         </div>
         <p className="text-[10px] text-muted-foreground text-center">
-          ⚠️ Chỉ áp dụng cho đơn nhập tự động được sinh sau khi sửa. Đơn cũ giữ giá gốc.
+          ⚠️ Lịch sử giá CHỈ áp dụng cho đơn nhập THỦ CÔNG. Đơn tự động luôn dùng giá GỐC ban đầu.
         </p>
       </DialogContent>
     </Dialog>
