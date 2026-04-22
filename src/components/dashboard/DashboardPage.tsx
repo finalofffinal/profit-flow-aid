@@ -71,6 +71,13 @@ export function DashboardPage({
     }).reduce((s, o) => s + o.total, 0);
   }, [importOrders, selectedYear, selectedQ]);
 
+  // Giá trị tồn kho cuối quý — dùng CHÍNH XÁC cùng logic với tab Kho hàng (FIFO snapshot).
+  const stockValue = useMemo(() => {
+    if (products.length === 0) return 0;
+    const snapshot = computeInventorySnapshot(selectedQ, selectedYear, products as any, importOrders, salesOrders);
+    return snapshot.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
+  }, [products, importOrders, salesOrders, selectedQ, selectedYear]);
+
   const quarterActuals = useMemo(() => {
     const result: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
     salesOrders.filter(o => !o.deletedAt).forEach(o => {
