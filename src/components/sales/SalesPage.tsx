@@ -95,6 +95,27 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
     return result;
   }, [dailySales, search, tagFilter, brandFilter, productBrandMap]);
 
+  // Doanh thu tích lũy / Lợi nhuận: LUÔN tính trên TOÀN BỘ Q+Năm đang chọn
+  // (không bị filter UI ảnh hưởng) — đảm bảo khớp số trên Dashboard.
+  const quarterRevenue = useMemo(() => {
+    return activeOrders
+      .filter(o => {
+        const d = new Date(o.date);
+        return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
+      })
+      .reduce((s, o) => s + o.totalRevenue, 0);
+  }, [activeOrders, selQ, selYear]);
+
+  const quarterProfit = useMemo(() => {
+    return activeOrders
+      .filter(o => {
+        const d = new Date(o.date);
+        return d.getFullYear() === selYear && Math.ceil((d.getMonth() + 1) / 3) === selQ;
+      })
+      .reduce((s, o) => s + o.totalProfit, 0);
+  }, [activeOrders, selQ, selYear]);
+
+  // Tổng theo bộ lọc hiện tại (để hiển thị thông tin phụ)
   const totalRevenue = filtered.reduce((s, d) => s + d.totalRevenue, 0);
   const totalProfit = filtered.reduce((s, d) => s + d.totalProfit, 0);
 
