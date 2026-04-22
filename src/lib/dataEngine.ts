@@ -685,33 +685,33 @@ function buildItem(p: Product, supplier: Supplier, qty: number): ImportOrderItem
 function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   switch (quarterNumber) {
     case 1:
-      // Bán hàng tồn 2025 + nhập rất ít → cuối Q1 gần cạn kho, chỉ còn vài SP số lượng nhỏ
+      // Bán hàng tồn 2025 + nhập rất ít → cuối Q1 gần cạn kho
       return {
-        seasonalRatio: 0.30 + rand() * 0.10, // 30–40% — nhập rất ít
-        endingStockRatio: 0.03 + rand() * 0.02, // 3–5% — kho gần như rỗng
+        seasonalRatio: 0.30 + rand() * 0.10, // 30–40%
+        endingStockRatio: 0.03 + rand() * 0.02, // 3–5%
       };
     case 2:
-      // Nhập rất nhiều để fill lại kho sau Q1 cạn → cuối Q2 vừa đủ (không ít không nhiều)
+      // Fill lại kho sau Q1 cạn → cuối Q2 vừa đủ
       return {
-        seasonalRatio: 1.45 + rand() * 0.15, // 145–160% — fill kho mạnh
-        endingStockRatio: 0.18 + rand() * 0.05, // 18–23% — vừa đủ
+        seasonalRatio: 1.20 + rand() * 0.15, // 120–135%
+        endingStockRatio: 0.12 + rand() * 0.04, // 12–16%
       };
     case 3:
       // Tỉ lệ nhập cao hơn Q2 chút → tồn cuối Q3 khá nhiều
       return {
-        seasonalRatio: 1.55 + rand() * 0.15, // 155–170% — cao hơn Q2
-        endingStockRatio: 0.30 + rand() * 0.06, // 30–36% — khá nhiều
+        seasonalRatio: 1.30 + rand() * 0.15, // 130–145%
+        endingStockRatio: 0.18 + rand() * 0.05, // 18–23%
       };
     case 4:
-      // Nhập ≈ doanh thu (95–110%) → cuối Q4 tồn lớn, đầy đủ SP gối đầu Tết
+      // Nhập ≈ doanh thu (95–110%) → cuối Q4 tồn lớn gối đầu Tết
       return {
         seasonalRatio: 0.95 + rand() * 0.15, // 95–110%
-        endingStockRatio: 0.42 + rand() * 0.10, // 42–52% — tồn lớn nhất
+        endingStockRatio: 0.25 + rand() * 0.06, // 25–31%
       };
     default:
       return {
         seasonalRatio: 1.0,
-        endingStockRatio: 0.15,
+        endingStockRatio: 0.12,
       };
   }
 }
@@ -1203,15 +1203,20 @@ export function generateQuarterData(
       const buyPerChild = baseBuy / rate;
       if (sellPerChild <= 0) continue;
 
+      // Quy tắc bán lẻ: tối đa 10–40% của 1 đơn vị lớn/ngày (theo memory)
+      // SP không có đơn vị con (rate = 1) → tối đa 1 đơn vị/ngày.
       let maxChildUnitsToday: number;
       let minChildUnitsToday = 1;
       if (hasChild && rate >= 10) {
-        const minPct = 0.20 + rand() * 0.10;
-        const maxPct = 0.40 + rand() * 0.20;
+        const minPct = 0.10 + rand() * 0.05;  // 10–15%
+        const maxPct = 0.25 + rand() * 0.15;  // 25–40%
         minChildUnitsToday = Math.max(1, Math.floor(rate * minPct));
         maxChildUnitsToday = Math.max(minChildUnitsToday, Math.floor(rate * maxPct));
+      } else if (hasChild) {
+        // SP có đơn vị con rate nhỏ (<10): tối đa 40% rate, ít nhất 1
+        maxChildUnitsToday = Math.max(1, Math.floor(rate * 0.4));
       } else {
-        maxChildUnitsToday = hasChild ? rate : 1;
+        maxChildUnitsToday = 1;
       }
 
       const alreadySold = dailyParentSold.get(product.id) || 0;
@@ -1279,13 +1284,39 @@ export function generateQuarterData(
     });
   }
 
-  // Nếu còn thiếu doanh thu đáng kể, dùng phần tồn còn lại để bù vào các ngày đã có bán.
-  // Mục tiêu: doanh thu auto của quý phải bám sát target, thay vì đứng dưới rất xa chỉ vì cap/ngày.
+  // Nếu còn thiếu doanh thu, bù vào các ngày đã có bán nhưng VẪN tuân thủ cap 10–40%/ngày.
+  // Phân tán đều nhiều ngày, không dồn 1 ngày → tránh ngày 8 triệu bất thường.
   let nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
   let currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
   let salesGap = autoTargetRevenue - currentSalesTotal;
 
   if (salesGap > 0 && nonTetOrders.length > 0) {
+    // Cap mỗi ngày được bù thêm: không vượt 25% doanh thu trung bình ngày của quý
+    const avgDailyRev = autoTargetRevenue / Math.max(1, nonTetOrders.length);
+    const perDayAddCap = avgDailyRev * 0.25;
+
+    // Pre-compute cap số đơn vị con bán/ngày cho mỗi SP (theo cùng quy tắc 10–40%)
+    const productDayCap = new Map<string, number>();
+    for (const p of activeProducts) {
+      const rate = p.conversionRate || 1;
+      let cap: number;
+      if (rate >= 10) cap = Math.max(1, Math.floor(rate * 0.4));
+      else if (rate > 1) cap = Math.max(1, Math.floor(rate * 0.4));
+      else cap = 1;
+      productDayCap.set(p.id, cap);
+    }
+
+    // Theo dõi đã bán bao nhiêu đơn vị mỗi SP cho mỗi ngày (bao gồm cả đợt bán đầu)
+    const soldByDayProd = new Map<string, Map<string, number>>();
+    for (const o of nonTetOrders) {
+      const m = new Map<string, number>();
+      for (const it of o.items) {
+        m.set(it.productId, (m.get(it.productId) || 0) + it.quantity);
+      }
+      soldByDayProd.set(o.id, m);
+    }
+    const addedByDay = new Map<string, number>();
+
     const candidateProducts = [...activeProducts]
       .filter(p => (stockMap.get(p.id) || 0) > 0)
       .sort((a, b) => {
@@ -1294,58 +1325,77 @@ export function generateQuarterData(
         return bSell - aSell;
       });
 
-    let orderCursor = 0;
-    for (const product of candidateProducts) {
-      if (salesGap <= 3000) break;
-      const stock = stockMap.get(product.id) || 0;
-      if (stock <= 0) continue;
+    // Duyệt nhiều vòng để dàn trải đều
+    let safetyPasses = 8;
+    while (salesGap > 3000 && safetyPasses-- > 0) {
+      let movedThisPass = false;
+      for (const product of candidateProducts) {
+        if (salesGap <= 3000) break;
+        const stock = stockMap.get(product.id) || 0;
+        if (stock <= 0) continue;
+        const rate = product.conversionRate || 1;
+        const sellPerChild = (product.baseSellPrice ?? product.sellPrice) / rate;
+        const buyPerChild = (product.baseBuyPrice ?? product.buyPrice) / rate;
+        if (sellPerChild <= 0) continue;
+        const dayCap = productDayCap.get(product.id) || 1;
 
-      const rate = product.conversionRate || 1;
-      const sellPerChild = (product.baseSellPrice ?? product.sellPrice) / rate;
-      const buyPerChild = (product.baseBuyPrice ?? product.buyPrice) / rate;
-      if (sellPerChild <= 0) continue;
+        // Chọn ngày có capacity còn — duyệt theo thứ tự xáo
+        const orderIdxShuffled = nonTetOrders
+          .map((_, i) => i)
+          .sort(() => rand() - 0.5);
 
-      let qty = Math.min(stock, Math.ceil(salesGap / sellPerChild));
-      if (qty <= 0) continue;
+        for (const idx of orderIdxShuffled) {
+          if (salesGap <= 3000) break;
+          const order = nonTetOrders[idx];
+          const dayMap = soldByDayProd.get(order.id)!;
+          const soldToday = dayMap.get(product.id) || 0;
+          if (soldToday >= dayCap) continue;
+          const dayAdded = addedByDay.get(order.id) || 0;
+          if (dayAdded >= perDayAddCap) continue;
 
-      while (qty > 0 && salesGap > 3000 && nonTetOrders.length > 0) {
-        const order = nonTetOrders[orderCursor % nonTetOrders.length];
-        orderCursor += 1;
+          // Thêm 1 đơn vị nhỏ
+          const remainCapToday = dayCap - soldToday;
+          const remainDayBudget = perDayAddCap - dayAdded;
+          const maxByBudget = Math.max(1, Math.floor(remainDayBudget / sellPerChild));
+          const addQty = Math.min(remainCapToday, stockMap.get(product.id) || 0, maxByBudget,
+            Math.max(1, Math.ceil(salesGap / sellPerChild / 10)));
+          if (addQty <= 0) continue;
 
-        const addQty = Math.min(qty, Math.max(1, Math.ceil(salesGap / sellPerChild / 3)));
-        const addTotal = addQty * sellPerChild;
-        const addProfit = addTotal - addQty * buyPerChild;
-        const sellUnit = rate > 1 ? (product.conversionUnit || product.unit) : product.unit;
-        const existing = order.items.find(it => it.productId === product.id && it.sellPrice === sellPerChild);
+          const addTotal = addQty * sellPerChild;
+          const addProfit = addTotal - addQty * buyPerChild;
+          const sellUnit = rate > 1 ? (product.conversionUnit || product.unit) : product.unit;
+          const existing = order.items.find(it => it.productId === product.id && it.sellPrice === sellPerChild);
+          if (existing) {
+            existing.quantity += addQty;
+            existing.total += addTotal;
+            existing.profit += addProfit;
+            existing.profitPercent = existing.total > 0 ? Math.round((existing.profit / existing.total) * 1000) / 10 : 0;
+          } else {
+            order.items.push({
+              productId: product.id,
+              productName: product.name,
+              supplierId: product.supplierId,
+              unit: sellUnit,
+              quantity: addQty,
+              sellPrice: sellPerChild,
+              buyPrice: buyPerChild,
+              total: addTotal,
+              profit: addProfit,
+              profitPercent: addTotal > 0 ? Math.round((addProfit / addTotal) * 1000) / 10 : 0,
+            });
+          }
+          order.totalRevenue += addTotal;
+          order.totalProfit += addProfit;
+          order.profitPercent = order.totalRevenue > 0 ? Math.round((order.totalProfit / order.totalRevenue) * 1000) / 10 : 0;
 
-        if (existing) {
-          existing.quantity += addQty;
-          existing.total += addTotal;
-          existing.profit += addProfit;
-          existing.profitPercent = existing.total > 0 ? Math.round((existing.profit / existing.total) * 1000) / 10 : 0;
-        } else {
-          order.items.push({
-            productId: product.id,
-            productName: product.name,
-            supplierId: product.supplierId,
-            unit: sellUnit,
-            quantity: addQty,
-            sellPrice: sellPerChild,
-            buyPrice: buyPerChild,
-            total: addTotal,
-            profit: addProfit,
-            profitPercent: addTotal > 0 ? Math.round((addProfit / addTotal) * 1000) / 10 : 0,
-          });
+          dayMap.set(product.id, soldToday + addQty);
+          addedByDay.set(order.id, dayAdded + addTotal);
+          stockMap.set(product.id, (stockMap.get(product.id) || 0) - addQty);
+          salesGap -= addTotal;
+          movedThisPass = true;
         }
-
-        order.totalRevenue += addTotal;
-        order.totalProfit += addProfit;
-        order.profitPercent = order.totalRevenue > 0 ? Math.round((order.totalProfit / order.totalRevenue) * 1000) / 10 : 0;
-
-        qty -= addQty;
-        stockMap.set(product.id, (stockMap.get(product.id) || 0) - addQty);
-        salesGap -= addTotal;
       }
+      if (!movedThisPass) break;
     }
   }
 
