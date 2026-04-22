@@ -166,17 +166,25 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
           customTo={customTo} onCustomToChange={setCustomTo}
         />
 
-        {/* Doanh thu tích lũy: LUÔN tính trên cả Q+Năm — khớp với Dashboard */}
-        <div className="flex items-center justify-between bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">Doanh thu tích lũy Q{selQ}/{selYear}</p>
-            <p className="text-xl font-black text-primary dark:text-primary">{formatCompactVND(quarterRevenue)} VND</p>
+        {/* Doanh thu phản ứng theo bộ lọc thời gian; quý hiển thị tổng quý (khớp Dashboard) */}
+        <div className="space-y-1.5 bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Doanh thu — {rangeLabel[timeRange]}</p>
+              <p className="text-xl font-black text-primary dark:text-primary truncate">{formatCompactVND(totalRevenue)} VND</p>
+            </div>
+            <div className="text-right min-w-0">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Lợi nhuận</p>
+              <p className="text-xl font-black text-emerald-600 dark:text-emerald-300 truncate">{formatCompactVND(totalProfit)} VND</p>
+            </div>
+            <Badge variant="outline" className="text-xs font-bold border-primary/40 shrink-0">{filtered.length} ngày</Badge>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground font-medium">Lợi nhuận Q{selQ}</p>
-            <p className="text-xl font-black text-emerald-600 dark:text-emerald-300">{formatCompactVND(quarterProfit)} VND</p>
-          </div>
-          <Badge variant="outline" className="text-xs font-bold border-primary/40">{filtered.length} ngày</Badge>
+          {timeRange !== 'quarter' && (
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-primary/20 pt-1.5">
+              <span>Tổng cả Q{selQ}/{selYear}: <span className="font-bold text-foreground">{formatCompactVND(quarterRevenue)}</span></span>
+              <span>Lãi quý: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(quarterProfit)}</span></span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
