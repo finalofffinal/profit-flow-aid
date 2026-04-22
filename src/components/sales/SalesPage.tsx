@@ -115,9 +115,17 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
       .reduce((s, o) => s + o.totalProfit, 0);
   }, [activeOrders, selQ, selYear]);
 
-  // Tổng theo bộ lọc hiện tại (để hiển thị thông tin phụ)
+  // Tổng theo bộ lọc hiện tại (phản ứng theo TimeRange + search/tag/brand)
   const totalRevenue = filtered.reduce((s, d) => s + d.totalRevenue, 0);
   const totalProfit = filtered.reduce((s, d) => s + d.totalProfit, 0);
+
+  const rangeLabel: Record<TimeRange, string> = {
+    today: 'Hôm nay',
+    week: 'Tuần này',
+    month: 'Tháng này',
+    quarter: `Q${selQ}/${selYear}`,
+    custom: 'Tùy chọn',
+  };
 
   const toggleDay = (date: string) => {
     setExpandedDays(prev => {
