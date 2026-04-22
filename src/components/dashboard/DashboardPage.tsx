@@ -71,7 +71,12 @@ export function DashboardPage({
     }).reduce((s, o) => s + o.total, 0);
   }, [importOrders, selectedYear, selectedQ]);
 
-  // Giá trị tồn kho cuối quý — dùng CHÍNH XÁC cùng logic với tab Kho hàng (FIFO snapshot).
+  // "Kho hàng Q" = chênh lệch nhập − bán trong quý (đồng bộ với tab Kho hàng).
+  // Số âm = bán nhiều hơn nhập (tiêu hao tồn kho); số dương = nhập nhiều hơn bán (tích kho).
+  const stockNetFlow = useMemo(() => totalImportCost - totalRevenue, [totalImportCost, totalRevenue]);
+  const stockNetIsNegative = stockNetFlow < 0;
+
+  // Giá trị tồn kho cuối quý (FIFO snapshot) — dùng cho phụ chú dưới thẻ.
   const stockValue = useMemo(() => {
     if (products.length === 0) return 0;
     const snapshot = computeInventorySnapshot(selectedQ, selectedYear, products as any, importOrders, salesOrders);
@@ -266,20 +271,32 @@ export function DashboardPage({
         <button
           type="button"
           onClick={() => onTabChange('inventory')}
-          className="group text-left rounded-2xl border-2 border-purple-500/40 bg-gradient-to-br from-purple-500/15 via-purple-500/5 to-background p-4 shadow-md hover:shadow-lg hover:border-purple-500/60 hover:scale-[1.02] active:scale-[0.99] transition-all"
+          className={`group text-left rounded-2xl border-2 p-4 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.99] transition-all ${
+            stockNetIsNegative
+              ? 'border-destructive/40 bg-gradient-to-br from-destructive/15 via-destructive/5 to-background hover:border-destructive/60'
+              : 'border-purple-500/40 bg-gradient-to-br from-purple-500/15 via-purple-500/5 to-background hover:border-purple-500/60'
+          }`}
           title="Mở tab Kho hàng"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400">
+            <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide ${
+              stockNetIsNegative ? 'text-destructive' : 'text-purple-700 dark:text-purple-400'
+            }`}>
               <Warehouse className="h-4 w-4" />
               Kho hàng Q{selectedQ}
             </div>
-            <ChevronUp className="h-4 w-4 rotate-90 text-purple-600/60 group-hover:text-purple-600 transition-colors" />
+            <ChevronUp className={`h-4 w-4 rotate-90 transition-colors ${
+              stockNetIsNegative ? 'text-destructive/60 group-hover:text-destructive' : 'text-purple-600/60 group-hover:text-purple-600'
+            }`} />
           </div>
-          <p className="text-2xl md:text-3xl font-black text-purple-700 dark:text-purple-400">
-            {mask(formatCompactVND(stockValue))}
+          <p className={`text-2xl md:text-3xl font-black ${
+            stockNetIsNegative ? 'text-destructive' : 'text-purple-700 dark:text-purple-400'
+          }`}>
+            {mask((stockNetIsNegative ? '-' : '+') + formatCompactVND(Math.abs(stockNetFlow)))}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Giá trị tồn cuối Q{selectedQ}/{selectedYear}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Chênh lệch nhập − bán Q{selectedQ}/{selectedYear} · Tồn cuối: {mask(formatCompactVND(stockValue))}
+          </p>
         </button>
       </div>
 
