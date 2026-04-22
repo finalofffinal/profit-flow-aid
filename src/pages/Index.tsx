@@ -119,7 +119,7 @@ function IndexInner() {
       productSig,
       supplierSig,
     ].join('||'),
-    [quarters, regenSeeds, manualImportSig, manualSalesSig, lockedAutoSig, productSig, supplierSig]
+    [DATA_ENGINE_VERSION, quarters, regenSeeds, manualImportSig, manualSalesSig, lockedAutoSig, productSig, supplierSig]
   );
 
   // Auto-generate import/sales/batches whenever quarters or active products change
