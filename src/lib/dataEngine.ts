@@ -1448,7 +1448,7 @@ export function generateSupplementaryOrder(
       date: importDate,
       items,
       total: items.reduce((s, it) => s + it.total, 0),
-      tag: 'supplementary',
+      tag: 'auto',
       locked: false,
       images: [],
       deletedAt: null,
