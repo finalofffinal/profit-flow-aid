@@ -1297,11 +1297,10 @@ export function generateQuarterData(
   nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
   currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
   salesGap = autoTargetRevenue - currentSalesTotal;
-  const tolerableGap = isFirstQuarter
-    ? Math.max(5000, autoTargetRevenue * 0.08)
-    : Math.max(5000, autoTargetRevenue * 0.02);
+  // Cho phép scale rộng để doanh thu khớp 100% target (cap 30% để tránh xáo trộn lớn)
+  const tolerableGap = Math.max(5000, autoTargetRevenue * 0.30);
 
-  // Chỉ scale nhẹ phần chênh cuối cùng; riêng Q1/2026 cho phép co giãn hơn vì đang bán từ tồn đầu kỳ 2025.
+  // Scale tỉ lệ cho mọi đơn để doanh thu auto khớp đúng autoTargetRevenue.
   if (Math.abs(salesGap) > 0 && Math.abs(salesGap) <= tolerableGap && nonTetOrders.length > 0 && currentSalesTotal > 0) {
     const scale = autoTargetRevenue / currentSalesTotal;
     let allocated = 0;
