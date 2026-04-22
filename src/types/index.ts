@@ -19,6 +19,10 @@ export interface Product {
   unit: string;
   buyPrice: number;
   sellPrice: number;
+  /** Giá nhập GỐC — auto generator dùng giá này. Catalog edit KHÔNG thay đổi. */
+  baseBuyPrice?: number;
+  /** Giá bán GỐC — auto generator dùng giá này. Catalog edit KHÔNG thay đổi. */
+  baseSellPrice?: number;
   conversionRate: number;
   conversionUnit: string;
   netWeights: string[];
