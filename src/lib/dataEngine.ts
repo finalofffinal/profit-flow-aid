@@ -683,30 +683,41 @@ function buildItem(p: Product, supplier: Supplier, qty: number): ImportOrderItem
 // ============================================================================
 
 function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
+  // Ràng buộc số học (rev_Q1 ≈ rev_Q2 ≈ rev_Q3 < rev_Q4):
+  //   gap_Q = rev_Q × (seasonalRatio − 1)
+  // Yêu cầu user:
+  //   • Q1: gap ÂM CAO NHẤT (|gap_Q1| lớn nhất)
+  //   • Q2 & Q3: gap DƯƠNG, ≈ nhau, Q3 hơi thấp hơn Q2 một chút
+  //   • Q4: gap DƯƠNG vừa, nhưng tồn cuối kỳ CAO NHẤT (nhờ endingStockRatio + carry Q3)
   switch (quarterNumber) {
     case 1:
-      // Q1: bán nốt tồn 2025, nhập cực ít → chênh lệch nhập-bán ÂM CAO NHẤT
+      // Q1: nhập cực ít, bán xả tồn 2025 → gap âm rất lớn (~ −0.65×rev_Q1)
       return {
-        seasonalRatio: 0.30 + rand() * 0.10, // 30–40%
-        endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
+        seasonalRatio: 0.30 + rand() * 0.10, // 30–40% doanh thu
+        endingStockRatio: 0.03 + rand() * 0.02, // 3–5%: cạn kho cuối Q1
       };
     case 2:
-      // Q2: nhập 130–150% doanh thu → chênh lệch DƯƠNG cao, kho dồn để bán dần sang Q3
+      // Q2: nhập 145–155% doanh thu → gap dương ~ +0.50×rev_Q2
+      // Tồn cuối Q2 dồn cao để bán dần sang Q3.
       return {
-        seasonalRatio: 1.30 + rand() * 0.20, // 130–150%
-        endingStockRatio: 0.20 + rand() * 0.05, // 20–25% (tồn cao bán dần Q3)
+        seasonalRatio: 1.45 + rand() * 0.10, // 145–155%
+        endingStockRatio: 0.22 + rand() * 0.04, // 22–26%
       };
     case 3:
-      // Q3: nhập 160–180% doanh thu, chênh lệch DƯƠNG ≈ Q2 (hơi thấp hơn), kho bán hết ở Q4
+      // Q3: nhập 138–148% doanh thu → gap dương ~ +0.43×rev_Q3
+      // Vì rev_Q3 ≈ rev_Q2, gap Q3 ≈ Q2 nhưng thấp hơn một chút (đúng yêu cầu).
+      // Tồn cuối Q3 vẫn cao, sẽ bán xả mạnh ở Q4.
       return {
-        seasonalRatio: 1.60 + rand() * 0.20, // 160–180%
-        endingStockRatio: 0.22 + rand() * 0.05, // 22–27% (tồn cao chuyển sang Q4)
+        seasonalRatio: 1.38 + rand() * 0.10, // 138–148%
+        endingStockRatio: 0.24 + rand() * 0.04, // 24–28% (cao hơn Q2 một chút)
       };
     case 4:
-      // Q4: nhập cao tiếp tục, tồn cuối kỳ CAO NHẤT, chênh lệch DƯƠNG
+      // Q4: cao điểm — bán hết tồn Q3 nhưng vẫn nhập tiếp.
+      // gap dương vừa (~ +0.22×rev_Q4); tồn CUỐI Q4 CAO NHẤT năm
+      // nhờ endingStockRatio cao nhất + carry-over từ Q3.
       return {
-        seasonalRatio: 1.40 + rand() * 0.20, // 140–160%
-        endingStockRatio: 0.30 + rand() * 0.05, // 30–35% (tồn cao nhất năm)
+        seasonalRatio: 1.20 + rand() * 0.10, // 120–130%
+        endingStockRatio: 0.32 + rand() * 0.04, // 32–36% (cao nhất năm)
       };
     default:
       return {
