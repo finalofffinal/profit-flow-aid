@@ -108,6 +108,8 @@ export interface SaleOrder {
   tag: ImportTag;
   paymentMethod: PaymentMethod;
   transferImages: string[];
+  /** Khóa đơn auto: regen sẽ giữ nguyên đơn này, không thay/xóa */
+  locked?: boolean;
   deletedAt: string | null;
   createdAt: string;
 }
