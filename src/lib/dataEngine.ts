@@ -720,6 +720,32 @@ export function generateQuarterData(
   const stockMap = new Map<string, number>(carryOverStock);
   activeProducts.forEach(p => { if (!stockMap.has(p.id)) stockMap.set(p.id, 0); });
 
+  // ===== SEED tồn kho ảo từ "Q4/2025" cho quý đầu tiên (Q1/2026) =====
+  // Giả định: Q4 năm trước đã chuẩn bị đủ kho để Q1 đạt target dù nhập Q1 thấp (40-60%).
+  // Chỉ áp dụng khi: là Q1/2026, KHÔNG có carry-over thực từ quý trước.
+  const isFirstQuarter = quarter.quarter === 1 && quarter.year === 2026;
+  const hasRealCarryOver = Array.from(carryOverStock.values()).some(v => v > 0);
+  if (isFirstQuarter && !hasRealCarryOver) {
+    // Tồn ảo đủ để tạo doanh thu = target × 1.1 (dư 10% an toàn)
+    const seedRevenueTarget = quarter.targetRevenue * 1.1;
+    const eligibleProds = activeProducts.filter(p => {
+      const supplier = suppliers.find(s => s.id === p.supplierId);
+      if (!supplier) return false;
+      const rule = getSupplierRule(supplier.name);
+      return !rule.manualOnly && (p.baseSellPrice ?? p.sellPrice) > 0;
+    });
+    if (eligibleProds.length > 0) {
+      const perProduct = seedRevenueTarget / eligibleProds.length;
+      for (const p of eligibleProds) {
+        const rate = p.conversionRate || 1;
+        const sellPerChild = (p.baseSellPrice ?? p.sellPrice) / rate;
+        if (sellPerChild <= 0) continue;
+        const childUnitsNeeded = Math.ceil(perProduct / sellPerChild);
+        stockMap.set(p.id, (stockMap.get(p.id) || 0) + childUnitsNeeded);
+      }
+    }
+  }
+
   // Cộng/trừ ảnh hưởng của đơn thủ công hiện có trong quý để auto logic bám sát thực tế.
   activeManualImports.forEach(order => {
     order.items.forEach(it => {
