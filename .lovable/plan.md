@@ -1,83 +1,56 @@
 
 
-# Sửa logic Kho hàng + Excel xuất theo template chuẩn
+# Q2/Q3: Nhập nhiều, tồn kho cao, bán dần
 
-## Vấn đề hiện tại
+## Yêu cầu
 
-1. **Chênh lệch nhập − bán luôn âm ở mọi quý** → phi logic. Q3, Q4 nhập nhiều hơn bán (theo profile đã đặt) nhưng UI vẫn hiện dấu trừ đỏ vì cách tính/format hiển thị sai.
-2. **Thiếu thẻ "Tổng tiền hàng đang có trong kho"** (giá trị tồn thực tế = nhập − đã bán theo FIFO). Đây mới là số quan trọng, không phải chênh lệch dòng tiền.
-3. **Số lượng tồn từng SP hiển thị thô** (vd "1.234 chai") thay vì **"1 thùng + 5 chai"** theo `conversionRate`.
-4. **File Excel xuất ra lệch format** so với template `s2a_mới-2.xlsx` user vừa gửi (căn chỉnh hàng/cột, font size, khoảng cách).
+Q2 & Q3 doanh thu thấp → vẫn **nhập hàng nhiều** (chuẩn bị kho cho Q4 cao điểm) → **hàng dồn lại trong kho**, bán ra từ từ. Đây là logic stockpiling trước mùa cao điểm — không phải nhập-bán cân bằng.
 
-## Giải pháp (giữ nguyên 100% logic data engine)
+## Hiện trạng vs Mục tiêu
 
-### A. Tab Kho hàng — `src/components/inventory/InventoryPage.tsx`
+| Quý | Doanh thu | Nhập (ratio) | Tồn cuối quý | Trạng thái hiện tại |
+|---|---|---|---|---|
+| Q1 | Trung bình | 0.30–0.40× (bán nốt 2025) | Cạn dần | ✓ OK |
+| **Q2** | **Thấp** | **Cần 1.8–2.2×** (nhập gấp đôi bán) | **Dồn cao** | Đang 1.6–1.8 → **tăng** |
+| **Q3** | **Thấp** | **Cần 2.0–2.4×** (nhập gấp 2-2.4× bán) | **Dồn rất cao** | Đang 1.7–1.9 → **tăng** |
+| Q4 | Cao điểm | 1.20–1.30× (nhập hơn bán 20-30%) | Vừa phải | ✓ OK |
 
-**Cấu trúc 3 thẻ tổng kết cuối quý** (thay block hiện tại):
+Số lượng "X thùng + Y chai" hiện cao bất thường KHÔNG phải do ratio nhập sai — mà do **`endingStockRatio` snapshot quá lớn** (20–31%) khiến FIFO giữ lại quá nhiều batch cuối quý. Ratio nhập phải GIỮ CAO (đúng ý user), chỉ giảm `endingStockRatio` xuống vừa phải.
 
-```text
-┌─ Nhập (+) ────────┐  ┌─ Bán (−) ─────────┐
-│  +XXX triệu        │  │  -XXX triệu        │
-│  N đơn · Q đv      │  │  N đơn · Q đv      │
-└────────────────────┘  └────────────────────┘
-┌─ Chênh lệch nhập − bán trong quý ────────────┐
-│  +/-XXX triệu  (xanh nếu +, đỏ nếu −)        │
-└───────────────────────────────────────────────┘
-┌─ 📦 Tổng tiền hàng đang có trong kho ────────┐  ← THẺ MỚI
-│  XXX triệu  (luôn dương, màu primary)         │
-│  N đv · từ M lô · cuối Q1/2026                │
-└───────────────────────────────────────────────┘
-```
+## Giải pháp — `src/lib/dataEngine.ts`
 
-- Sửa logic màu: **chênh lệch dương → xanh emerald + dấu `+`**, âm → đỏ + dấu `−`. Hiện tại đang ép đỏ ở quá nhiều case.
-- Thẻ "Tổng tiền hàng đang có" lấy từ `quarterBatches.reduce((s,b)=>s+b.quantity*b.buyPrice,0)` — đây là kết quả FIFO snapshot từ `computeInventorySnapshot`, đúng nghĩa "hàng nhập rồi mà chưa bán".
+Tinh chỉnh `getQuarterInventoryProfile`:
 
-**Hiển thị tồn theo đơn vị lớn + nhỏ:**
+| Quý | `seasonalRatio` mới | `endingStockRatio` mới | Ý nghĩa |
+|---|---|---|---|
+| Q1 | 0.30–0.40 (giữ) | 0.05–0.10 (giữ) | Cạn nốt tồn 2025 |
+| **Q2** | **1.80–2.00** ↑ | **0.15–0.20** ↓ từ 0.20–0.31 | Nhập gấp đôi bán, dồn vừa phải |
+| **Q3** | **2.00–2.20** ↑ | **0.18–0.22** ↓ từ 0.20–0.31 | Nhập gấp 2× bán, dồn cao chuẩn bị Q4 |
+| Q4 | 1.20–1.30 (giữ) | 0.08–0.12 (giữ) | Bán xả tồn Q3 + nhập bù 20-30% |
 
-Trong list từng SP, thay `{info.totalQty}` bằng helper `formatStockUnits(qty, conversionRate, parentUnit, childUnit)`:
+**Cơ chế FIFO sẽ tự xử lý**:
+- Q2/Q3 nhập batch lớn → sales orders chỉ tiêu thụ một phần → batch còn lại nằm trong kho.
+- `computeInventorySnapshot` cuối Q2/Q3 sẽ thấy nhiều batch dư → "X thùng + Y chai" hiển thị đúng số dồn.
+- Sang Q4, `computeCarryOverStock` mang tồn Q3 sang → Q4 bán mạnh, tồn giảm.
 
-```text
-qty=1.5, rate=10, parent="thùng", child="chai"
-→ 1.5 * 10 = 15 chai → "1 thùng 5 chai"
-
-qty=0.3, rate=12 → 3.6 → "3 chai" (không đủ thùng)
-qty=2, rate=1 → "2 chai" (không có đơn vị lớn)
-```
-
-Hiển thị dạng: **`1 thùng + 5 chai`** ngay bên cạnh số đơn vị quy đổi, font đậm.
-
-### B. Dashboard — `src/components/dashboard/DashboardPage.tsx`
-
-Thẻ "Kho hàng Q" hiện đang hiển thị **chênh lệch (có thể âm)**. Đổi thành hiển thị **giá trị tồn thực tế (luôn dương)** = `stockValue` để khớp với thẻ mới ở tab Kho hàng. Chênh lệch nhập−bán đẩy xuống dòng phụ phía dưới.
-
-### C. Excel S2a-HKD — `src/lib/exportExcel.ts`
-
-Bám sát chính xác template `s2a_mới-2.xlsx`:
-
-| Khu vực | Format chuẩn template |
-|---|---|
-| Toàn file | Times New Roman, size 12 |
-| Header HKD (hàng 1–6) | Căn trái cột A, căn trái cột D, KHÔNG bold trừ "Mẫu số S2a-HKD" |
-| Tiêu đề "SỔ CHI TIẾT…" | Merge A:D, **size 14 bold**, căn giữa, hàng cao 26pt |
-| "Kỳ kê khai" | Italic, căn trái cột A; "(Đơn vị tính: VND)" italic căn phải cột D |
-| Header bảng (3 hàng) | Bold, **căn giữa cả ngang lẫn dọc**, border đầy đủ, fill xám nhạt `#F2F2F2`, hàng cao 22pt |
-| Hàng "Ngành nghề: 4719…" | Italic, căn trái cột C, không border số tiền |
-| Dòng dữ liệu TM | Cột A,B căn giữa · Cột C căn trái · Cột D căn phải, format `#,##0`, border mỏng, hàng cao 18pt đồng đều |
-| "Tổng cộng (Quý X)" | Bold, căn phải, có hàng trống phía trên |
-| Footer chữ ký | Merge C:D, italic dòng ngày, bold dòng "NGƯỜI ĐẠI DIỆN…", italic dòng "(Ký, ghi rõ…)" |
-| Cột rộng | A=12, B=14, C=52, D=20 (giữ nguyên) |
-
-Bổ sung hàng **"Ngành nghề: 4719- Bán tạp hóa"** ngay sau hàng A/B/C/1 (đang thiếu so với template).
+**Không động `endingStockRatio` quá thấp** vì cần thật sự có hàng dồn trong kho cuối Q2/Q3 (đó là điểm chính của yêu cầu).
 
 ## File sẽ sửa
 
-- `src/components/inventory/InventoryPage.tsx` — thêm thẻ tồn kho, helper `formatStockUnits`, sửa màu chênh lệch.
-- `src/components/dashboard/DashboardPage.tsx` — đổi thẻ Kho hàng sang hiển thị giá trị tồn thực.
-- `src/lib/exportExcel.ts` — refactor styling theo template, thêm hàng "Ngành nghề".
+- `src/lib/dataEngine.ts` — `getQuarterInventoryProfile`: tăng `seasonalRatio` Q2/Q3, giảm nhẹ `endingStockRatio` Q2/Q3.
 
-## Không động tới
+## Không động
 
-- `src/lib/dataEngine.ts` (giữ 100% logic generation).
-- Logic doanh thu Sales tab, Dashboard targets.
-- Cấu trúc dữ liệu `InventoryBatch`, `ImportOrder`, `SaleOrder`.
+- `src/components/inventory/InventoryPage.tsx` (UI đã đúng).
+- `src/lib/exportPdf.ts`, `exportExcel.ts`.
+- Logic doanh thu Sales = 100% target Dashboard.
+- Logic FIFO `computeInventorySnapshot`, `computeCarryOverStock`.
+
+## Kết quả mong đợi
+
+- Tab Nhập hàng Q2: tổng nhập **~2× tổng bán** (vd bán 150tr → nhập ~300tr).
+- Tab Nhập hàng Q3: tổng nhập **~2.1× tổng bán** (vd bán 160tr → nhập ~340tr).
+- Tab Kho hàng cuối Q2: chênh lệch **+150tr** (xanh), tồn mỗi SP **vài chục đơn vị** (vd 8 thùng + 3 chai).
+- Tab Kho hàng cuối Q3: chênh lệch **+180tr** (xanh), tồn dồn cao hơn Q2.
+- Tab Kho hàng cuối Q4: chênh lệch nhỏ (~+20-30% bán), tồn giảm rõ rệt vì xả cho mùa cao điểm.
 
