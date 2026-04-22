@@ -685,29 +685,33 @@ function buildItem(p: Product, supplier: Supplier, qty: number): ImportOrderItem
 function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   switch (quarterNumber) {
     case 1:
+      // Bán hàng tồn 2025 + nhập rất ít → cuối Q1 gần cạn kho, chỉ còn vài SP số lượng nhỏ
       return {
-        seasonalRatio: 0.40 + rand() * 0.20, // 40–60% — bán nhiều, nhập ít
-        endingStockRatio: 0.02 + rand() * 0.03, // gần như cạn kho
+        seasonalRatio: 0.30 + rand() * 0.10, // 30–40% — nhập rất ít
+        endingStockRatio: 0.03 + rand() * 0.02, // 3–5% — kho gần như rỗng
       };
     case 2:
+      // Nhập rất nhiều để fill lại kho sau Q1 cạn → cuối Q2 vừa đủ (không ít không nhiều)
       return {
-        seasonalRatio: 1.40 + rand() * 0.20, // 140–160% — nhập rất nhiều để bù
-        endingStockRatio: 0.22 + rand() * 0.06, // tồn nhiều
+        seasonalRatio: 1.45 + rand() * 0.15, // 145–160% — fill kho mạnh
+        endingStockRatio: 0.18 + rand() * 0.05, // 18–23% — vừa đủ
       };
     case 3:
+      // Tỉ lệ nhập cao hơn Q2 chút → tồn cuối Q3 khá nhiều
       return {
-        seasonalRatio: 1.05 + rand() * 0.10, // 105–115%
-        endingStockRatio: 0.27 + rand() * 0.06, // cao hơn Q2 một chút
+        seasonalRatio: 1.55 + rand() * 0.15, // 155–170% — cao hơn Q2
+        endingStockRatio: 0.30 + rand() * 0.06, // 30–36% — khá nhiều
       };
     case 4:
+      // Nhập ≈ doanh thu (95–110%) → cuối Q4 tồn lớn, đầy đủ SP gối đầu Tết
       return {
-        seasonalRatio: 1.30 + rand() * 0.15, // 130–145%
-        endingStockRatio: 0.38 + rand() * 0.10, // cao nhất để gối đầu Tết
+        seasonalRatio: 0.95 + rand() * 0.15, // 95–110%
+        endingStockRatio: 0.42 + rand() * 0.10, // 42–52% — tồn lớn nhất
       };
     default:
       return {
         seasonalRatio: 1.0,
-        endingStockRatio: 0.1,
+        endingStockRatio: 0.15,
       };
   }
 }
