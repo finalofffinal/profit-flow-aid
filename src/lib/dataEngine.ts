@@ -703,16 +703,17 @@ export function generateQuarterData(
   }
 
   // ===== Cân bằng tổng nhập theo CHU KỲ MÙA VỤ =====
-  // Q1: BÁN nhiều (Tết) - NHẬP ÍT (50–80%) → kho cuối Q1 cạn
-  // Q2: BÁN ít  - NHẬP NHIỀU (110–130%) → kho cuối Q2 đầy đủ phục vụ Q3
-  // Q3: BÁN ổn định - NHẬP ổn định (90–100%) → kho cuối Q3 dư hơn Q2 cho Q4
-  // Q4: BÁN nhiều - NHẬP NHIỀU (96–110%) chuẩn bị lễ Tết đầu Q1 năm sau
+  // Mục tiêu KHO CUỐI QUÝ: Q1 ≈ cạn < Q2 < Q3 < Q4 (Q4 nhiều nhất)
+  // Q1: BÁN nhiều (Tết) - NHẬP RẤT ÍT (50–70%) → kho cuối Q1 gần như hết
+  // Q2: BÁN ít  - NHẬP NHIỀU (130–150%) → kho cuối Q2 đầy đủ
+  // Q3: BÁN ổn định - NHẬP (105–115%) → kho cuối Q3 nhiều hơn Q2 một chút
+  // Q4: BÁN nhiều - NHẬP NHIỀU NHẤT (130–145%) → kho cuối Q4 nhiều nhất, dự trữ Tết
   let seasonalRatio: number;
   switch (quarter.quarter) {
-    case 1: seasonalRatio = 0.50 + rand() * 0.30; break; // 50–80%
-    case 2: seasonalRatio = 1.10 + rand() * 0.20; break; // 110–130%
-    case 3: seasonalRatio = 0.90 + rand() * 0.10; break; // 90–100%
-    case 4: seasonalRatio = 0.96 + rand() * 0.14; break; // 96–110%
+    case 1: seasonalRatio = 0.50 + rand() * 0.20; break; // 50–70%
+    case 2: seasonalRatio = 1.30 + rand() * 0.20; break; // 130–150%
+    case 3: seasonalRatio = 1.05 + rand() * 0.10; break; // 105–115%
+    case 4: seasonalRatio = 1.30 + rand() * 0.15; break; // 130–145%
     default: seasonalRatio = 1.0;
   }
   const importBudgetRatio = seasonalRatio;
