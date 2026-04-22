@@ -725,11 +725,11 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
         endingStockRatio: 0.38 + rand() * 0.04, // 38–42% (cao nhất năm)
       };
     case 4:
-      // Q4 là mùa bán mạnh: vẫn nhập NHIỀU HƠN bán → gap DƯƠNG, tồn cuối Q4 dương.
-      // Tồn cuối Q4 thấp hơn Q2/Q3 do xả mạnh cho cao điểm.
+      // Q4 mùa bán mạnh: ratio nhập/doanh thu BẮT BUỘC trong khoảng 120%–150%
+      // → gap nhập-bán DƯƠNG rõ, tồn cuối Q4 dương nhưng thấp hơn Q2/Q3.
       return {
-        seasonalRatio: 2.30 + rand() * 0.15, // target 230–245% (thực tế ≈140–150%)
-        endingStockRatio: 0.22 + rand() * 0.04, // 22–26% (dương rõ, thấp hơn Q2/Q3)
+        seasonalRatio: 2.20 + rand() * 0.15, // target 220–235% (thực tế ≈132–141%)
+        endingStockRatio: 0.20 + rand() * 0.04, // 20–24% (dương rõ, thấp hơn Q2/Q3)
       };
     default:
       return {
