@@ -123,15 +123,31 @@ function generateDailyRevenue(days: string[], totalRevenue: number, rand: () => 
     return map;
   }
 
-  // Làm mượt: nếu 2 ngày liền nhau đều cao (>1.15× trung bình), kéo ngày sau xuống.
-  const avgWeight = weightSum / Math.max(1, days.filter((_, i) => weights[i] > 0).length);
-  for (let i = 1; i < weights.length; i++) {
-    if (weights[i] === 0 || weights[i - 1] === 0) continue;
-    if (weights[i - 1] > avgWeight * 1.15 && weights[i] > avgWeight * 1.15) {
-      const reduced = avgWeight * (0.80 + rand() * 0.15);
-      weightSum -= (weights[i] - reduced);
-      weights[i] = reduced;
+  // Clamp + làm mượt: kéo các ngày về [0.78×, 1.25×] trung bình của ngày mở cửa
+  const openIdx: number[] = [];
+  for (let i = 0; i < weights.length; i++) if (weights[i] > 0) openIdx.push(i);
+  if (openIdx.length > 0) {
+    const avg0 = weightSum / openIdx.length;
+    const minW = avg0 * 0.78;
+    const maxW = avg0 * 1.25;
+    for (const i of openIdx) {
+      if (weights[i] < minW) weights[i] = minW;
+      else if (weights[i] > maxW) weights[i] = maxW;
     }
+    // Làm mượt 2 lượt: mỗi ngày = 0.6 * chính nó + 0.2 * trước + 0.2 * sau (chỉ áp dụng ngày mở cửa)
+    for (let pass = 0; pass < 2; pass++) {
+      const next = weights.slice();
+      for (let k = 0; k < openIdx.length; k++) {
+        const i = openIdx[k];
+        const prev = k > 0 ? weights[openIdx[k - 1]] : weights[i];
+        const after = k < openIdx.length - 1 ? weights[openIdx[k + 1]] : weights[i];
+        next[i] = weights[i] * 0.6 + prev * 0.2 + after * 0.2;
+      }
+      for (const i of openIdx) weights[i] = next[i];
+    }
+    // Tính lại weightSum
+    weightSum = 0;
+    for (const w of weights) weightSum += w;
   }
 
   let allocated = 0;
