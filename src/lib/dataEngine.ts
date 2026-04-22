@@ -1,7 +1,7 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 import { getLunarParts } from '@/lib/lunar';
 
-export const DATA_ENGINE_VERSION = '2026-04-22-quarter-balance-v3';
+export const DATA_ENGINE_VERSION = '2026-04-22-quarter-balance-v4';
 
 function seededRandom(seed: number) {
   let s = seed;
