@@ -118,6 +118,7 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
   // Tổng theo bộ lọc hiện tại (phản ứng theo TimeRange + search/tag/brand)
   const totalRevenue = filtered.reduce((s, d) => s + d.totalRevenue, 0);
   const totalProfit = filtered.reduce((s, d) => s + d.totalProfit, 0);
+  const hasActiveUiFilters = timeRange !== 'quarter' || !!search.trim() || tagFilter !== 'all' || brandFilter !== 'all';
 
   const rangeLabel: Record<TimeRange, string> = {
     today: 'Hôm nay',
@@ -166,23 +167,22 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
           customTo={customTo} onCustomToChange={setCustomTo}
         />
 
-        {/* Doanh thu phản ứng theo bộ lọc thời gian; quý hiển thị tổng quý (khớp Dashboard) */}
         <div className="space-y-1.5 bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Doanh thu — {rangeLabel[timeRange]}</p>
-              <p className="text-xl font-black text-primary dark:text-primary truncate">{formatCompactVND(totalRevenue)} VND</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Doanh thu quý Q{selQ}/{selYear}</p>
+              <p className="text-xl font-black text-primary dark:text-primary truncate">{formatCompactVND(quarterRevenue)} VND</p>
             </div>
             <div className="text-right min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Lợi nhuận</p>
-              <p className="text-xl font-black text-emerald-600 dark:text-emerald-300 truncate">{formatCompactVND(totalProfit)} VND</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Lợi nhuận quý</p>
+              <p className="text-xl font-black text-emerald-600 dark:text-emerald-300 truncate">{formatCompactVND(quarterProfit)} VND</p>
             </div>
             <Badge variant="outline" className="text-xs font-bold border-primary/40 shrink-0">{filtered.length} ngày</Badge>
           </div>
-          {timeRange !== 'quarter' && (
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-primary/20 pt-1.5">
-              <span>Tổng cả Q{selQ}/{selYear}: <span className="font-bold text-foreground">{formatCompactVND(quarterRevenue)}</span></span>
-              <span>Lãi quý: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(quarterProfit)}</span></span>
+          {hasActiveUiFilters && (
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-primary/20 pt-1.5 gap-3">
+              <span>{rangeLabel[timeRange]} / bộ lọc: <span className="font-bold text-foreground">{formatCompactVND(totalRevenue)}</span></span>
+              <span>Lãi theo lọc: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(totalProfit)}</span></span>
             </div>
           )}
         </div>
