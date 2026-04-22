@@ -769,8 +769,8 @@ export function generateQuarterData(
       const openingOrderId = generateId();
       const openingDate = '2025-12-31';
       const openingItems: ImportOrderItem[] = [];
-      // Tồn mở đầu vừa đủ: target × 0.7 (kết hợp với nhập Q1 ~50% sẽ đủ doanh thu + còn ~10-15% tồn cuối quý)
-      const targetOpeningRevenue = quarter.targetRevenue * 0.70;
+      // Tồn mở đầu = target × 1.05 (đủ bán Q1 + một phần nhỏ tồn cuối kỳ ~3-5%)
+      const targetOpeningRevenue = quarter.targetRevenue * 1.05;
       const perProductRevenue = targetOpeningRevenue / eligibleProds.length;
 
       for (const p of eligibleProds) {
