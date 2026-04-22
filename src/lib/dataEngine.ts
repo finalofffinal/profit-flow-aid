@@ -713,23 +713,23 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
         endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
       };
     case 2:
-      // Q2 doanh thu thấp nhưng nhập rất cao để dồn kho sang Q3.
+      // Q2 doanh thu thấp, nhập rất cao để dồn kho. Target rất cao để vượt cap.
       return {
-        seasonalRatio: 2.80 + rand() * 0.20, // target 280–300% (thực tế ≈170–180%)
-        endingStockRatio: 0.34 + rand() * 0.04, // 34–38% (tồn cao)
+        seasonalRatio: 4.00 + rand() * 0.30, // target 400–430% (thực tế ≈170–185%)
+        endingStockRatio: 0.34 + rand() * 0.04,
       };
     case 3:
-      // Q3 tiếp tục nhập cao để gối sang Q4, tồn cuối Q3 CAO NHẤT năm.
+      // Q3 nhập cao nhất, tồn cuối Q3 lớn nhất năm.
       return {
-        seasonalRatio: 2.90 + rand() * 0.20, // target 290–310% (thực tế ≈175–185%)
-        endingStockRatio: 0.38 + rand() * 0.04, // 38–42% (cao nhất năm)
+        seasonalRatio: 4.20 + rand() * 0.30, // target 420–450% (thực tế ≈180–195%)
+        endingStockRatio: 0.38 + rand() * 0.04,
       };
     case 4:
-      // Q4 mùa bán mạnh: ratio nhập/doanh thu BẮT BUỘC trong khoảng 120%–150%
-      // → gap nhập-bán DƯƠNG rõ, tồn cuối Q4 dương nhưng thấp hơn Q2/Q3.
+      // Q4 BẮT BUỘC ratio nhập/doanh thu thực tế trong 120%–150% (gap luôn DƯƠNG).
+      // Target rất cao để vượt cap NCC ở Q4 (cap chặt do bán mạnh).
       return {
-        seasonalRatio: 2.20 + rand() * 0.15, // target 220–235% (thực tế ≈132–141%)
-        endingStockRatio: 0.20 + rand() * 0.04, // 20–24% (dương rõ, thấp hơn Q2/Q3)
+        seasonalRatio: 3.20 + rand() * 0.20, // target 320–340% (thực tế ≈130–145%)
+        endingStockRatio: 0.20 + rand() * 0.04,
       };
     default:
       return {
