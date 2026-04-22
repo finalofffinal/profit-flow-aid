@@ -12,7 +12,7 @@ import {
   useProducts, useSuppliers, useNotifications, useTheme,
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
 } from '@/hooks/useStore';
-import { generateQuarterData, computeCarryOverStock, generateSupplementaryOrder } from '@/lib/dataEngine';
+import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { TabId } from '@/types';
@@ -69,10 +69,44 @@ function IndexInner() {
     setImportOrders(prev => prev.map(o => o.id === id ? { ...o, date: newDate } : o));
   }, [setImportOrders]);
 
-  // Stable signature to avoid unnecessary regen (includes regenSeeds for manual re-rolls)
+  const manualImportSig = useMemo(
+    () => importOrders
+      .filter(o => o.tag !== 'auto')
+      .map(o => `${o.id}-${o.date}-${o.total}-${o.deletedAt || ''}-${o.items.map(it => `${it.productId}:${it.quantity}:${it.buyPrice}`).join(',')}`)
+      .sort()
+      .join('|'),
+    [importOrders]
+  );
+
+  const manualSalesSig = useMemo(
+    () => salesOrders
+      .filter(o => o.tag !== 'auto')
+      .map(o => `${o.id}-${o.date}-${o.totalRevenue}-${o.deletedAt || ''}-${o.items.map(it => `${it.productId}:${it.quantity}:${it.total}`).join(',')}`)
+      .sort()
+      .join('|'),
+    [salesOrders]
+  );
+
+  const productSig = useMemo(
+    () => activeProducts.map(p => `${p.id}-${p.updatedAt}-${p.buyPrice}-${p.sellPrice}-${p.conversionRate}-${p.supplierId}`).sort().join('|'),
+    [activeProducts]
+  );
+
+  const supplierSig = useMemo(
+    () => activeSuppliers.map(s => `${s.id}-${s.name}`).sort().join('|'),
+    [activeSuppliers]
+  );
+
+  // Stable signature to avoid unnecessary regen (includes regenSeeds + manual data changes)
   const quarterSig = useMemo(
-    () => quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
-    [quarters, regenSeeds]
+    () => [
+      quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
+      manualImportSig,
+      manualSalesSig,
+      productSig,
+      supplierSig,
+    ].join('||'),
+    [quarters, regenSeeds, manualImportSig, manualSalesSig, productSig, supplierSig]
   );
 
   // Auto-generate import/sales/batches whenever quarters or active products change
@@ -101,7 +135,6 @@ function IndexInner() {
 
     let allAutoImports: typeof importOrders = [];
     let allAutoSales: typeof salesOrders = [];
-    let allAutoBatches: typeof inventoryBatches = [];
 
     // Sort quarters chronologically so carry-over compounds correctly
     const sortedQs = [...quarters].sort((a, b) =>
@@ -119,7 +152,6 @@ function IndexInner() {
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
       });
 
-      // Compute carry-over: include all manual + locked-auto + already-generated previous-quarter auto data
       const allImportsSoFar = [...manualImports, ...lockedAutoImports, ...allAutoImports];
       const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...allAutoSales];
       const carryOver = computeCarryOverStock(q.quarter, q.year, activeProducts, allImportsSoFar, allSalesSoFar);
@@ -129,14 +161,20 @@ function IndexInner() {
       const generated = generateQuarterData(qWithSeed, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
       allAutoImports.push(...generated.importOrders);
       allAutoSales.push(...generated.salesOrders);
-      allAutoBatches.push(...generated.inventoryBatches);
     }
 
-    setImportOrders([...manualImports, ...lockedAutoImports, ...allAutoImports]);
-    setSalesOrders([...manualSales, ...lockedAutoSales, ...allAutoSales]);
-    setInventoryBatches([...lockedBatches, ...allAutoBatches]);
+    const finalImports = [...manualImports, ...lockedAutoImports, ...allAutoImports];
+    const finalSales = [...manualSales, ...lockedAutoSales, ...allAutoSales];
+    const recomputedBatches = sortedQs.flatMap(q => {
+      if (q.locked) return [] as typeof inventoryBatches;
+      return computeInventorySnapshot(q.quarter, q.year, activeProducts, finalImports, finalSales);
+    });
+
+    setImportOrders(finalImports);
+    setSalesOrders(finalSales);
+    setInventoryBatches([...lockedBatches, ...recomputedBatches]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarterSig, activeProducts.length]);
+  }, [quarterSig]);
 
   const handleDataRestore = useCallback(() => {
     // Don't reload page; trigger a soft re-render

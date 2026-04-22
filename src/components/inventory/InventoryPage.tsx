@@ -90,29 +90,25 @@ export function InventoryPage(props: InventoryPageProps) {
 
     const totalImport = qImports.reduce((s, o) => s + o.total, 0);
     const totalSalesRevenue = qSales.reduce((s, o) => s + o.totalRevenue, 0);
-    const totalSalesCost = qSales.reduce((s, o) => {
-      return s + o.items.reduce((is, it) => is + it.buyPrice * it.quantity, 0);
-    }, 0);
-    const stockValue = totalImport - totalSalesCost;
-
-    // Item flow
-    let totalImportQty = 0;
-    let totalSalesQty = 0;
-    qImports.forEach(o => o.items.forEach(it => totalImportQty += it.quantity));
-    qSales.forEach(o => o.items.forEach(it => totalSalesQty += it.quantity));
+    const totalSalesCost = qSales.reduce((s, o) => s + o.items.reduce((is, it) => is + it.buyPrice * it.quantity, 0), 0);
+    const stockValue = filtered.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
+    const totalImportQty = qImports.reduce((s, o) => s + o.items.reduce((is, it) => is + it.quantity, 0), 0);
+    const totalSalesQty = qSales.reduce((s, o) => s + o.items.reduce((is, it) => is + it.quantity, 0), 0);
+    const totalStockQty = filtered.reduce((s, b) => s + b.quantity, 0);
 
     return {
       totalImport,
       totalSalesRevenue,
       totalSalesCost,
       stockValue: Math.max(0, stockValue),
+      totalStockQty,
       lastDay: lastDayStr,
       importOrderCount: qImports.length,
       salesOrderCount: qSales.length,
       totalImportQty,
       totalSalesQty,
     };
-  }, [selQ, selYear, importOrders, salesOrders]);
+  }, [selQ, selYear, importOrders, salesOrders, filtered]);
 
   const toggleSupplier = (id: string) => {
     setCollapsedSuppliers(prev => {
@@ -196,6 +192,7 @@ export function InventoryPage(props: InventoryPageProps) {
               <span className="text-xs text-muted-foreground">Giá trị tồn kho cuối quý</span>
             </div>
             <p className="font-bold text-lg text-primary">{formatVND(quarterSummary.stockValue)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{quarterSummary.totalStockQty} đv còn lại</p>
           </div>
         </div>
       </div>
