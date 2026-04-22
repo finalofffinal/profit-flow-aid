@@ -87,6 +87,15 @@ function IndexInner() {
     [salesOrders]
   );
 
+  // Đơn auto đã KHÓA: thay đổi (lock/unlock) phải kích hoạt regen để cân lại phần còn lại
+  const lockedAutoSig = useMemo(
+    () => [
+      ...importOrders.filter(o => o.tag === 'auto' && o.locked).map(o => `i:${o.id}:${o.date}:${o.total}`),
+      ...salesOrders.filter(o => o.tag === 'auto' && o.locked).map(o => `s:${o.id}:${o.date}:${o.totalRevenue}`),
+    ].sort().join('|'),
+    [importOrders, salesOrders]
+  );
+
   // Auto regen chỉ phụ thuộc vào GIÁ GỐC (baseBuy/baseSell), không phải giá hiện tại.
   // Catalog edit thay đổi buyPrice/sellPrice sẽ KHÔNG khiến đơn auto regen.
   const productSig = useMemo(
@@ -105,10 +114,11 @@ function IndexInner() {
       quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
       manualImportSig,
       manualSalesSig,
+      lockedAutoSig,
       productSig,
       supplierSig,
     ].join('||'),
-    [quarters, regenSeeds, manualImportSig, manualSalesSig, productSig, supplierSig]
+    [quarters, regenSeeds, manualImportSig, manualSalesSig, lockedAutoSig, productSig, supplierSig]
   );
 
   // Auto-generate import/sales/batches whenever quarters or active products change
