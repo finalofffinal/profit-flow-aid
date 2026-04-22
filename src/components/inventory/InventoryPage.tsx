@@ -62,6 +62,11 @@ export function InventoryPage(props: InventoryPageProps) {
     );
   }, [batches, search, selQ, selYear, brandFilter, supplierFilter, products]);
 
+  const quarterBatches = useMemo(
+    () => batches.filter(b => b.quarter === selQ && b.year === selYear),
+    [batches, selQ, selYear],
+  );
+
   const grouped = useMemo(() => {
     const map = new Map<string, InventoryBatch[]>();
     filtered.forEach(b => {
@@ -90,16 +95,15 @@ export function InventoryPage(props: InventoryPageProps) {
 
     const totalImport = qImports.reduce((s, o) => s + o.total, 0);
     const totalSalesRevenue = qSales.reduce((s, o) => s + o.totalRevenue, 0);
-    const totalSalesCost = qSales.reduce((s, o) => s + o.items.reduce((is, it) => is + it.buyPrice * it.quantity, 0), 0);
-    const stockValue = filtered.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
+    const stockValue = quarterBatches.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
     const totalImportQty = qImports.reduce((s, o) => s + o.items.reduce((is, it) => is + it.quantity, 0), 0);
     const totalSalesQty = qSales.reduce((s, o) => s + o.items.reduce((is, it) => is + it.quantity, 0), 0);
-    const totalStockQty = filtered.reduce((s, b) => s + b.quantity, 0);
+    const totalStockQty = quarterBatches.reduce((s, b) => s + b.quantity, 0);
+    const netQuarterFlow = totalImport - totalSalesRevenue;
 
     return {
       totalImport,
       totalSalesRevenue,
-      totalSalesCost,
       stockValue: Math.max(0, stockValue),
       totalStockQty,
       lastDay: lastDayStr,
@@ -107,8 +111,10 @@ export function InventoryPage(props: InventoryPageProps) {
       salesOrderCount: qSales.length,
       totalImportQty,
       totalSalesQty,
+      netQuarterFlow,
+      netIsNegative: netQuarterFlow < 0,
     };
-  }, [selQ, selYear, importOrders, salesOrders, filtered]);
+  }, [selQ, selYear, importOrders, salesOrders, quarterBatches]);
 
   const toggleSupplier = (id: string) => {
     setCollapsedSuppliers(prev => {
