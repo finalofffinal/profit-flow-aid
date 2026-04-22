@@ -218,38 +218,56 @@ function IndexInner() {
     return !!quarters.find(qd => qd.quarter === q && qd.year === y && qd.locked);
   }, [quarters]);
 
-  /** Xóa toàn bộ đơn auto của 1 quý (giữ thủ công) — useEffect sẽ tự sinh lại */
+  /** Xóa toàn bộ đơn auto của 1 quý (giữ thủ công + auto đã KHÓA) — useEffect sẽ tự sinh lại */
   const handleClearAutoOrders = useCallback((q: number, y: number) => {
+    const keptImportIds = new Set<string>();
     setImportOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
       const d = new Date(o.date);
-      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+      const sameQ = Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+      if (!sameQ) return true;
+      if (o.locked) { keptImportIds.add(o.id); return true; }
+      return false;
     }));
     setSalesOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
       const d = new Date(o.date);
-      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+      const sameQ = Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+      if (!sameQ) return true;
+      return !!o.locked;
     }));
-    setInventoryBatches(prev => prev.filter(b => !(b.quarter === q && b.year === y)));
-    addNotification(`Đã xóa đơn tự động Q${q}/${y}, đang sinh lại...`, 'info');
+    setInventoryBatches(prev => prev.filter(b => {
+      if (b.quarter !== q || b.year !== y) return true;
+      return keptImportIds.has(b.importOrderId);
+    }));
+    addNotification(`Đã xóa đơn tự động Q${q}/${y} (giữ đơn đã khóa), đang sinh lại...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
 
-  /** Reroll: tạo seed mới → useEffect regen với cấu trúc đơn ngẫu nhiên khác */
+  /** Reroll: tạo seed mới → useEffect regen với cấu trúc khác (giữ thủ công + auto đã KHÓA) */
   const handleAutoReplenish = useCallback((q: number, y: number) => {
     const key = `${q}-${y}`;
     setRegenSeeds(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+    const keptImportIds = new Set<string>();
     setImportOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
       const d = new Date(o.date);
-      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+      const sameQ = Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+      if (!sameQ) return true;
+      if (o.locked) { keptImportIds.add(o.id); return true; }
+      return false;
     }));
     setSalesOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
       const d = new Date(o.date);
-      return !(Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y);
+      const sameQ = Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+      if (!sameQ) return true;
+      return !!o.locked;
     }));
-    setInventoryBatches(prev => prev.filter(b => !(b.quarter === q && b.year === y)));
-    addNotification(`Đang ngẫu nhiên hóa lại Q${q}/${y}...`, 'info');
+    setInventoryBatches(prev => prev.filter(b => {
+      if (b.quarter !== q || b.year !== y) return true;
+      return keptImportIds.has(b.importOrderId);
+    }));
+    addNotification(`Đang ngẫu nhiên hóa lại Q${q}/${y} (giữ đơn đã khóa)...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
 
   /** Tạo NHIỀU đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý — chia đều nhiều NCC */
