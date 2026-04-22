@@ -1296,36 +1296,38 @@ export function generateQuarterData(
 
   nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
   currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
-  salesGap = autoTargetRevenue - currentSalesTotal;
-  // Cho phép scale rộng để doanh thu khớp 100% target (cap 30% để tránh xáo trộn lớn)
-  const tolerableGap = Math.max(5000, autoTargetRevenue * 0.30);
 
-  // Scale tỉ lệ cho mọi đơn để doanh thu auto khớp đúng autoTargetRevenue.
-  if (Math.abs(salesGap) > 0 && Math.abs(salesGap) <= tolerableGap && nonTetOrders.length > 0 && currentSalesTotal > 0) {
+  // Luôn scale phần auto để tổng doanh thu bán hàng KHỚP CHÍNH XÁC 100% target quý.
+  if (nonTetOrders.length > 0 && currentSalesTotal > 0 && currentSalesTotal !== autoTargetRevenue) {
     const scale = autoTargetRevenue / currentSalesTotal;
     let allocated = 0;
+
     for (let i = 0; i < nonTetOrders.length; i++) {
       const o = nonTetOrders[i];
       const isLast = i === nonTetOrders.length - 1;
       let newOrderTotal: number;
+
       if (isLast) {
         newOrderTotal = autoTargetRevenue - allocated;
       } else {
         newOrderTotal = Math.round((o.totalRevenue * scale) / 1000) * 1000;
       }
+
       newOrderTotal = Math.max(0, newOrderTotal);
       const itemScale = o.totalRevenue > 0 ? newOrderTotal / o.totalRevenue : 1;
       let itemAlloc = 0;
+
       for (let j = 0; j < o.items.length; j++) {
         const it = o.items[j];
         const isLastItem = j === o.items.length - 1;
         let newTotal: number;
+
         if (isLastItem) {
-          newTotal = newOrderTotal - itemAlloc;
+          newTotal = Math.max(0, newOrderTotal - itemAlloc);
         } else {
-          newTotal = Math.max(0, it.total * itemScale);
+          newTotal = Math.max(0, Math.round((it.total * itemScale) / 1000) * 1000);
         }
-        newTotal = Math.max(0, newTotal);
+
         const prevTotal = it.total;
         if (prevTotal > 0) {
           const margin = it.profit / prevTotal;
@@ -1334,15 +1336,20 @@ export function generateQuarterData(
           it.profitPercent = it.total > 0 ? Math.round((it.profit / it.total) * 1000) / 10 : 0;
         } else {
           it.total = newTotal;
+          it.profit = 0;
+          it.profitPercent = 0;
         }
+
         itemAlloc += newTotal;
       }
+
       o.totalRevenue = newOrderTotal;
       o.totalProfit = o.items.reduce((s, it) => s + it.profit, 0);
       o.profitPercent = newOrderTotal > 0 ? Math.round((o.totalProfit / newOrderTotal) * 1000) / 10 : 0;
       allocated += newOrderTotal;
     }
   }
+
 
 
   return { importOrders, salesOrders, inventoryBatches };
