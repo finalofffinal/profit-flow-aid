@@ -135,7 +135,6 @@ function IndexInner() {
 
     let allAutoImports: typeof importOrders = [];
     let allAutoSales: typeof salesOrders = [];
-    let allAutoBatches: typeof inventoryBatches = [];
 
     // Sort quarters chronologically so carry-over compounds correctly
     const sortedQs = [...quarters].sort((a, b) =>
@@ -153,7 +152,6 @@ function IndexInner() {
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
       });
 
-      // Compute carry-over: include all manual + locked-auto + already-generated previous-quarter auto data
       const allImportsSoFar = [...manualImports, ...lockedAutoImports, ...allAutoImports];
       const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...allAutoSales];
       const carryOver = computeCarryOverStock(q.quarter, q.year, activeProducts, allImportsSoFar, allSalesSoFar);
@@ -163,14 +161,20 @@ function IndexInner() {
       const generated = generateQuarterData(qWithSeed, activeProducts, activeSuppliers, qManualImports, qManualSales, carryOver);
       allAutoImports.push(...generated.importOrders);
       allAutoSales.push(...generated.salesOrders);
-      allAutoBatches.push(...generated.inventoryBatches);
     }
 
-    setImportOrders([...manualImports, ...lockedAutoImports, ...allAutoImports]);
-    setSalesOrders([...manualSales, ...lockedAutoSales, ...allAutoSales]);
-    setInventoryBatches([...lockedBatches, ...allAutoBatches]);
+    const finalImports = [...manualImports, ...lockedAutoImports, ...allAutoImports];
+    const finalSales = [...manualSales, ...lockedAutoSales, ...allAutoSales];
+    const recomputedBatches = sortedQs.flatMap(q => {
+      if (q.locked) return [] as typeof inventoryBatches;
+      return computeInventorySnapshot(q.quarter, q.year, activeProducts, finalImports, finalSales);
+    });
+
+    setImportOrders(finalImports);
+    setSalesOrders(finalSales);
+    setInventoryBatches([...lockedBatches, ...recomputedBatches]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarterSig, activeProducts.length]);
+  }, [quarterSig]);
 
   const handleDataRestore = useCallback(() => {
     // Don't reload page; trigger a soft re-render
