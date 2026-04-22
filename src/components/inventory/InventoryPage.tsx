@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown, CalendarDays, FileDown, Lock, Filter } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown, CalendarDays, FileDown, Lock, Filter, Boxes } from 'lucide-react';
 import { InventoryBatch, Supplier, SaleOrder, ImportOrder, Product, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,25 @@ interface InventoryPageProps {
   products: Product[];
   quarters?: QuarterData[];
   addNotification?: (msg: string, type?: any) => void;
+}
+
+/**
+ * Hiển thị tồn kho theo "đơn vị lớn + đơn vị nhỏ".
+ * qty: số đơn vị nhỏ (child) đang còn — InventoryBatch.quantity là theo unit (parent), nên cần đổi.
+ * Trả về vd "1 thùng + 5 chai" hoặc "5 chai" nếu không đủ thùng / không có đv lớn.
+ */
+function formatStockUnits(qtyInParent: number, conversionRate: number, parentUnit: string, childUnit: string): string {
+  const rate = conversionRate > 0 ? conversionRate : 1;
+  const totalChild = Math.round(qtyInParent * rate);
+  if (totalChild <= 0) return `0 ${childUnit || parentUnit}`;
+  if (rate <= 1 || !childUnit || childUnit === parentUnit) {
+    return `${totalChild} ${parentUnit}`;
+  }
+  const parents = Math.floor(totalChild / rate);
+  const remainder = totalChild - parents * rate;
+  if (parents === 0) return `${remainder} ${childUnit}`;
+  if (remainder === 0) return `${parents} ${parentUnit}`;
+  return `${parents} ${parentUnit} + ${remainder} ${childUnit}`;
 }
 
 export function InventoryPage(props: InventoryPageProps) {
@@ -43,9 +62,7 @@ export function InventoryPage(props: InventoryPageProps) {
   }, [products]);
 
   const filtered = useMemo(() => {
-    // Filter to selected period (Q+Y)
     let result = batches.filter(b => b.quarter === selQ && b.year === selYear);
-
     if (supplierFilter !== 'all') result = result.filter(b => b.supplierId === supplierFilter);
     if (brandFilter !== 'all') {
       result = result.filter(b => {
@@ -53,7 +70,6 @@ export function InventoryPage(props: InventoryPageProps) {
         return p?.brand === brandFilter;
       });
     }
-
     if (!search.trim()) return result;
     const q = search.toLowerCase();
     return result.filter(b =>
@@ -113,6 +129,7 @@ export function InventoryPage(props: InventoryPageProps) {
       totalSalesQty,
       netQuarterFlow,
       netIsNegative: netQuarterFlow < 0,
+      batchCount: quarterBatches.length,
     };
   }, [selQ, selYear, importOrders, salesOrders, quarterBatches]);
 
@@ -174,6 +191,8 @@ export function InventoryPage(props: InventoryPageProps) {
             <CalendarDays className="h-3.5 w-3.5" />
             <span>Cuối quý ({new Date(quarterSummary.lastDay).toLocaleDateString('vi-VN')})</span>
           </div>
+
+          {/* Hàng 1: Nhập + Bán */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2">
               <div className="flex items-center gap-1 mb-1">
@@ -192,15 +211,34 @@ export function InventoryPage(props: InventoryPageProps) {
               <p className="text-muted-foreground">{quarterSummary.salesOrderCount} đơn · {quarterSummary.totalSalesQty} đv</p>
             </div>
           </div>
-          <div className={`rounded-lg border p-2.5 text-center ${quarterSummary.netIsNegative ? 'bg-destructive/10 border-destructive/20' : 'bg-primary/10 border-primary/20'}`}>
+
+          {/* Hàng 2: Chênh lệch — màu theo dấu (xanh nếu +, đỏ nếu −) */}
+          <div className={`rounded-lg border p-2.5 text-center ${
+            quarterSummary.netIsNegative
+              ? 'bg-destructive/10 border-destructive/20'
+              : 'bg-emerald-500/10 border-emerald-500/20'
+          }`}>
             <div className="flex items-center justify-center gap-1.5 mb-1">
-              <Package className={`h-4 w-4 ${quarterSummary.netIsNegative ? 'text-destructive' : 'text-primary'}`} />
-              <span className="text-xs text-muted-foreground">Chênh lệch nhập - bán trong quý</span>
+              <Package className={`h-4 w-4 ${quarterSummary.netIsNegative ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`} />
+              <span className="text-xs text-muted-foreground">Chênh lệch nhập − bán trong quý</span>
             </div>
-            <p className={`font-bold text-lg ${quarterSummary.netIsNegative ? 'text-destructive' : 'text-primary'}`}>
-              {quarterSummary.netIsNegative ? '-' : '+'}{formatVND(Math.abs(quarterSummary.netQuarterFlow))}
+            <p className={`font-bold text-lg ${
+              quarterSummary.netIsNegative ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {quarterSummary.netIsNegative ? '−' : '+'}{formatVND(Math.abs(quarterSummary.netQuarterFlow))}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Tồn cuối quý: {formatVND(quarterSummary.stockValue)} · {Math.round(quarterSummary.totalStockQty)} đv còn lại</p>
+          </div>
+
+          {/* Hàng 3: THẺ MỚI — Tổng tiền hàng đang có trong kho */}
+          <div className="rounded-lg border-2 border-primary/30 bg-primary/10 p-2.5 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Boxes className="h-4 w-4 text-primary" />
+              <span className="text-xs text-muted-foreground font-semibold">Tổng tiền hàng đang có trong kho</span>
+            </div>
+            <p className="font-black text-xl text-primary">{formatVND(quarterSummary.stockValue)}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {Math.round(quarterSummary.totalStockQty)} đv · từ {quarterSummary.batchCount} lô · cuối Q{selQ}/{selYear}
+            </p>
           </div>
         </div>
       </div>
@@ -212,7 +250,7 @@ export function InventoryPage(props: InventoryPageProps) {
           const totalQty = supplierBatches.reduce((s, b) => s + b.quantity, 0);
           const totalValue = supplierBatches.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
 
-          const productMap = new Map<string, { name: string; batches: number; totalQty: number; totalValue: number; unit: string; brand: string }>();
+          const productMap = new Map<string, { name: string; batches: number; totalQty: number; totalValue: number; unit: string; brand: string; conversionRate: number; conversionUnit: string }>();
           supplierBatches.forEach(b => {
             const prod = products.find(p => p.id === b.productId);
             const existing = productMap.get(b.productId);
@@ -221,7 +259,16 @@ export function InventoryPage(props: InventoryPageProps) {
               existing.totalQty += b.quantity;
               existing.totalValue += b.quantity * b.buyPrice;
             } else {
-              productMap.set(b.productId, { name: b.productName, batches: 1, totalQty: b.quantity, totalValue: b.quantity * b.buyPrice, unit: b.unit, brand: prod?.brand || '' });
+              productMap.set(b.productId, {
+                name: b.productName,
+                batches: 1,
+                totalQty: b.quantity,
+                totalValue: b.quantity * b.buyPrice,
+                unit: b.unit,
+                brand: prod?.brand || '',
+                conversionRate: prod?.conversionRate || 1,
+                conversionUnit: prod?.conversionUnit || b.unit,
+              });
             }
           });
 
@@ -237,22 +284,25 @@ export function InventoryPage(props: InventoryPageProps) {
               </button>
               {!isCollapsed && (
                 <div className="border-t border-border p-3 space-y-2 animate-in slide-in-from-top-1">
-                  {Array.from(productMap.entries()).map(([pid, info]) => (
-                    <div key={pid} className={`flex items-center justify-between text-xs p-2 rounded-lg ${info.totalQty <= 5 ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted/30'}`}>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {info.brand && <Badge variant="outline" className="text-[9px] h-4">{info.brand}</Badge>}
-                          <p className="font-semibold">{info.name}</p>
-                          {info.totalQty <= 5 && <Badge variant="destructive" className="text-[9px] h-4"><AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Sắp hết</Badge>}
+                  {Array.from(productMap.entries()).map(([pid, info]) => {
+                    const stockLabel = formatStockUnits(info.totalQty, info.conversionRate, info.unit, info.conversionUnit);
+                    return (
+                      <div key={pid} className={`flex items-center justify-between text-xs p-2 rounded-lg ${info.totalQty <= 5 ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted/30'}`}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {info.brand && <Badge variant="outline" className="text-[9px] h-4">{info.brand}</Badge>}
+                            <p className="font-semibold">{info.name}</p>
+                            {info.totalQty <= 5 && <Badge variant="destructive" className="text-[9px] h-4"><AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Sắp hết</Badge>}
+                          </div>
+                          <p className="text-muted-foreground">{info.batches} lô · {info.unit}</p>
                         </div>
-                        <p className="text-muted-foreground">{info.batches} lô · {info.unit}</p>
+                        <div className="text-right shrink-0 ml-2">
+                          <p className={`font-bold ${info.totalQty <= 5 ? 'text-destructive' : 'text-foreground'}`}>{stockLabel}</p>
+                          <p className="text-muted-foreground">{formatVND(info.totalValue)}</p>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0 ml-2">
-                        <p className={`font-bold ${info.totalQty <= 5 ? 'text-destructive' : 'text-foreground'}`}>{info.totalQty}</p>
-                        <p className="text-muted-foreground">{formatVND(info.totalValue)}</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
