@@ -62,19 +62,20 @@ function getRevenueWeight(dateStr: string, rand: () => number): number {
   const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   const lunar = getLunarParts(d);
 
-  // Phân phối mượt hơn: đỉnh chủ yếu T7/CN, hiếm khi 2 ngày cao liên tiếp.
-  // Cuối tuần: 45% cao, 45% bình thường, 10% thấp
-  // Ngày thường: 12% cao, 65% bình thường, 23% thấp
+  // Phân phối dàn trải: đa số ngày quanh trung bình, đỉnh nhẹ vào T7/CN.
+  // Hạn chế ngày quá thấp (<0.80) và ngày quá cao (>1.25) để tránh bất thường.
   let weeklyBoost: number;
   const r = rand();
   if (dow === 0 || dow === 6) {
-    if (r < 0.45) weeklyBoost = 1.10 + rand() * 0.25;       // 1.10–1.35
-    else if (r < 0.90) weeklyBoost = 0.90 + rand() * 0.15;  // 0.90–1.05
-    else weeklyBoost = 0.70 + rand() * 0.15;                // 0.70–0.85
+    // Cuối tuần: 35% nhỉnh hơn, 60% bình thường, 5% hơi thấp
+    if (r < 0.35) weeklyBoost = 1.08 + rand() * 0.15;       // 1.08–1.23
+    else if (r < 0.95) weeklyBoost = 0.92 + rand() * 0.14;  // 0.92–1.06
+    else weeklyBoost = 0.82 + rand() * 0.08;                // 0.82–0.90
   } else {
-    if (r < 0.12) weeklyBoost = 1.05 + rand() * 0.10;       // 1.05–1.15 (hiếm)
-    else if (r < 0.77) weeklyBoost = 0.85 + rand() * 0.18;  // 0.85–1.03
-    else weeklyBoost = 0.65 + rand() * 0.18;                // 0.65–0.83
+    // Ngày thường: phân bổ hẹp quanh 1.0
+    if (r < 0.10) weeklyBoost = 1.04 + rand() * 0.08;       // 1.04–1.12 (hiếm)
+    else if (r < 0.85) weeklyBoost = 0.90 + rand() * 0.14;  // 0.90–1.04
+    else weeklyBoost = 0.80 + rand() * 0.10;                // 0.80–0.90
   }
 
   let monthlyWeight = 1.0;
