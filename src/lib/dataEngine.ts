@@ -720,28 +720,69 @@ export function generateQuarterData(
   const stockMap = new Map<string, number>(carryOverStock);
   activeProducts.forEach(p => { if (!stockMap.has(p.id)) stockMap.set(p.id, 0); });
 
-  // ===== SEED tồn kho ảo từ "Q4/2025" cho quý đầu tiên (Q1/2026) =====
-  // Giả định: Q4 năm trước đã chuẩn bị đủ kho để Q1 đạt target dù nhập Q1 thấp (40-60%).
-  // Chỉ áp dụng khi: là Q1/2026, KHÔNG có carry-over thực từ quý trước.
+  // ===== SEED tồn kho mở đầu kỳ từ "Q4/2025" cho quý đầu tiên (Q1/2026) =====
+  // Giả định: cuối 2025 đã có sẵn một lô hàng đủ lớn để Q1 vừa đạt doanh thu vừa còn tồn cuối kỳ.
+  // Tạo như một import order thật ở 31/12/2025 để tab Kho hàng/FIFO đều nhìn thấy.
   const isFirstQuarter = quarter.quarter === 1 && quarter.year === 2026;
   const hasRealCarryOver = Array.from(carryOverStock.values()).some(v => v > 0);
   if (isFirstQuarter && !hasRealCarryOver) {
-    // Tồn ảo đủ để tạo doanh thu = target × 1.1 (dư 10% an toàn)
-    const seedRevenueTarget = quarter.targetRevenue * 1.1;
     const eligibleProds = activeProducts.filter(p => {
       const supplier = suppliers.find(s => s.id === p.supplierId);
       if (!supplier) return false;
       const rule = getSupplierRule(supplier.name);
       return !rule.manualOnly && (p.baseSellPrice ?? p.sellPrice) > 0;
     });
+
     if (eligibleProds.length > 0) {
-      const perProduct = seedRevenueTarget / eligibleProds.length;
+      const openingOrderId = generateId();
+      const openingDate = '2025-12-31';
+      const openingItems: ImportOrderItem[] = [];
+      const targetOpeningRevenue = quarter.targetRevenue * 1.35;
+      const perProductRevenue = targetOpeningRevenue / eligibleProds.length;
+
       for (const p of eligibleProds) {
+        const supplier = suppliers.find(s => s.id === p.supplierId);
+        if (!supplier) continue;
         const rate = p.conversionRate || 1;
         const sellPerChild = (p.baseSellPrice ?? p.sellPrice) / rate;
         if (sellPerChild <= 0) continue;
-        const childUnitsNeeded = Math.ceil(perProduct / sellPerChild);
-        stockMap.set(p.id, (stockMap.get(p.id) || 0) + childUnitsNeeded);
+
+        const childUnitsNeeded = Math.ceil(perProductRevenue / sellPerChild);
+        const parentQtyNeeded = Math.max(1, Math.ceil(childUnitsNeeded / rate));
+        const openingItem = buildItem(p, supplier, parentQtyNeeded);
+        openingItems.push(openingItem);
+        stockMap.set(p.id, (stockMap.get(p.id) || 0) + parentQtyNeeded * rate);
+        inventoryBatches.push({
+          id: generateId(),
+          importOrderId: openingOrderId,
+          productId: openingItem.productId,
+          productName: openingItem.productName,
+          supplierId: openingItem.supplierId,
+          supplierName: openingItem.supplierName,
+          quarter: quarter.quarter,
+          year: quarter.year,
+          quantity: openingItem.quantity,
+          originalQuantity: openingItem.quantity,
+          buyPrice: openingItem.buyPrice,
+          unit: openingItem.unit,
+          date: openingDate,
+        });
+      }
+
+      if (openingItems.length > 0) {
+        importOrders.push({
+          id: openingOrderId,
+          supplierId: '__opening_2025__',
+          supplierName: 'Tồn đầu kỳ 2025',
+          date: openingDate,
+          items: openingItems,
+          total: openingItems.reduce((s, it) => s + it.total, 0),
+          tag: 'auto',
+          locked: true,
+          images: [],
+          deletedAt: null,
+          createdAt: openingDate + 'T06:00:00.000Z',
+        });
       }
     }
   }
@@ -1278,9 +1319,11 @@ export function generateQuarterData(
   nonTetOrders = salesOrders.filter(o => o.totalRevenue > 0);
   currentSalesTotal = nonTetOrders.reduce((s, o) => s + o.totalRevenue, 0);
   salesGap = autoTargetRevenue - currentSalesTotal;
-  const tolerableGap = Math.max(5000, autoTargetRevenue * 0.02);
+  const tolerableGap = isFirstQuarter
+    ? Math.max(5000, autoTargetRevenue * 0.08)
+    : Math.max(5000, autoTargetRevenue * 0.02);
 
-  // Chỉ scale nhẹ phần chênh nhỏ cuối cùng do làm tròn.
+  // Chỉ scale nhẹ phần chênh cuối cùng; riêng Q1/2026 cho phép co giãn hơn vì đang bán từ tồn đầu kỳ 2025.
   if (Math.abs(salesGap) > 0 && Math.abs(salesGap) <= tolerableGap && nonTetOrders.length > 0 && currentSalesTotal > 0) {
     const scale = autoTargetRevenue / currentSalesTotal;
     let allocated = 0;
