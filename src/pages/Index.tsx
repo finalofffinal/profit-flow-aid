@@ -69,10 +69,44 @@ function IndexInner() {
     setImportOrders(prev => prev.map(o => o.id === id ? { ...o, date: newDate } : o));
   }, [setImportOrders]);
 
-  // Stable signature to avoid unnecessary regen (includes regenSeeds for manual re-rolls)
+  const manualImportSig = useMemo(
+    () => importOrders
+      .filter(o => o.tag !== 'auto')
+      .map(o => `${o.id}-${o.date}-${o.total}-${o.deletedAt || ''}-${o.items.map(it => `${it.productId}:${it.quantity}:${it.buyPrice}`).join(',')}`)
+      .sort()
+      .join('|'),
+    [importOrders]
+  );
+
+  const manualSalesSig = useMemo(
+    () => salesOrders
+      .filter(o => o.tag !== 'auto')
+      .map(o => `${o.id}-${o.date}-${o.totalRevenue}-${o.deletedAt || ''}-${o.items.map(it => `${it.productId}:${it.quantity}:${it.total}`).join(',')}`)
+      .sort()
+      .join('|'),
+    [salesOrders]
+  );
+
+  const productSig = useMemo(
+    () => activeProducts.map(p => `${p.id}-${p.updatedAt}-${p.buyPrice}-${p.sellPrice}-${p.conversionRate}-${p.supplierId}`).sort().join('|'),
+    [activeProducts]
+  );
+
+  const supplierSig = useMemo(
+    () => activeSuppliers.map(s => `${s.id}-${s.name}`).sort().join('|'),
+    [activeSuppliers]
+  );
+
+  // Stable signature to avoid unnecessary regen (includes regenSeeds + manual data changes)
   const quarterSig = useMemo(
-    () => quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
-    [quarters, regenSeeds]
+    () => [
+      quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
+      manualImportSig,
+      manualSalesSig,
+      productSig,
+      supplierSig,
+    ].join('||'),
+    [quarters, regenSeeds, manualImportSig, manualSalesSig, productSig, supplierSig]
   );
 
   // Auto-generate import/sales/batches whenever quarters or active products change
