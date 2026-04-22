@@ -491,7 +491,7 @@ function generateSupplierImports(
       }
     }
 
-    // Cân bằng tiền: tính tổng từng đơn, scale qty các đơn lệch nhiều về trung bình
+    // Cân bằng tiền: kéo các đơn lệch nhiều về quanh trung bình (chặt hơn)
     const totals = orderItems.map(its => its.reduce((s, it) => s + it.total, 0));
     const avg = totals.reduce((a, b) => a + b, 0) / Math.max(1, totals.length);
     if (avg > 0) {
@@ -499,8 +499,9 @@ function generateSupplierImports(
         const t = totals[idx];
         if (t === 0) return;
         const ratio = avg / t;
-        const clamped = Math.max(0.7, Math.min(1.4, ratio));
-        if (Math.abs(clamped - 1) < 0.05) return;
+        // Chặt: chỉ cho phép lệch ±15% so với trung bình → các đơn cùng NCC gần đồng đều
+        const clamped = Math.max(0.85, Math.min(1.15, ratio));
+        if (Math.abs(clamped - 1) < 0.03) return;
         its.forEach(it => {
           const prod = eligible.find(p => p.id === it.productId);
           if (!prod) return;
@@ -823,7 +824,6 @@ export function generateQuarterData(
     const targetIds = largeIds.length > 0 ? largeIds : Array.from(supplierProducts.keys());
     if (targetIds.length > 0 && deficit > 0) {
       const perSupplier = deficit / targetIds.length;
-      const topupDate = days[0];
       for (const sid of targetIds) {
         const supplier = suppliers.find(s => s.id === sid);
         if (!supplier) continue;
@@ -832,63 +832,196 @@ export function generateQuarterData(
         const prods = (supplierProducts.get(sid) || []).filter(p => !rule.excludeProduct?.(p));
         if (prods.length === 0) continue;
 
-        const items: ImportOrderItem[] = [];
-        let acc = 0;
-        const shuffled = [...prods].sort(() => rand() - 0.5);
-        for (const p of shuffled) {
-          if (acc >= perSupplier) break;
-          items.push(buildItem(p, supplier, 1));
-          acc += p.buyPrice;
-          stockMap.set(p.id, (stockMap.get(p.id) || 0) + (p.conversionRate || 1));
-        }
-        let safety = items.length * 3;
-        let cursor = 0;
-        while (acc < perSupplier && safety-- > 0 && items.length > 0) {
-          const it = items[cursor % items.length];
-          cursor++;
-          const prod = prods.find(p => p.id === it.productId)!;
-          const hardMax = rule.maxQtyPerProduct?.(prod);
-          const cap = Math.min(3, hardMax ?? 3);
-          if (it.quantity >= cap) continue;
-          it.quantity += 1;
-          it.total = it.buyPrice * it.quantity;
-          acc += it.buyPrice;
-          stockMap.set(prod.id, (stockMap.get(prod.id) || 0) + (prod.conversionRate || 1));
-        }
-        if (items.length === 0) continue;
+        // ===== CHIA TOPUP THÀNH NHIỀU ĐƠN NHỎ =====
+        // Số đơn topup = số đơn auto đã có cho NCC này (rải đều), tối thiểu 2, tối đa 6
+        const existingAutoCount = importOrders.filter(o => o.supplierId === sid && o.tag === 'auto').length;
+        const topupCount = Math.max(2, Math.min(6, existingAutoCount || 3));
+        const perOrder = perSupplier / topupCount;
 
-        const topupOrder: ImportOrder = {
-          id: generateId(),
-          supplierId: supplier.id,
-          supplierName: supplier.name,
-          date: topupDate,
-          items,
-          total: items.reduce((s, it) => s + it.total, 0),
-          tag: 'auto',
-          locked: false,
-          images: [],
-          deletedAt: null,
-          createdAt: topupDate + 'T00:00:00.000Z',
-        };
-        importOrders.push(topupOrder);
-        for (const it of items) {
-          inventoryBatches.push({
+        for (let topupIdx = 0; topupIdx < topupCount; topupIdx++) {
+          // Rải đều ngày trong 70% đầu quý, jitter nhẹ
+          const usableLen = Math.max(1, Math.floor(days.length * 0.7));
+          const baseDay = Math.floor(((topupIdx + 0.5) / topupCount) * usableLen);
+          const jitter = Math.floor((rand() - 0.5) * (usableLen / topupCount * 0.5));
+          const dayIdx = Math.min(usableLen - 1, Math.max(0, baseDay + jitter));
+          const topupDate = days[dayIdx];
+
+          const items: ImportOrderItem[] = [];
+          let acc = 0;
+          // Mỗi đơn topup chỉ chọn 4-7 SP để tránh dồn quá nhiều SP/đơn
+          const maxItemsThisOrder = 4 + Math.floor(rand() * 4);
+          const shuffled = [...prods].sort(() => rand() - 0.5);
+
+          for (const p of shuffled) {
+            if (acc >= perOrder) break;
+            if (items.length >= maxItemsThisOrder) break;
+            items.push(buildItem(p, supplier, 1));
+            acc += p.buyPrice;
+            stockMap.set(p.id, (stockMap.get(p.id) || 0) + (p.conversionRate || 1));
+          }
+          // Nếu vẫn thiếu tiền, tăng qty các SP đã chọn (cap mềm 3)
+          let safety = items.length * 3;
+          let cursor = 0;
+          while (acc < perOrder && safety-- > 0 && items.length > 0) {
+            const it = items[cursor % items.length];
+            cursor++;
+            const prod = prods.find(p => p.id === it.productId)!;
+            const hardMax = rule.maxQtyPerProduct?.(prod);
+            const cap = Math.min(3, hardMax ?? 3);
+            if (it.quantity >= cap) continue;
+            it.quantity += 1;
+            it.total = it.buyPrice * it.quantity;
+            acc += it.buyPrice;
+            stockMap.set(prod.id, (stockMap.get(prod.id) || 0) + (prod.conversionRate || 1));
+          }
+          if (items.length === 0) continue;
+
+          const topupOrder: ImportOrder = {
             id: generateId(),
-            productId: it.productId,
-            productName: it.productName,
             supplierId: supplier.id,
             supplierName: supplier.name,
-            importOrderId: topupOrder.id,
-            quarter: quarter.quarter,
-            year: quarter.year,
-            quantity: it.quantity,
-            originalQuantity: it.quantity,
-            buyPrice: it.buyPrice,
-            unit: it.unit,
             date: topupDate,
-          });
+            items,
+            total: items.reduce((s, it) => s + it.total, 0),
+            tag: 'auto',
+            locked: false,
+            images: [],
+            deletedAt: null,
+            createdAt: topupDate + 'T08:30:00.000Z',
+          };
+          importOrders.push(topupOrder);
+          for (const it of items) {
+            inventoryBatches.push({
+              id: generateId(),
+              productId: it.productId,
+              productName: it.productName,
+              supplierId: supplier.id,
+              supplierName: supplier.name,
+              importOrderId: topupOrder.id,
+              quarter: quarter.quarter,
+              year: quarter.year,
+              quantity: it.quantity,
+              originalQuantity: it.quantity,
+              buyPrice: it.buyPrice,
+              unit: it.unit,
+              date: topupDate,
+            });
+          }
         }
       }
+    }
+  }
+
+  // ============================================================================
+  // REBALANCE FINAL: với mỗi NCC, nếu đơn lớn nhất > 1.6× trung bình
+  // → chuyển bớt qty từ items đắt nhất sang đơn nhỏ nhất cùng NCC.
+  // Không phá rule cứng (maxQtyPerProduct/maxQtyPerQuarter).
+  // ============================================================================
+  const ordersBySupplier = new Map<string, ImportOrder[]>();
+  for (const o of importOrders) {
+    if (o.tag !== 'auto') continue;
+    if (!ordersBySupplier.has(o.supplierId)) ordersBySupplier.set(o.supplierId, []);
+    ordersBySupplier.get(o.supplierId)!.push(o);
+  }
+
+  for (const [sid, sOrders] of ordersBySupplier) {
+    if (sOrders.length < 2) continue;
+    const supplier = suppliers.find(s => s.id === sid);
+    if (!supplier) continue;
+    const rule = getSupplierRule(supplier.name);
+
+    let passes = 4;
+    while (passes-- > 0) {
+      const totals = sOrders.map(o => o.total);
+      const avg = totals.reduce((a, b) => a + b, 0) / sOrders.length;
+      if (avg <= 0) break;
+      let maxIdx = 0, minIdx = 0;
+      for (let i = 1; i < sOrders.length; i++) {
+        if (totals[i] > totals[maxIdx]) maxIdx = i;
+        if (totals[i] < totals[minIdx]) minIdx = i;
+      }
+      // Đơn lớn nhất phải vượt 1.6× trung bình thì mới rebalance
+      if (totals[maxIdx] < avg * 1.6 || maxIdx === minIdx) break;
+
+      const bigOrder = sOrders[maxIdx];
+      const smallOrder = sOrders[minIdx];
+      // Chọn item có qty>1 và tổng tiền lớn nhất trong bigOrder
+      const candidates = bigOrder.items
+        .filter(it => it.quantity > 1)
+        .sort((a, b) => b.total - a.total);
+      if (candidates.length === 0) break;
+
+      let moved = false;
+      for (const cand of candidates) {
+        const prod = productById.get(cand.productId);
+        if (!prod) continue;
+        // Bớt 1 unit từ bigOrder
+        cand.quantity -= 1;
+        cand.total = cand.buyPrice * cand.quantity;
+        bigOrder.total = bigOrder.items.reduce((s, it) => s + it.total, 0);
+
+        // Cộng vào smallOrder: nếu đã có item cùng SP → tăng qty; nếu chưa → tạo item mới
+        const existing = smallOrder.items.find(it => it.productId === cand.productId);
+        if (existing) {
+          const hardMax = rule.maxQtyPerProduct?.(prod);
+          if (hardMax !== undefined && existing.quantity + 1 > hardMax) {
+            // Hoàn tác bigOrder và thử item khác
+            cand.quantity += 1;
+            cand.total = cand.buyPrice * cand.quantity;
+            bigOrder.total = bigOrder.items.reduce((s, it) => s + it.total, 0);
+            continue;
+          }
+          existing.quantity += 1;
+          existing.total = existing.buyPrice * existing.quantity;
+        } else {
+          smallOrder.items.push(buildItem(prod, supplier, 1));
+        }
+        smallOrder.total = smallOrder.items.reduce((s, it) => s + it.total, 0);
+
+        // Đồng bộ inventory batches
+        for (const b of inventoryBatches) {
+          if (b.importOrderId === bigOrder.id && b.productId === cand.productId) {
+            b.quantity = cand.quantity;
+            b.originalQuantity = cand.quantity;
+          }
+        }
+        const smallItem = smallOrder.items.find(it => it.productId === cand.productId)!;
+        const smallBatch = inventoryBatches.find(b => b.importOrderId === smallOrder.id && b.productId === cand.productId);
+        if (smallBatch) {
+          smallBatch.quantity = smallItem.quantity;
+          smallBatch.originalQuantity = smallItem.quantity;
+        } else {
+          inventoryBatches.push({
+            id: generateId(),
+            importOrderId: smallOrder.id,
+            productId: smallItem.productId,
+            productName: smallItem.productName,
+            supplierId: smallItem.supplierId,
+            supplierName: smallItem.supplierName,
+            unit: smallItem.unit,
+            quantity: smallItem.quantity,
+            originalQuantity: smallItem.quantity,
+            buyPrice: smallItem.buyPrice,
+            date: smallOrder.date,
+            quarter: quarter.quarter,
+            year: quarter.year,
+          });
+        }
+
+        // Xóa item rỗng nếu qty = 0
+        if (cand.quantity === 0) {
+          bigOrder.items = bigOrder.items.filter(it => it.productId !== cand.productId);
+          // Xóa batch tương ứng
+          for (let i = inventoryBatches.length - 1; i >= 0; i--) {
+            if (inventoryBatches[i].importOrderId === bigOrder.id && inventoryBatches[i].productId === cand.productId) {
+              inventoryBatches.splice(i, 1);
+            }
+          }
+        }
+        moved = true;
+        break;
+      }
+      if (!moved) break;
     }
   }
 
