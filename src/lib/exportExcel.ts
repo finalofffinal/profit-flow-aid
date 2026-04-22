@@ -235,7 +235,7 @@ export function exportSalesExcel(salesOrders: SaleOrder[], year: number, quarter
   };
 
   // ===== Data rows (TM, subtotal, grand total) — căn giữa, format số =====
-  for (let R = dataStartRow; R < footerDateRow - 4; R++) {
+  for (let R = dataStartRow; R <= lastDataRow; R++) {
     const isSubtotal = subtotalRowIdx.includes(R);
     const isGrand = R === grandTotalRowIdx;
     for (let C = 0; C <= 3; C++) {
