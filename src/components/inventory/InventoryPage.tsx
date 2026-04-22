@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown, CalendarDays, FileDown, Lock, Filter, Boxes } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Package, AlertTriangle, TrendingUp, TrendingDown, CalendarDays, FileDown, Lock, Filter } from 'lucide-react';
 import { InventoryBatch, Supplier, SaleOrder, ImportOrder, Product, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { Input } from '@/components/ui/input';
