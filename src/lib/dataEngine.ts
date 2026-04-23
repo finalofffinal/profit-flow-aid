@@ -208,7 +208,13 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   // Caller dùng default mềm (3) khi tạo đơn ban đầu, NHƯNG khi rebalance scale lên/xuống
   // sẽ KHÔNG clamp (cho phép tăng tự nhiên). Chỉ SP có rule cứng (số cụ thể) mới bị clamp.
 
-  if (has('vifon')) return { ordersCount: [2, 2] };
+  // Vifon: 1 đơn/quý, tổng ≤3 đơn vị lớn, BẮT BUỘC đủ 2 SP khác nhau
+  if (has('vifon')) return {
+    ordersCount: [1, 1],
+    maxQtyPerProduct: () => 2,        // ≤2 mỗi SP để đảm bảo đủ chỗ cho 2 SP
+    maxQtyPerQuarter: () => 2,        // tổng cả quý cho 1 SP cũng ≤2
+    preferUniquePerQuarter: false,
+  };
 
   if (has('liên thành') || has('lien thanh')) {
     return { ordersCount: [1, 1], maxQtyPerProduct: () => 1 };
@@ -464,14 +470,48 @@ function generateSupplierImports(
   const autoCount = Math.max(0, total - manualOrdersCount);
   if (autoCount === 0) return { orders: [], batches: [] };
 
-  // Schedule order days — DỒN VỀ ĐẦU/GIỮA QUÝ để gối đầu (có hàng sẵn cho bán)
-  // Phân bổ trong 70% đầu của quý thay vì rải đều cả quý
-  const usableDays = Math.max(1, Math.floor(days.length * 0.7));
+  // Schedule order days — RẢI ĐỀU CẢ QUÝ nhưng ƯU TIÊN ĐẦU/GIỮA (gối đầu hàng).
+  // Phân phối: chia 3 tháng theo tỉ lệ ~40% / 35% / 25% (ưu tiên đầu nhưng vẫn có T cuối).
+  // Đảm bảo MỌI tháng đều có ít nhất 1 đơn nếu autoCount >= 3.
   const dayIdxs: number[] = [];
-  for (let i = 0; i < autoCount; i++) {
-    const base = Math.floor(((i + 0.5) / autoCount) * usableDays);
-    const jitter = Math.floor((rand() - 0.5) * (usableDays / autoCount * 0.5));
-    dayIdxs.push(Math.min(usableDays - 1, Math.max(0, base + jitter)));
+  if (autoCount === 1) {
+    // Đặt ngẫu nhiên trong 60% đầu quý
+    dayIdxs.push(Math.floor(rand() * Math.max(1, Math.floor(days.length * 0.6))));
+  } else {
+    const totalDays = days.length;
+    // Trọng số phân phối từng tháng (3 tháng = 3 phần)
+    const monthWeights = [0.40, 0.35, 0.25];
+    const monthBoundaries = [0, Math.floor(totalDays / 3), Math.floor((totalDays * 2) / 3), totalDays];
+    // Phân bổ số đơn cho từng tháng theo trọng số
+    const ordersPerMonth = [0, 0, 0];
+    let remaining = autoCount;
+    for (let m = 0; m < 3; m++) {
+      if (m === 2) ordersPerMonth[m] = remaining;
+      else {
+        ordersPerMonth[m] = Math.max(autoCount >= 3 ? 1 : 0, Math.round(autoCount * monthWeights[m]));
+        ordersPerMonth[m] = Math.min(ordersPerMonth[m], remaining);
+        remaining -= ordersPerMonth[m];
+      }
+    }
+    // Đảm bảo tháng 3 có ít nhất 1 đơn nếu autoCount >= 3
+    if (autoCount >= 3 && ordersPerMonth[2] === 0) {
+      // Lấy 1 từ tháng có nhiều nhất
+      const maxM = ordersPerMonth[0] >= ordersPerMonth[1] ? 0 : 1;
+      ordersPerMonth[maxM]--;
+      ordersPerMonth[2]++;
+    }
+    // Đặt ngày trong từng tháng (rải đều)
+    for (let m = 0; m < 3; m++) {
+      const startIdx = monthBoundaries[m];
+      const endIdx = monthBoundaries[m + 1];
+      const monthLen = endIdx - startIdx;
+      const cnt = ordersPerMonth[m];
+      for (let i = 0; i < cnt; i++) {
+        const base = startIdx + Math.floor(((i + 0.5) / Math.max(1, cnt)) * monthLen);
+        const jitter = Math.floor((rand() - 0.5) * Math.max(1, Math.floor(monthLen / Math.max(1, cnt) * 0.5)));
+        dayIdxs.push(Math.min(endIdx - 1, Math.max(startIdx, base + jitter)));
+      }
+    }
   }
   dayIdxs.sort((a, b) => a - b);
 
@@ -489,7 +529,8 @@ function generateSupplierImports(
     // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
     // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
     // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
-    const targetItemsPerOrder = Math.max(5, Math.min(7, Math.ceil(eligible.length / autoCount) + 1));
+    // NCC lớn (>10 SP): mỗi đơn 4-6 SP đa dạng, cân bằng tiền chặt, bao phủ TOÀN BỘ SP.
+    const targetItemsPerOrder = Math.max(4, Math.min(6, Math.ceil(eligible.length / autoCount) + 1));
     const totalSlots = targetItemsPerOrder * autoCount;
     const passes = Math.max(1, Math.ceil(totalSlots / eligible.length));
 
@@ -617,6 +658,67 @@ function generateSupplierImports(
       merged = true;
       break;
     }
+  }
+
+  // ===== POST-PROCESS đặc biệt cho VIFON =====
+  // Yêu cầu: 1 đơn duy nhất / quý, tổng ≤3 đơn vị lớn, BẮT BUỘC đủ 2 SP khác nhau.
+  if (supplier.name.toLowerCase().includes('vifon')) {
+    // Gộp tất cả items từ orderItems vào 1 đơn duy nhất
+    const merged: ImportOrderItem[] = [];
+    for (const its of orderItems) {
+      for (const it of its) {
+        const exist = merged.find(x => x.productId === it.productId);
+        if (exist) {
+          exist.quantity += it.quantity;
+          exist.total = exist.buyPrice * exist.quantity;
+        } else {
+          merged.push({ ...it });
+        }
+      }
+    }
+    // Đảm bảo đủ 2 SP khác nhau (lấy từ eligible nếu thiếu)
+    if (merged.length < 2 && eligible.length >= 2) {
+      for (const p of eligible) {
+        if (merged.find(x => x.productId === p.id)) continue;
+        merged.push(buildItem(p, supplier, 1));
+        if (merged.length >= 2) break;
+      }
+    }
+    // Giữ tối đa 2 SP đầu (nếu nhiều hơn)
+    while (merged.length > 2) merged.pop();
+    // Cap tổng số đơn vị ≤ 3 (chia: 2+1 hoặc 1+2)
+    let totalQty = merged.reduce((s, it) => s + it.quantity, 0);
+    if (merged.length === 2) {
+      // Chuẩn hóa: SP đầu 2, SP sau 1 (tổng 3) — hoặc giảm về cấu hình ≤3
+      if (totalQty > 3) {
+        merged[0].quantity = 2;
+        merged[1].quantity = 1;
+        merged.forEach(it => { it.total = it.buyPrice * it.quantity; });
+        totalQty = 3;
+      } else if (totalQty < 2) {
+        // Đảm bảo ít nhất 1+1 = 2
+        merged.forEach(it => { if (it.quantity < 1) it.quantity = 1; it.total = it.buyPrice * it.quantity; });
+      }
+    } else if (merged.length === 1) {
+      // Trường hợp xấu: chỉ 1 SP eligible — giữ ≤3
+      if (merged[0].quantity > 3) {
+        merged[0].quantity = 3;
+        merged[0].total = merged[0].buyPrice * 3;
+      }
+    }
+    // Reset stockMap (vì sẽ tính lại theo merged)
+    for (const its of orderItems) {
+      for (const it of its) {
+        const rate = it.conversionRate || 1;
+        stockMap.set(it.productId, (stockMap.get(it.productId) || 0) - it.quantity * rate);
+      }
+    }
+    // Đặt tất cả vào orderItems[0], các slot khác rỗng
+    for (let i = 0; i < orderItems.length; i++) orderItems[i] = [];
+    orderItems[0] = merged;
+    // Cập nhật qtyUsedQuarter
+    qtyUsedQuarter.clear();
+    merged.forEach(it => qtyUsedQuarter.set(it.productId, it.quantity));
   }
 
   const orders: ImportOrder[] = [];
@@ -867,11 +969,17 @@ export function generateQuarterData(
 
   const largeSupplierIds = new Set<string>();
   const smallSupplierIds = new Set<string>();
+  const fixedSupplierIds = new Set<string>(); // NCC có rule cứng (như Vifon) — không scale
   for (const [sid, prods] of supplierProducts) {
     const supplier = suppliers.find(s => s.id === sid);
     if (!supplier) continue;
     const rule = getSupplierRule(supplier.name);
     if (rule.manualOnly) continue;
+    // Vifon: 1 đơn/quý, ≤3 đơn vị → KHÔNG được scale
+    if (supplier.name.toLowerCase().includes('vifon')) {
+      fixedSupplierIds.add(sid);
+      continue;
+    }
     const eligibleCount = prods.filter(p => !rule.excludeProduct?.(p)).length;
     if (eligibleCount > 10) largeSupplierIds.add(sid);
     else smallSupplierIds.add(sid);
@@ -1075,7 +1183,11 @@ export function generateQuarterData(
     let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
 
     if (currentImport < minImportNeeded) {
-      const autoOrdersForBoost = importOrders.filter(o => o.tag === 'auto' && o.total > 0);
+      const autoOrdersForBoost = importOrders.filter(o =>
+        o.tag === 'auto' && o.total > 0 &&
+        !o.supplierName.toLowerCase().includes('vifon') &&
+        o.supplierId !== '__opening_2025__'
+      );
       if (autoOrdersForBoost.length > 0) {
         // Sort: đơn lớn nhất trước (clone hiệu quả hơn).
         const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);

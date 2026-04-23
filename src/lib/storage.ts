@@ -10,6 +10,8 @@ const KEYS = {
   importOrders: 'scp_import_orders',
   salesOrders: 'scp_sales_orders',
   inventoryBatches: 'scp_inventory_batches',
+  regenSeeds: 'scp_regen_seeds',
+  generatedQuarters: 'scp_generated_quarters',
 } as const;
 
 function loadLocal<T>(key: string, fallback: T): T {
@@ -146,6 +148,13 @@ export const saveSalesOrders = (data: SaleOrder[]) => save(KEYS.salesOrders, dat
 
 export const loadInventoryBatches = () => loadLocal<InventoryBatch[]>(KEYS.inventoryBatches, []);
 export const saveInventoryBatches = (data: InventoryBatch[]) => save(KEYS.inventoryBatches, data);
+
+export const loadRegenSeeds = () => loadLocal<Record<string, number>>(KEYS.regenSeeds, {});
+export const saveRegenSeeds = (data: Record<string, number>) => save(KEYS.regenSeeds, data);
+
+/** Quarters đã được generate (dạng "q-y" → version signature). Tránh regen khi load lại trang. */
+export const loadGeneratedQuarters = () => loadLocal<Record<string, string>>(KEYS.generatedQuarters, {});
+export const saveGeneratedQuarters = (data: Record<string, string>) => save(KEYS.generatedQuarters, data);
 
 /** Sync from Supabase → React state (full via custom event) + localStorage (trimmed). */
 export async function syncFromSupabase(): Promise<Record<string, boolean>> {
