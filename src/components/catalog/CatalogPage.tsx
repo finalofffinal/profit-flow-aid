@@ -485,7 +485,7 @@ export function CatalogPage({
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [showTrash, setShowTrash] = useState(false);
-  const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set(suppliers.map(s => s.id)));
+  const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
   const [showAddNCC, setShowAddNCC] = useState(false);
   const [newNCCName, setNewNCCName] = useState('');
   const [editingNCC, setEditingNCC] = useState<{ id: string; name: string } | null>(null);
@@ -638,22 +638,28 @@ export function CatalogPage({
       {/* ═══ STICKY TOOLBAR ═══ */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-3 py-2 space-y-2">
         {/* Row 1: Title + Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
           <h2 className="text-base font-bold flex-shrink-0">Danh mục</h2>
           <div className="flex-1" />
           {undoStack.length > 0 && (
-            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo}>
-              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác
+            <Button size="sm" variant="ghost" className="h-8 text-xs px-2" onClick={handleUndo}>
+              <Undo2 className="h-3.5 w-3.5 md:mr-1" />
+              <span className="hidden md:inline">Hoàn tác</span>
             </Button>
           )}
-          <Button size="sm" className="h-8 text-xs" onClick={() => { setEditingProduct(undefined); setShowForm(true); }}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Thêm sản phẩm
+          <Button size="sm" className="h-8 text-xs px-2" onClick={() => { setEditingProduct(undefined); setShowForm(true); }}>
+            <Plus className="h-3.5 w-3.5 md:mr-1" />
+            <span className="hidden md:inline">Thêm SP</span>
+            <span className="md:hidden">SP</span>
           </Button>
-          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setShowAddNCC(true)}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Thêm nhà cung cấp
+          <Button size="sm" variant="outline" className="h-8 text-xs px-2" onClick={() => setShowAddNCC(true)}>
+            <Plus className="h-3.5 w-3.5 md:mr-1" />
+            <span className="hidden md:inline">Thêm NCC</span>
+            <span className="md:hidden">NCC</span>
           </Button>
-          <Button size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
-            <Trash2 className="mr-1 h-3.5 w-3.5" /> Thùng rác
+          <Button size="sm" variant="outline" className="h-8 text-xs px-2 relative" onClick={() => setShowTrash(true)}>
+            <Trash2 className="h-3.5 w-3.5 md:mr-1" />
+            <span className="hidden md:inline">Thùng rác</span>
             {(deletedProducts.length + deletedSuppliers.length) > 0 && (
               <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">
                 {deletedProducts.length + deletedSuppliers.length}
@@ -662,28 +668,28 @@ export function CatalogPage({
           </Button>
         </div>
 
-        {/* Row 2: Search + Filters */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        {/* Row 2: Search + Filters — wrap on mobile so suppliers don't get hidden */}
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[140px]">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8 h-9 text-sm" placeholder="Tìm sản phẩm, nhãn hàng..." value={search} onChange={e => setSearch(e.target.value)} />
+            <Input className="pl-8 h-9 text-sm" placeholder="Tìm sản phẩm, nhãn..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <Select value={filterNCC} onValueChange={setFilterNCC}>
-            <SelectTrigger className="w-32 h-9 text-sm"><SelectValue placeholder="NCC" /></SelectTrigger>
+            <SelectTrigger className="w-[31%] md:w-32 h-9 text-xs md:text-sm"><SelectValue placeholder="NCC" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả NCC</SelectItem>
               {activeSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterBrand} onValueChange={setFilterBrand}>
-            <SelectTrigger className="w-32 h-9 text-sm"><SelectValue placeholder="Nhãn hàng" /></SelectTrigger>
+            <SelectTrigger className="w-[31%] md:w-32 h-9 text-xs md:text-sm"><SelectValue placeholder="Nhãn" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả nhãn</SelectItem>
               {allBrands.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterUnit} onValueChange={setFilterUnit}>
-            <SelectTrigger className="w-28 h-9 text-sm"><Filter className="mr-1 h-3 w-3" /><SelectValue placeholder="Đơn vị" /></SelectTrigger>
+            <SelectTrigger className="w-[31%] md:w-28 h-9 text-xs md:text-sm"><Filter className="mr-1 h-3 w-3 shrink-0" /><SelectValue placeholder="ĐV" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả</SelectItem>
               {allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
