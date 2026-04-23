@@ -226,67 +226,65 @@ export function DashboardPage({
   const currentQProgress = currentQTarget > 0 ? Math.min(100, (totalRevenue / currentQTarget) * 100) : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 pb-20 lg:pb-4">
-      {/* Big context header */}
-      <div className="rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-primary/5 p-4 shadow-md">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Đang xem</p>
-            <h2 className="text-2xl md:text-3xl font-black text-primary flex items-center gap-2">
+    <div className="flex-1 overflow-y-auto p-2.5 md:p-4 space-y-2.5 md:space-y-4 pb-20 lg:pb-4">
+      {/* Compact context header on mobile */}
+      <div className="rounded-xl md:rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-primary/5 p-3 md:p-4 shadow-sm md:shadow-md">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] md:text-xs text-muted-foreground font-semibold uppercase tracking-wide">Đang xem</p>
+            <h2 className="text-lg md:text-3xl font-black text-primary flex items-center gap-1.5 leading-tight">
               Quý {selectedQ} / {selectedYear}
-              {currentQLocked && <Lock className="h-5 w-5 text-amber-600" />}
+              {currentQLocked && <Lock className="h-4 w-4 md:h-5 md:w-5 text-amber-600" />}
             </h2>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setShowNumbers(!showNumbers)} title={showNumbers ? 'Ẩn số' : 'Hiện số'}>
+          <div className="text-right shrink-0">
+            <p className="text-[10px] md:text-xs text-muted-foreground">Doanh thu</p>
+            <p className="text-lg md:text-3xl font-black text-primary leading-tight">{mask(formatCompactVND(totalRevenue))}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setShowNumbers(!showNumbers)} title={showNumbers ? 'Ẩn số' : 'Hiện số'}>
             {showNumbers ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
         </div>
-        <div className="mt-3">
-          <p className="text-xs text-muted-foreground">Doanh thu Q{selectedQ}</p>
-          <p className="text-2xl md:text-3xl font-black text-primary">{mask(formatVND(totalRevenue))}</p>
-        </div>
       </div>
 
-      {/* ═══ 2 thẻ NỔI BẬT: Nhập hàng + Kho hàng (click để chuyển tab) ═══ */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* ═══ 2 thẻ Nhập / Kho — compact mobile ═══ */}
+      <div className="grid grid-cols-2 gap-2 md:gap-3">
         <button
           type="button"
           onClick={() => onTabChange('import')}
-          className="group text-left rounded-2xl border-2 border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-background p-4 shadow-md hover:shadow-lg hover:border-amber-500/60 hover:scale-[1.02] active:scale-[0.99] transition-all"
+          className="group text-left rounded-xl md:rounded-2xl border-2 border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-background p-2.5 md:p-4 shadow-sm md:shadow-md hover:shadow-lg hover:border-amber-500/60 active:scale-[0.99] transition-all"
           title="Mở tab Nhập hàng"
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-              <Truck className="h-4 w-4" />
-              Nhập hàng Q{selectedQ}
+          <div className="flex items-center justify-between mb-1 md:mb-2">
+            <div className="flex items-center gap-1 text-[10px] md:text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 min-w-0">
+              <Truck className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
+              <span className="truncate">Nhập Q{selectedQ}</span>
             </div>
-            <ChevronUp className="h-4 w-4 rotate-90 text-amber-600/60 group-hover:text-amber-600 transition-colors" />
+            <ChevronUp className="h-3 w-3 md:h-4 md:w-4 rotate-90 text-amber-600/60 shrink-0" />
           </div>
-          <p className="text-2xl md:text-3xl font-black text-amber-700 dark:text-amber-400">
+          <p className="text-base md:text-3xl font-black text-amber-700 dark:text-amber-400 leading-tight">
             {mask(formatCompactVND(totalImportCost))}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Tổng vốn nhập quý {selectedQ}/{selectedYear}</p>
+          <p className="mt-0.5 md:mt-1 text-[9px] md:text-[11px] text-muted-foreground leading-tight">Tổng vốn nhập quý</p>
         </button>
 
         <button
           type="button"
           onClick={() => onTabChange('inventory')}
-          className="group text-left rounded-2xl border-2 border-purple-500/40 bg-gradient-to-br from-purple-500/15 via-purple-500/5 to-background p-4 shadow-md hover:shadow-lg hover:border-purple-500/60 hover:scale-[1.02] active:scale-[0.99] transition-all"
+          className="group text-left rounded-xl md:rounded-2xl border-2 border-purple-500/40 bg-gradient-to-br from-purple-500/15 via-purple-500/5 to-background p-2.5 md:p-4 shadow-sm md:shadow-md hover:shadow-lg hover:border-purple-500/60 active:scale-[0.99] transition-all"
           title="Mở tab Kho hàng"
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400">
-              <Warehouse className="h-4 w-4" />
-              Kho hàng Q{selectedQ}
+          <div className="flex items-center justify-between mb-1 md:mb-2">
+            <div className="flex items-center gap-1 text-[10px] md:text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400 min-w-0">
+              <Warehouse className="h-3 w-3 md:h-4 md:w-4 shrink-0" />
+              <span className="truncate">Kho Q{selectedQ}</span>
             </div>
-            <ChevronUp className="h-4 w-4 rotate-90 text-purple-600/60 group-hover:text-purple-600 transition-colors" />
+            <ChevronUp className="h-3 w-3 md:h-4 md:w-4 rotate-90 text-purple-600/60 shrink-0" />
           </div>
-          <p className="text-2xl md:text-3xl font-black text-purple-700 dark:text-purple-400">
+          <p className="text-base md:text-3xl font-black text-purple-700 dark:text-purple-400 leading-tight">
             {mask(formatCompactVND(stockValue))}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Tổng tiền hàng đang có trong kho Q{selectedQ}/{selectedYear}
-            {' · '}
+          <p className="mt-0.5 md:mt-1 text-[9px] md:text-[11px] text-muted-foreground leading-tight">
             <span className={stockNetIsNegative ? 'text-destructive font-semibold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
               {stockNetIsNegative ? '−' : '+'}{formatCompactVND(Math.abs(stockNetFlow))}
             </span>
