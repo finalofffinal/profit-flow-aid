@@ -110,28 +110,80 @@ function IndexInner() {
     [activeSuppliers]
   );
 
-  // Stable signature to avoid unnecessary regen (includes regenSeeds + manual data changes)
-  const quarterSig = useMemo(
-    () => [
-      DATA_ENGINE_VERSION,
-      quarters.map(q => `${q.quarter}-${q.year}-${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[`${q.quarter}-${q.year}`] || 0}`).sort().join('|'),
-      manualImportSig,
-      manualSalesSig,
-      lockedAutoSig,
-      productSig,
-      supplierSig,
-    ].join('||'),
-    [DATA_ENGINE_VERSION, quarters, regenSeeds, manualImportSig, manualSalesSig, lockedAutoSig, productSig, supplierSig]
+  // Per-quarter signature: chỉ regen quý có sig thay đổi
+  const quarterSigs = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of quarters) {
+      const key = `${q.quarter}-${q.year}`;
+      // Manual orders trong quý này
+      const qManualImpSig = importOrders
+        .filter(o => o.tag !== 'auto')
+        .filter(o => {
+          const d = new Date(o.date);
+          return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
+        })
+        .map(o => `${o.id}-${o.date}-${o.total}-${o.deletedAt || ''}-${o.items.map(it => `${it.productId}:${it.quantity}:${it.buyPrice}`).join(',')}`)
+        .sort().join('|');
+      const qManualSalesSig = salesOrders
+        .filter(o => o.tag !== 'auto')
+        .filter(o => {
+          const d = new Date(o.date);
+          return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
+        })
+        .map(o => `${o.id}-${o.date}-${o.totalRevenue}-${o.deletedAt || ''}`)
+        .sort().join('|');
+      const qLockedAutoSig = [
+        ...importOrders.filter(o => o.tag === 'auto' && o.locked).filter(o => {
+          const d = new Date(o.date);
+          return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
+        }).map(o => `i:${o.id}:${o.date}:${o.total}`),
+        ...salesOrders.filter(o => o.tag === 'auto' && o.locked).filter(o => {
+          const d = new Date(o.date);
+          return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
+        }).map(o => `s:${o.id}:${o.date}:${o.totalRevenue}`),
+      ].sort().join('|');
+
+      const sig = [
+        DATA_ENGINE_VERSION,
+        `${q.targetRevenue}-${q.locked ? 1 : 0}-${regenSeeds[key] || 0}`,
+        qManualImpSig,
+        qManualSalesSig,
+        qLockedAutoSig,
+        productSig,
+        supplierSig,
+      ].join('||');
+      map.set(key, sig);
+    }
+    return map;
+  }, [quarters, importOrders, salesOrders, regenSeeds, productSig, supplierSig]);
+
+  const quarterSigsKey = useMemo(
+    () => Array.from(quarterSigs.entries()).sort().map(([k, v]) => `${k}=${v}`).join('§§'),
+    [quarterSigs]
   );
 
-  // Auto-generate import/sales/batches whenever quarters or active products change
+  // Auto-generate import/sales/batches whenever quarters or active products change.
+  // CHỈ regen quý có sig khác với generatedQuarters đã lưu trên Supabase.
   useEffect(() => {
+    if (!initialSyncDone) return;
     if (quarters.length === 0 || activeProducts.length === 0) return;
+
+    // Tìm các quý cần regen
+    const quartersToRegen: QuarterData[] = [];
+    for (const q of quarters) {
+      if (q.targetRevenue <= 0 || q.locked) continue;
+      const key = `${q.quarter}-${q.year}`;
+      const newSig = quarterSigs.get(key);
+      if (!newSig) continue;
+      if (generatedQuarters[key] !== newSig) {
+        quartersToRegen.push(q);
+      }
+    }
+
+    if (quartersToRegen.length === 0) return;
 
     const manualImports = importOrders.filter(o => o.tag !== 'auto');
     const manualSales = salesOrders.filter(o => o.tag !== 'auto');
-    // Keep auto orders of LOCKED quarters as-is (frozen)
-    // ALSO keep individual auto orders user has flagged with locked=true
     const lockedAutoImports = importOrders.filter(o => {
       if (o.tag !== 'auto') return false;
       const d = new Date(o.date);
@@ -144,23 +196,52 @@ function IndexInner() {
       const q = quarters.find(qd => qd.quarter === Math.ceil((d.getMonth() + 1) / 3) && qd.year === d.getFullYear());
       return q?.locked || o.locked;
     });
+
+    const regenKeys = new Set(quartersToRegen.map(q => `${q.quarter}-${q.year}`));
+    // Đơn auto KHÔNG khóa của quý KHÔNG regen → giữ nguyên
+    const preservedAutoImports = importOrders.filter(o => {
+      if (o.tag !== 'auto') return false;
+      if (o.locked) return false;
+      const d = new Date(o.date);
+      const k = `${Math.ceil((d.getMonth() + 1) / 3)}-${d.getFullYear()}`;
+      const q = quarters.find(qd => qd.quarter === Math.ceil((d.getMonth() + 1) / 3) && qd.year === d.getFullYear());
+      if (q?.locked) return false; // đã nằm trong lockedAutoImports
+      return !regenKeys.has(k);
+    });
+    const preservedAutoSales = salesOrders.filter(o => {
+      if (o.tag !== 'auto') return false;
+      if (o.locked) return false;
+      const d = new Date(o.date);
+      const k = `${Math.ceil((d.getMonth() + 1) / 3)}-${d.getFullYear()}`;
+      const q = quarters.find(qd => qd.quarter === Math.ceil((d.getMonth() + 1) / 3) && qd.year === d.getFullYear());
+      if (q?.locked) return false;
+      return !regenKeys.has(k);
+    });
+
     const lockedBatches = inventoryBatches.filter(b => {
       const q = quarters.find(qd => qd.quarter === b.quarter && qd.year === b.year);
       if (q?.locked) return true;
-      // Keep batches tied to a locked auto import order
       return lockedAutoImports.some(o => o.id === b.importOrderId);
+    });
+    // Batches của quý không regen → giữ
+    const preservedBatches = inventoryBatches.filter(b => {
+      const k = `${b.quarter}-${b.year}`;
+      if (regenKeys.has(k)) return false;
+      const q = quarters.find(qd => qd.quarter === b.quarter && qd.year === b.year);
+      if (q?.locked) return false; // đã trong lockedBatches
+      // Bỏ qua nếu đã thuộc lockedBatches (tránh duplicate)
+      return !lockedAutoImports.some(o => o.id === b.importOrderId);
     });
 
     let allAutoImports: typeof importOrders = [];
     let allAutoSales: typeof salesOrders = [];
 
-    // Sort quarters chronologically so carry-over compounds correctly
-    const sortedQs = [...quarters].sort((a, b) =>
+    // Sort các quý regen chronologically
+    const sortedRegen = [...quartersToRegen].sort((a, b) =>
       a.year !== b.year ? a.year - b.year : a.quarter - b.quarter
     );
 
-    for (const q of sortedQs) {
-      if (q.targetRevenue <= 0 || q.locked) continue;
+    for (const q of sortedRegen) {
       const qManualSales = manualSales.filter(o => {
         const d = new Date(o.date);
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
@@ -169,7 +250,6 @@ function IndexInner() {
         const d = new Date(o.date);
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
       });
-      // Auto orders đã KHÓA của quý này — coi như "đã có sẵn" để regen trừ ra
       const qFrozenAutoImports = lockedAutoImports.filter(o => {
         const d = new Date(o.date);
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
@@ -179,13 +259,12 @@ function IndexInner() {
         return Math.ceil((d.getMonth() + 1) / 3) === q.quarter && d.getFullYear() === q.year;
       });
 
-      const allImportsSoFar = [...manualImports, ...lockedAutoImports, ...allAutoImports];
-      const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...allAutoSales];
+      const allImportsSoFar = [...manualImports, ...lockedAutoImports, ...preservedAutoImports, ...allAutoImports];
+      const allSalesSoFar = [...manualSales, ...lockedAutoSales, ...preservedAutoSales, ...allAutoSales];
       const carryOver = computeCarryOverStock(q.quarter, q.year, activeProducts, allImportsSoFar, allSalesSoFar);
 
       const seedKey = `${q.quarter}-${q.year}`;
       const qWithSeed = { ...q, regenSeed: regenSeeds[seedKey] || 0 } as any;
-      // Truyền các đơn locked-auto như "manual" để generator trừ ra phần đã có
       const generated = generateQuarterData(
         qWithSeed,
         activeProducts,
@@ -198,18 +277,30 @@ function IndexInner() {
       allAutoSales.push(...generated.salesOrders);
     }
 
-    const finalImports = [...manualImports, ...lockedAutoImports, ...allAutoImports];
-    const finalSales = [...manualSales, ...lockedAutoSales, ...allAutoSales];
-    const recomputedBatches = sortedQs.flatMap(q => {
-      if (q.locked) return [] as typeof inventoryBatches;
-      return computeInventorySnapshot(q.quarter, q.year, activeProducts, finalImports, finalSales);
-    });
+    const finalImports = [...manualImports, ...lockedAutoImports, ...preservedAutoImports, ...allAutoImports];
+    const finalSales = [...manualSales, ...lockedAutoSales, ...preservedAutoSales, ...allAutoSales];
+
+    // Inventory snapshot CHỈ tính lại cho các quý regen (giữ batch quý không regen)
+    const recomputedBatches = sortedRegen.flatMap(q =>
+      computeInventorySnapshot(q.quarter, q.year, activeProducts, finalImports, finalSales)
+    );
 
     setImportOrders(finalImports);
     setSalesOrders(finalSales);
-    setInventoryBatches([...lockedBatches, ...recomputedBatches]);
+    setInventoryBatches([...lockedBatches, ...preservedBatches, ...recomputedBatches]);
+
+    // Cập nhật generatedQuarters để lần sau load lại không regen các quý này
+    setGeneratedQuarters(prev => {
+      const next = { ...prev };
+      for (const q of sortedRegen) {
+        const key = `${q.quarter}-${q.year}`;
+        const sig = quarterSigs.get(key);
+        if (sig) next[key] = sig;
+      }
+      return next;
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quarterSig]);
+  }, [quarterSigsKey, initialSyncDone]);
 
   const handleDataRestore = useCallback(() => {
     // Don't reload page; trigger a soft re-render
