@@ -1183,7 +1183,11 @@ export function generateQuarterData(
     let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
 
     if (currentImport < minImportNeeded) {
-      const autoOrdersForBoost = importOrders.filter(o => o.tag === 'auto' && o.total > 0);
+      const autoOrdersForBoost = importOrders.filter(o =>
+        o.tag === 'auto' && o.total > 0 &&
+        !o.supplierName.toLowerCase().includes('vifon') &&
+        o.supplierId !== '__opening_2025__'
+      );
       if (autoOrdersForBoost.length > 0) {
         // Sort: đơn lớn nhất trước (clone hiệu quả hơn).
         const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);
