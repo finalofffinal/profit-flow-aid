@@ -33,6 +33,8 @@ function IndexInner() {
   const { orders: importOrders, activeOrders: activeImportOrders, deletedOrders: deletedImportOrders, addOrder: addImportOrder, deleteOrder: deleteImportOrder, restoreOrder: restoreImportOrder, permanentDeleteOrder: permanentDeleteImportOrder, updateOrder: updateImportOrder, setOrders: setImportOrders } = useImportOrders();
   const { orders: salesOrders, activeOrders: activeSalesOrders, addOrder: addSaleOrder, deleteOrder: deleteSaleOrder, setOrders: setSalesOrders } = useSalesOrders();
   const { batches: inventoryBatches, setBatches: setInventoryBatches } = useInventoryBatches();
+  const { seeds: regenSeeds, setSeeds: setRegenSeeds } = useRegenSeeds();
+  const { generated: generatedQuarters, setGenerated: setGeneratedQuarters } = useGeneratedQuarters();
 
   // Online/offline tracking
   useEffect(() => {
