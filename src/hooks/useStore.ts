@@ -368,3 +368,13 @@ export function useInventoryBatches() {
   const [batches, setBatches] = useSyncedState<InventoryBatch[]>('scp_inventory_batches', storage.loadInventoryBatches, storage.saveInventoryBatches);
   return { batches, setBatches };
 }
+
+export function useRegenSeeds() {
+  const [seeds, setSeeds] = useSyncedState<Record<string, number>>('scp_regen_seeds', storage.loadRegenSeeds, storage.saveRegenSeeds);
+  return { seeds, setSeeds };
+}
+
+export function useGeneratedQuarters() {
+  const [generated, setGenerated] = useSyncedState<Record<string, string>>('scp_generated_quarters', storage.loadGeneratedQuarters, storage.saveGeneratedQuarters);
+  return { generated, setGenerated };
+}
