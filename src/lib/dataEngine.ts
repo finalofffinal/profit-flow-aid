@@ -208,7 +208,13 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   // Caller dùng default mềm (3) khi tạo đơn ban đầu, NHƯNG khi rebalance scale lên/xuống
   // sẽ KHÔNG clamp (cho phép tăng tự nhiên). Chỉ SP có rule cứng (số cụ thể) mới bị clamp.
 
-  if (has('vifon')) return { ordersCount: [2, 2] };
+  // Vifon: 1 đơn/quý, tổng ≤3 đơn vị lớn, BẮT BUỘC đủ 2 SP khác nhau
+  if (has('vifon')) return {
+    ordersCount: [1, 1],
+    maxQtyPerProduct: () => 2,        // ≤2 mỗi SP để đảm bảo đủ chỗ cho 2 SP
+    maxQtyPerQuarter: () => 2,        // tổng cả quý cho 1 SP cũng ≤2
+    preferUniquePerQuarter: false,
+  };
 
   if (has('liên thành') || has('lien thanh')) {
     return { ordersCount: [1, 1], maxQtyPerProduct: () => 1 };
