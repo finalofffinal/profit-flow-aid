@@ -11,6 +11,7 @@ import { PlaceholderTab } from '@/components/PlaceholderTab';
 import {
   useProducts, useSuppliers, useNotifications, useTheme,
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
+  useRegenSeeds, useGeneratedQuarters,
 } from '@/hooks/useStore';
 import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder, DATA_ENGINE_VERSION } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
@@ -22,7 +23,6 @@ function IndexInner() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [online, setOnline] = useState<boolean>(navigator.onLine);
   const [initialSyncDone, setInitialSyncDone] = useState(false);
-  const [regenSeeds, setRegenSeeds] = useState<Record<string, number>>({});
   const { quarter: selQ, year: selYear } = usePeriod();
 
   const { theme, toggleTheme } = useTheme();
