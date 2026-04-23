@@ -464,14 +464,48 @@ function generateSupplierImports(
   const autoCount = Math.max(0, total - manualOrdersCount);
   if (autoCount === 0) return { orders: [], batches: [] };
 
-  // Schedule order days — DỒN VỀ ĐẦU/GIỮA QUÝ để gối đầu (có hàng sẵn cho bán)
-  // Phân bổ trong 70% đầu của quý thay vì rải đều cả quý
-  const usableDays = Math.max(1, Math.floor(days.length * 0.7));
+  // Schedule order days — RẢI ĐỀU CẢ QUÝ nhưng ƯU TIÊN ĐẦU/GIỮA (gối đầu hàng).
+  // Phân phối: chia 3 tháng theo tỉ lệ ~40% / 35% / 25% (ưu tiên đầu nhưng vẫn có T cuối).
+  // Đảm bảo MỌI tháng đều có ít nhất 1 đơn nếu autoCount >= 3.
   const dayIdxs: number[] = [];
-  for (let i = 0; i < autoCount; i++) {
-    const base = Math.floor(((i + 0.5) / autoCount) * usableDays);
-    const jitter = Math.floor((rand() - 0.5) * (usableDays / autoCount * 0.5));
-    dayIdxs.push(Math.min(usableDays - 1, Math.max(0, base + jitter)));
+  if (autoCount === 1) {
+    // Đặt ngẫu nhiên trong 60% đầu quý
+    dayIdxs.push(Math.floor(rand() * Math.max(1, Math.floor(days.length * 0.6))));
+  } else {
+    const totalDays = days.length;
+    // Trọng số phân phối từng tháng (3 tháng = 3 phần)
+    const monthWeights = [0.40, 0.35, 0.25];
+    const monthBoundaries = [0, Math.floor(totalDays / 3), Math.floor((totalDays * 2) / 3), totalDays];
+    // Phân bổ số đơn cho từng tháng theo trọng số
+    const ordersPerMonth = [0, 0, 0];
+    let remaining = autoCount;
+    for (let m = 0; m < 3; m++) {
+      if (m === 2) ordersPerMonth[m] = remaining;
+      else {
+        ordersPerMonth[m] = Math.max(autoCount >= 3 ? 1 : 0, Math.round(autoCount * monthWeights[m]));
+        ordersPerMonth[m] = Math.min(ordersPerMonth[m], remaining);
+        remaining -= ordersPerMonth[m];
+      }
+    }
+    // Đảm bảo tháng 3 có ít nhất 1 đơn nếu autoCount >= 3
+    if (autoCount >= 3 && ordersPerMonth[2] === 0) {
+      // Lấy 1 từ tháng có nhiều nhất
+      const maxM = ordersPerMonth[0] >= ordersPerMonth[1] ? 0 : 1;
+      ordersPerMonth[maxM]--;
+      ordersPerMonth[2]++;
+    }
+    // Đặt ngày trong từng tháng (rải đều)
+    for (let m = 0; m < 3; m++) {
+      const startIdx = monthBoundaries[m];
+      const endIdx = monthBoundaries[m + 1];
+      const monthLen = endIdx - startIdx;
+      const cnt = ordersPerMonth[m];
+      for (let i = 0; i < cnt; i++) {
+        const base = startIdx + Math.floor(((i + 0.5) / Math.max(1, cnt)) * monthLen);
+        const jitter = Math.floor((rand() - 0.5) * Math.max(1, Math.floor(monthLen / Math.max(1, cnt) * 0.5)));
+        dayIdxs.push(Math.min(endIdx - 1, Math.max(startIdx, base + jitter)));
+      }
+    }
   }
   dayIdxs.sort((a, b) => a - b);
 
