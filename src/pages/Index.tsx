@@ -314,6 +314,15 @@ function IndexInner() {
 
   /** Xóa toàn bộ đơn auto của 1 quý (giữ thủ công + auto đã KHÓA) — useEffect sẽ tự sinh lại */
   const handleClearAutoOrders = useCallback((q: number, y: number) => {
+    const key = `${q}-${y}`;
+    // Tăng seed để sig đổi → useEffect sẽ regen
+    setRegenSeeds(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+    // Invalidate generatedQuarters[key] để buộc regen
+    setGeneratedQuarters(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     const keptImportIds = new Set<string>();
     setImportOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
@@ -335,12 +344,17 @@ function IndexInner() {
       return keptImportIds.has(b.importOrderId);
     }));
     addNotification(`Đã xóa đơn tự động Q${q}/${y} (giữ đơn đã khóa), đang sinh lại...`, 'info');
-  }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
+  }, [setImportOrders, setSalesOrders, setInventoryBatches, setRegenSeeds, setGeneratedQuarters, addNotification]);
 
   /** Reroll: tạo seed mới → useEffect regen với cấu trúc khác (giữ thủ công + auto đã KHÓA) */
   const handleAutoReplenish = useCallback((q: number, y: number) => {
     const key = `${q}-${y}`;
     setRegenSeeds(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+    setGeneratedQuarters(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     const keptImportIds = new Set<string>();
     setImportOrders(prev => prev.filter(o => {
       if (o.tag !== 'auto') return true;
@@ -362,7 +376,7 @@ function IndexInner() {
       return keptImportIds.has(b.importOrderId);
     }));
     addNotification(`Đang ngẫu nhiên hóa lại Q${q}/${y} (giữ đơn đã khóa)...`, 'info');
-  }, [setImportOrders, setSalesOrders, setInventoryBatches, addNotification]);
+  }, [setImportOrders, setSalesOrders, setInventoryBatches, setRegenSeeds, setGeneratedQuarters, addNotification]);
 
   /** Tạo NHIỀU đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý — chia đều nhiều NCC */
   const handleCreateSupplementary = useCallback((q: number, y: number, shortfall: number) => {
