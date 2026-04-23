@@ -10,6 +10,8 @@ const KEYS = {
   importOrders: 'scp_import_orders',
   salesOrders: 'scp_sales_orders',
   inventoryBatches: 'scp_inventory_batches',
+  regenSeeds: 'scp_regen_seeds',
+  generatedQuarters: 'scp_generated_quarters',
 } as const;
 
 function loadLocal<T>(key: string, fallback: T): T {
