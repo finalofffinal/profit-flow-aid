@@ -485,7 +485,7 @@ export function CatalogPage({
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [showTrash, setShowTrash] = useState(false);
-  const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set(suppliers.map(s => s.id)));
+  const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
   const [showAddNCC, setShowAddNCC] = useState(false);
   const [newNCCName, setNewNCCName] = useState('');
   const [editingNCC, setEditingNCC] = useState<{ id: string; name: string } | null>(null);
