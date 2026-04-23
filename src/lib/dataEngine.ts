@@ -660,6 +660,67 @@ function generateSupplierImports(
     }
   }
 
+  // ===== POST-PROCESS đặc biệt cho VIFON =====
+  // Yêu cầu: 1 đơn duy nhất / quý, tổng ≤3 đơn vị lớn, BẮT BUỘC đủ 2 SP khác nhau.
+  if (supplier.name.toLowerCase().includes('vifon')) {
+    // Gộp tất cả items từ orderItems vào 1 đơn duy nhất
+    const merged: ImportOrderItem[] = [];
+    for (const its of orderItems) {
+      for (const it of its) {
+        const exist = merged.find(x => x.productId === it.productId);
+        if (exist) {
+          exist.quantity += it.quantity;
+          exist.total = exist.buyPrice * exist.quantity;
+        } else {
+          merged.push({ ...it });
+        }
+      }
+    }
+    // Đảm bảo đủ 2 SP khác nhau (lấy từ eligible nếu thiếu)
+    if (merged.length < 2 && eligible.length >= 2) {
+      for (const p of eligible) {
+        if (merged.find(x => x.productId === p.id)) continue;
+        merged.push(buildItem(p, supplier, 1));
+        if (merged.length >= 2) break;
+      }
+    }
+    // Giữ tối đa 2 SP đầu (nếu nhiều hơn)
+    while (merged.length > 2) merged.pop();
+    // Cap tổng số đơn vị ≤ 3 (chia: 2+1 hoặc 1+2)
+    let totalQty = merged.reduce((s, it) => s + it.quantity, 0);
+    if (merged.length === 2) {
+      // Chuẩn hóa: SP đầu 2, SP sau 1 (tổng 3) — hoặc giảm về cấu hình ≤3
+      if (totalQty > 3) {
+        merged[0].quantity = 2;
+        merged[1].quantity = 1;
+        merged.forEach(it => { it.total = it.buyPrice * it.quantity; });
+        totalQty = 3;
+      } else if (totalQty < 2) {
+        // Đảm bảo ít nhất 1+1 = 2
+        merged.forEach(it => { if (it.quantity < 1) it.quantity = 1; it.total = it.buyPrice * it.quantity; });
+      }
+    } else if (merged.length === 1) {
+      // Trường hợp xấu: chỉ 1 SP eligible — giữ ≤3
+      if (merged[0].quantity > 3) {
+        merged[0].quantity = 3;
+        merged[0].total = merged[0].buyPrice * 3;
+      }
+    }
+    // Reset stockMap (vì sẽ tính lại theo merged)
+    for (const its of orderItems) {
+      for (const it of its) {
+        const rate = it.conversionRate || 1;
+        stockMap.set(it.productId, (stockMap.get(it.productId) || 0) - it.quantity * rate);
+      }
+    }
+    // Đặt tất cả vào orderItems[0], các slot khác rỗng
+    for (let i = 0; i < orderItems.length; i++) orderItems[i] = [];
+    orderItems[0] = merged;
+    // Cập nhật qtyUsedQuarter
+    qtyUsedQuarter.clear();
+    merged.forEach(it => qtyUsedQuarter.set(it.productId, it.quantity));
+  }
+
   const orders: ImportOrder[] = [];
   const batches: InventoryBatch[] = [];
 
