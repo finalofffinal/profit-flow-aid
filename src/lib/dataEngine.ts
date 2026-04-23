@@ -969,11 +969,17 @@ export function generateQuarterData(
 
   const largeSupplierIds = new Set<string>();
   const smallSupplierIds = new Set<string>();
+  const fixedSupplierIds = new Set<string>(); // NCC có rule cứng (như Vifon) — không scale
   for (const [sid, prods] of supplierProducts) {
     const supplier = suppliers.find(s => s.id === sid);
     if (!supplier) continue;
     const rule = getSupplierRule(supplier.name);
     if (rule.manualOnly) continue;
+    // Vifon: 1 đơn/quý, ≤3 đơn vị → KHÔNG được scale
+    if (supplier.name.toLowerCase().includes('vifon')) {
+      fixedSupplierIds.add(sid);
+      continue;
+    }
     const eligibleCount = prods.filter(p => !rule.excludeProduct?.(p)).length;
     if (eligibleCount > 10) largeSupplierIds.add(sid);
     else smallSupplierIds.add(sid);
