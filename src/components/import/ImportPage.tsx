@@ -204,9 +204,9 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                 Đã nhập {formatCompactVND(currentQTotalImport)} / Mục tiêu {formatCompactVND(targetRev)} · Thiếu ~{formatCompactVND(shortfall)}
               </div>
             </div>
-            {onCreateSupplementaryOrder && (
-              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleCreateSupplementary}>
-                <Wand2 className="mr-1 h-3.5 w-3.5" /> Tạo đơn bù
+            {onRebalanceQuarter && (
+              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleRebalance}>
+                <Scale className="mr-1 h-3.5 w-3.5" /> Cân bằng
               </Button>
             )}
           </div>
