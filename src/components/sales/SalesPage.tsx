@@ -167,22 +167,23 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
           customTo={customTo} onCustomToChange={setCustomTo}
         />
 
-        <div className="space-y-1.5 bg-primary/15 dark:bg-primary/25 rounded-xl p-3 border border-primary/30">
+        {/* Compact stats — single line on mobile */}
+        <div className="bg-primary/10 dark:bg-primary/20 rounded-lg p-2 border border-primary/30">
           <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Doanh thu quý Q{selQ}/{selYear}</p>
-              <p className="text-xl font-black text-primary dark:text-primary truncate">{formatCompactVND(quarterRevenue)} VND</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] uppercase tracking-wide text-muted-foreground font-bold">DT Q{selQ}</p>
+              <p className="text-sm md:text-lg font-black text-primary truncate">{formatCompactVND(quarterRevenue)}</p>
             </div>
-            <div className="text-right min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Lợi nhuận quý</p>
-              <p className="text-xl font-black text-emerald-600 dark:text-emerald-300 truncate">{formatCompactVND(quarterProfit)} VND</p>
+            <div className="text-right min-w-0 flex-1">
+              <p className="text-[9px] uppercase tracking-wide text-muted-foreground font-bold">Lãi Q{selQ}</p>
+              <p className="text-sm md:text-lg font-black text-emerald-600 dark:text-emerald-300 truncate">{formatCompactVND(quarterProfit)}</p>
             </div>
-            <Badge variant="outline" className="text-xs font-bold border-primary/40 shrink-0">{filtered.length} ngày</Badge>
+            <Badge variant="outline" className="text-[10px] font-bold border-primary/40 shrink-0 h-5">{filtered.length}d</Badge>
           </div>
           {hasActiveUiFilters && (
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-primary/20 pt-1.5 gap-3">
-              <span>{rangeLabel[timeRange]} / bộ lọc: <span className="font-bold text-foreground">{formatCompactVND(totalRevenue)}</span></span>
-              <span>Lãi theo lọc: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(totalProfit)}</span></span>
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground border-t border-primary/20 pt-1 mt-1 gap-2">
+              <span className="truncate">{rangeLabel[timeRange]}: <span className="font-bold text-foreground">{formatCompactVND(totalRevenue)}</span></span>
+              <span className="truncate">Lãi: <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatCompactVND(totalProfit)}</span></span>
             </div>
           )}
         </div>
