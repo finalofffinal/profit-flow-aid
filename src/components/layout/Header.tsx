@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sun, Moon, Bell, Info, Cloud, CloudOff } from 'lucide-react';
+import { Sun, Moon, Bell, Info, Cloud, CloudOff, CalendarDays } from 'lucide-react';
 import { formatLunarDateFull } from '@/lib/lunar';
 import { BUSINESS_INFO } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,7 @@ function getGMT7Time(): Date {
 export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkRead, onMarkAllRead, online }: HeaderProps) {
   const [time, setTime] = useState(getGMT7Time);
   const [showInfo, setShowInfo] = useState(false);
+  const [showDates, setShowDates] = useState(false); // mobile: lunar/solar hidden by default
   const { quarter, year, setQuarter, setYear } = usePeriod();
 
   useEffect(() => {
@@ -42,17 +43,18 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
 
   const lunarDate = formatLunarDateFull(time);
   const solarDate = time.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const solarShort = time.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
   const hours = String(time.getHours()).padStart(2, '0');
   const minutes = String(time.getMinutes()).padStart(2, '0');
   const seconds = String(time.getSeconds()).padStart(2, '0');
 
   return (
-    <header className="sticky top-0 z-50 border-b-4 border-primary bg-gradient-to-r from-primary/15 via-primary/5 to-primary/15 backdrop-blur-xl shadow-lg">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 md:px-5 md:py-3">
-        {/* Left: Quarter + Year selectors */}
-        <div className="flex items-center gap-1.5 md:gap-2">
+    <header className="sticky top-0 z-50 border-b-2 border-primary/40 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 backdrop-blur-xl shadow-sm">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 md:gap-2 md:px-5 md:py-3">
+        {/* Left: Quarter + Year selectors — compact on mobile */}
+        <div className="flex items-center gap-1 shrink-0">
           <Select value={String(quarter)} onValueChange={v => setQuarter(Number(v))}>
-            <SelectTrigger className="h-9 w-[78px] md:w-[92px] font-black text-sm bg-primary/10 border-primary/40">
+            <SelectTrigger className="h-8 w-[62px] md:h-9 md:w-[92px] px-2 font-bold text-xs md:text-sm bg-primary/10 border-primary/40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -62,7 +64,7 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
             </SelectContent>
           </Select>
           <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-            <SelectTrigger className="h-9 w-[78px] md:w-[92px] font-black text-sm bg-primary/10 border-primary/40">
+            <SelectTrigger className="h-8 w-[64px] md:h-9 md:w-[92px] px-2 font-bold text-xs md:text-sm bg-primary/10 border-primary/40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -76,35 +78,54 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
           </Button>
         </div>
 
-        {/* Center: Clock + date */}
-        <div className="flex flex-col items-center min-w-0">
+        {/* Center: Clock */}
+        <div className="flex flex-col items-center min-w-0 flex-1">
           <div className="flex items-baseline gap-0.5">
-            <span className="text-2xl md:text-4xl font-black tabular-nums tracking-tight text-primary drop-shadow-sm">
+            <span className="text-xl md:text-4xl font-black tabular-nums tracking-tight text-primary leading-none">
               {hours}:{minutes}
             </span>
-            <span className="text-sm md:text-lg font-bold tabular-nums text-primary/60">:{seconds}</span>
+            <span className="hidden sm:inline text-sm md:text-lg font-bold tabular-nums text-primary/60">:{seconds}</span>
           </div>
+          {/* Desktop: full dates */}
           <div className="hidden md:flex flex-col items-center gap-0.5 mt-1">
             <span className="text-base font-black text-foreground tracking-tight">{solarDate}</span>
             <span className="text-sm font-bold text-primary/85">Âm lịch: {lunarDate}</span>
           </div>
         </div>
 
-        {/* Right */}
-        <div className="flex items-center gap-1">
+        {/* Right: actions — compact on mobile */}
+        <div className="flex items-center gap-0.5 shrink-0">
           <AdminAuthButton />
-          {/* Sync status */}
+
+          {/* Mobile: toggle dates panel */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 md:hidden"
+            onClick={() => setShowDates(!showDates)}
+            title="Hiện/ẩn lịch"
+          >
+            <CalendarDays className="h-4 w-4" />
+          </Button>
+
+          {/* Sync status — desktop only */}
           <div title={online ? 'Đã đồng bộ Cloud' : 'Mất kết nối Cloud'} className={`hidden md:flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${online ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-destructive/15 text-destructive'}`}>
             {online ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
             <span>{online ? 'Online' : 'Offline'}</span>
           </div>
 
+          {/* Mobile: tiny online dot */}
+          <span
+            title={online ? 'Online' : 'Offline'}
+            className={`md:hidden h-2 w-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-destructive'}`}
+          />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative h-9 w-9">
-                <Bell className="h-4.5 w-4.5" />
+              <Button variant="ghost" size="icon" className="relative h-8 w-8 md:h-9 md:w-9">
+                <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground shadow-sm">
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 md:h-5 md:w-5 items-center justify-center rounded-full bg-destructive text-[9px] md:text-[10px] font-bold text-destructive-foreground shadow-sm">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -129,22 +150,19 @@ export function Header({ theme, toggleTheme, notifications, unreadCount, onMarkR
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme}>
-            {theme === 'light' ? <Moon className="h-4.5 w-4.5" /> : <Sun className="h-4.5 w-4.5" />}
+          <Button variant="ghost" size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={toggleTheme}>
+            {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </Button>
         </div>
       </div>
 
-      {/* Mobile: bigger date row, lunar BELOW solar */}
-      <div className="flex flex-col gap-1 border-t border-primary/20 bg-primary/5 px-3 py-1.5 md:hidden">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-black text-foreground">{time.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-          <Badge variant="outline" className={`text-[10px] ${online ? 'border-emerald-500/50 text-emerald-600' : 'border-destructive/50 text-destructive'}`}>
-            {online ? <><Cloud className="inline h-3 w-3 mr-0.5" />Online</> : <><CloudOff className="inline h-3 w-3 mr-0.5" />Offline</>}
-          </Badge>
+      {/* Mobile: dates panel — HIDDEN by default, toggled by button */}
+      {showDates && (
+        <div className="flex flex-col gap-0.5 border-t border-primary/20 bg-primary/5 px-3 py-1.5 md:hidden animate-in slide-in-from-top-1">
+          <span className="text-xs font-bold text-foreground">{solarDate}</span>
+          <span className="text-[11px] font-semibold text-primary/85">Âm lịch: {lunarDate}</span>
         </div>
-        <span className="text-xs font-bold text-primary/85">Âm lịch: {lunarDate}</span>
-      </div>
+      )}
 
       {showInfo && (
         <div className="border-t border-primary/15 bg-card/80 backdrop-blur px-4 py-3 text-xs text-muted-foreground animate-in slide-in-from-top-2">
