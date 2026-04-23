@@ -383,12 +383,14 @@ export function DashboardPage({
               </div>
             )}
 
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport('pdf')} disabled={lockedQs.length === 0}>
-                <FileText className="mr-2 h-4 w-4" /> Xuất PDF {lockedQs.length > 0 && `(${lockedQs.length} quý)`}
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" className="text-xs h-9 px-2" onClick={() => handleExport('pdf')} disabled={lockedQs.length === 0}>
+                <FileText className="mr-1 h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">PDF{lockedQs.length > 0 && ` (${lockedQs.length})`}</span>
               </Button>
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => handleExport('excel')} disabled={lockedQs.length === 0}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" /> Xuất Excel {lockedQs.length > 0 && `(${lockedQs.length} quý)`}
+              <Button variant="outline" size="sm" className="text-xs h-9 px-2" onClick={() => handleExport('excel')} disabled={lockedQs.length === 0}>
+                <FileSpreadsheet className="mr-1 h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Excel{lockedQs.length > 0 && ` (${lockedQs.length})`}</span>
               </Button>
             </div>
             {lockedQs.length === 0 && (
