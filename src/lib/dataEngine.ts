@@ -529,7 +529,8 @@ function generateSupplierImports(
     // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
     // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
     // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
-    const targetItemsPerOrder = Math.max(5, Math.min(7, Math.ceil(eligible.length / autoCount) + 1));
+    // NCC lớn (>10 SP): mỗi đơn 4-6 SP đa dạng, cân bằng tiền chặt, bao phủ TOÀN BỘ SP.
+    const targetItemsPerOrder = Math.max(4, Math.min(6, Math.ceil(eligible.length / autoCount) + 1));
     const totalSlots = targetItemsPerOrder * autoCount;
     const passes = Math.max(1, Math.ceil(totalSlots / eligible.length));
 
