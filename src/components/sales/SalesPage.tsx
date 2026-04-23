@@ -260,43 +260,37 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                     const isTetClosed = order.totalRevenue === 0 && order.items.length === 1 && order.items[0].productId === '__tet__';
                     if (isTetClosed) {
                       return (
-                        <div key={order.id} className="p-3 border-l-2 border-l-amber-500 bg-amber-500/10">
-                          <p className="text-sm font-bold text-amber-700 dark:text-amber-300">🏮 {order.items[0].productName}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Doanh thu: 0 VND</p>
+                        <div key={order.id} className="p-2.5 border-l-2 border-l-amber-500 bg-amber-500/10">
+                          <p className="text-xs font-bold text-amber-700 dark:text-amber-300">🏮 {order.items[0].productName}</p>
                         </div>
                       );
                     }
                     return (
-                      <div key={order.id} className={`p-3 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'special' ? 'border-l-destructive bg-destructive/5' : order.tag === 'supplementary' ? 'border-l-amber-500 bg-amber-500/5' : order.tag === 'upgraded' ? 'border-l-blue-600 bg-blue-600/5' : ''}`}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <Badge className={`text-[10px] ${tagColor}`}>{tagLabel}</Badge>
-                          <span className="text-[10px] text-muted-foreground">{PAYMENT_LABELS[order.paymentMethod]}</span>
-                          {order.transferImages.length > 0 && (
-                            <button className="text-[10px] text-primary underline" onClick={() => setViewingImages(order.transferImages)}>
-                              📷 {order.transferImages.length} ảnh
-                            </button>
-                          )}
+                      <div key={order.id} className={`p-2.5 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'special' ? 'border-l-destructive bg-destructive/5' : order.tag === 'supplementary' ? 'border-l-amber-500 bg-amber-500/5' : order.tag === 'upgraded' ? 'border-l-blue-600 bg-blue-600/5' : ''}`}>
+                        {/* Order header: tag + total only — keep it minimal */}
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Badge className={`text-[9px] h-4 px-1.5 ${tagColor}`}>{tagLabel}</Badge>
+                            <span className="text-[10px] text-muted-foreground truncate">{PAYMENT_LABELS[order.paymentMethod]}</span>
+                            {order.transferImages.length > 0 && (
+                              <button className="text-[10px] text-primary underline shrink-0" onClick={() => setViewingImages(order.transferImages)}>
+                                📷{order.transferImages.length}
+                              </button>
+                            )}
+                          </div>
+                          <span className="text-xs font-bold text-foreground shrink-0">{formatVND(order.totalRevenue)}</span>
                         </div>
-                        <div className="space-y-1">
-                          {order.items.map((item, i) => {
-                            const itemProfitPct = item.total > 0 ? Math.round((item.profit / item.total) * 1000) / 10 : 0;
-                            return (
-                              <div key={i} className="flex items-center justify-between text-xs">
-                                <div className="min-w-0">
-                                  <span className="font-medium">{item.productName}</span>
-                                  <span className="text-muted-foreground ml-1">×{item.quantity} {item.unit}</span>
-                                </div>
-                                <div className="text-right shrink-0 ml-2">
-                                  <span className="font-semibold">{formatVND(item.total)}</span>
-                                  <span className="text-emerald-600 dark:text-emerald-300 ml-1">(+{itemProfitPct}%)</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="flex justify-between mt-1.5 pt-1.5 border-t border-border text-xs">
-                          <span className="text-muted-foreground">{PAYMENT_LABELS[order.paymentMethod]}</span>
-                          <span className="font-bold">{formatVND(order.totalRevenue)}</span>
+                        {/* Item rows — name + qty only, no per-item % noise */}
+                        <div className="space-y-0.5">
+                          {order.items.map((item, i) => (
+                            <div key={i} className="flex items-center justify-between text-[11px] text-muted-foreground">
+                              <span className="truncate min-w-0">
+                                <span className="text-foreground">{item.productName}</span>
+                                <span className="ml-1">×{item.quantity} {item.unit}</span>
+                              </span>
+                              <span className="font-medium shrink-0 ml-2 text-foreground/80">{formatCompactVND(item.total)}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
