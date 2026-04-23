@@ -152,100 +152,116 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
 
   const totalImport = filteredOrders.reduce((s, o) => s + o.total, 0);
 
+  const [showFilters, setShowFilters] = useState(false); // mobile: filters hidden by default
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-base font-bold">Nhập hàng</h2>
-          <Badge variant="outline" className="font-bold">{filteredOrders.length} đơn</Badge>
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-2 md:p-3 space-y-1.5 md:space-y-2">
+        {/* Row 1: Title + count + primary actions */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <h2 className="text-sm md:text-base font-bold">Nhập hàng</h2>
+          <Badge variant="outline" className="font-bold text-[10px] md:text-xs h-5">{filteredOrders.length} đơn</Badge>
+          <span className="text-[11px] md:text-xs text-muted-foreground hidden md:inline">· {formatVND(totalImport)}</span>
           <div className="flex-1" />
           {undoStack.length > 0 && (
-            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={handleUndo} title="Ctrl+Z">
-              <Undo2 className="mr-1 h-3.5 w-3.5" /> Hoàn tác ({undoStack.length})
+            <Button size="sm" variant="ghost" className="h-7 md:h-8 text-xs px-1.5" onClick={handleUndo} title="Ctrl+Z">
+              <Undo2 className="h-3.5 w-3.5 md:mr-1" />
+              <span className="hidden md:inline">Hoàn tác ({undoStack.length})</span>
             </Button>
           )}
-          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
-            <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
+          {/* Mobile: filter toggle */}
+          <Button size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 md:hidden" onClick={() => setShowFilters(!showFilters)}>
+            <Filter className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2" onClick={handleExportPdf}>
+            <FileDown className="h-3.5 w-3.5 md:mr-1" />
+            <span className="hidden md:inline">PDF Q{selQ}/{selYear}</span>
           </Button>
           {onAutoReplenish && !currentQLocked && (
-            <Button data-admin-only size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAutoReplenish(selQ, selYear)} title="Tạo lại đơn auto với cấu trúc ngẫu nhiên khác">
-              <Shuffle className="mr-1 h-3.5 w-3.5" /> Ngẫu nhiên
+            <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2" onClick={() => onAutoReplenish(selQ, selYear)} title="Tạo ngẫu nhiên đơn auto">
+              <Shuffle className="h-3.5 w-3.5 md:mr-1" />
+              <span className="hidden md:inline">Ngẫu nhiên</span>
             </Button>
           )}
           {onClearAutoOrders && !currentQLocked && (
-            <Button data-admin-only size="sm" variant="outline" className="h-8 text-xs text-destructive" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả đơn auto của quý hiện tại (sẽ tự sinh lại theo doanh thu)">
-              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa tất cả auto
+            <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 text-destructive hidden md:inline-flex" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả auto">
+              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa auto
             </Button>
           )}
-          <Button data-admin-only size="sm" variant="outline" className="h-8 text-xs relative" onClick={() => setShowTrash(true)}>
-            <Trash2 className="mr-1 h-3.5 w-3.5" />
+          <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 relative" onClick={() => setShowTrash(true)}>
+            <Trash2 className="h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
           </Button>
-          <Button data-admin-only size="sm" className="h-8 text-xs" onClick={() => {
+          <Button data-admin-only size="sm" className="h-7 md:h-8 text-xs px-2" onClick={() => {
             if (currentQLocked) { addNotification(`Quý ${selQ}/${selYear} đã khóa, không thể thêm đơn`, 'warning'); return; }
             setShowAdd(true);
           }} disabled={currentQLocked}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Thêm đơn nhập
+            <Plus className="h-3.5 w-3.5 md:mr-1" />
+            <span className="hidden md:inline">Thêm đơn</span>
           </Button>
         </div>
 
         {currentQLocked && (
-          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
             <Lock className="h-3.5 w-3.5" /> Quý {selQ}/{selYear} đã khóa - chỉ xem
           </div>
         )}
 
         {isShort && (
-          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs flex items-center gap-2">
+          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-2 py-1.5 text-[11px] flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="font-semibold text-destructive">Nhập hàng Q{selQ}/{selYear} chưa đủ ({Math.round(importRatio * 100)}% doanh thu)</div>
-              <div className="text-muted-foreground">
-                Đã nhập {formatCompactVND(currentQTotalImport)} / Mục tiêu {formatCompactVND(targetRev)} · Thiếu ~{formatCompactVND(shortfall)}
+              <div className="font-semibold text-destructive">Nhập Q{selQ} thiếu ({Math.round(importRatio * 100)}%)</div>
+              <div className="text-muted-foreground truncate">
+                {formatCompactVND(currentQTotalImport)} / {formatCompactVND(targetRev)} · thiếu ~{formatCompactVND(shortfall)}
               </div>
             </div>
             {onRebalanceQuarter && (
-              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleRebalance}>
+              <Button size="sm" className="h-7 text-xs shrink-0 px-2" onClick={handleRebalance}>
                 <Scale className="mr-1 h-3.5 w-3.5" /> Cân bằng
               </Button>
             )}
           </div>
         )}
 
-        <TimeRangeFilter
-          value={timeRange} onChange={setTimeRange}
-          customFrom={customFrom} onCustomFromChange={setCustomFrom}
-          customTo={customTo} onCustomToChange={setCustomTo}
-        />
+        {/* Filters: desktop always shown, mobile toggleable */}
+        <div className={`${showFilters ? 'block' : 'hidden'} md:block space-y-1.5`}>
+          <TimeRangeFilter
+            value={timeRange} onChange={setTimeRange}
+            customFrom={customFrom} onCustomFromChange={setCustomFrom}
+            customTo={customTo} onCustomToChange={setCustomTo}
+          />
 
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8 h-8" placeholder="Tìm NCC, sản phẩm, ngày..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input className="pl-7 h-8 text-xs" placeholder="Tìm NCC, sản phẩm..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="w-[80px] md:w-28 h-8 text-xs px-2"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tag</SelectItem>
+                <SelectItem value="auto">⚪ Tự động</SelectItem>
+                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
+                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
+                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+              <SelectTrigger className="w-[80px] md:w-28 h-8 text-xs px-2"><SelectValue placeholder="NCC" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả NCC</SelectItem>
+                {suppliers.filter(s => !s.deletedAt).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={tagFilter} onValueChange={setTagFilter}>
-            <SelectTrigger className="w-28 h-8"><Filter className="mr-1 h-3 w-3" /><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả tag</SelectItem>
-              <SelectItem value="auto">⚪ Tự động</SelectItem>
-              <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-              <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-              <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-            <SelectTrigger className="w-28 h-8"><SelectValue placeholder="NCC" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả NCC</SelectItem>
-              {suppliers.filter(s => !s.deletedAt).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-          <span>Tổng: <span className="font-bold text-foreground">{formatVND(totalImport)}</span></span>
+        {/* Compact summary: mobile shows in 1 line */}
+        <div className="flex items-center gap-2 text-[10px] md:text-xs text-muted-foreground flex-wrap">
+          <span className="md:hidden">Σ <span className="font-bold text-foreground">{formatCompactVND(totalImport)}</span></span>
           {targetRev > 0 && !currentQLocked && (
-            <span>· Tỉ lệ nhập/DT Q{selQ}: <span className={`font-bold ${importRatio < 0.80 ? 'text-destructive' : importRatio > 1.20 ? 'text-amber-600' : 'text-emerald-600'}`}>{Math.round(importRatio * 100)}%</span></span>
+            <span>Tỉ lệ: <span className={`font-bold ${importRatio < 0.80 ? 'text-destructive' : importRatio > 1.20 ? 'text-amber-600' : 'text-emerald-600'}`}>{Math.round(importRatio * 100)}%</span></span>
           )}
         </div>
       </div>
