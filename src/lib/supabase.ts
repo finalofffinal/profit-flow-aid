@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://ewugwgzzmrgouutqgfpg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3dWd3Z3p6bXJnb3V1dHFnZnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3ODYxMDIsImV4cCI6MjA5MTM2MjEwMn0.rcSjzuURZX49d5H75iu1jTctmwNrHTVMU9wlhjvQG4g';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   realtime: { params: { eventsPerSecond: 5 } },
