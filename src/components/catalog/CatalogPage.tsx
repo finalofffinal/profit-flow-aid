@@ -662,28 +662,28 @@ export function CatalogPage({
           </Button>
         </div>
 
-        {/* Row 2: Search + Filters */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        {/* Row 2: Search + Filters — wrap on mobile so suppliers don't get hidden */}
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[140px]">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8 h-9 text-sm" placeholder="Tìm sản phẩm, nhãn hàng..." value={search} onChange={e => setSearch(e.target.value)} />
+            <Input className="pl-8 h-9 text-sm" placeholder="Tìm sản phẩm, nhãn..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <Select value={filterNCC} onValueChange={setFilterNCC}>
-            <SelectTrigger className="w-32 h-9 text-sm"><SelectValue placeholder="NCC" /></SelectTrigger>
+            <SelectTrigger className="w-[31%] md:w-32 h-9 text-xs md:text-sm"><SelectValue placeholder="NCC" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả NCC</SelectItem>
               {activeSuppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterBrand} onValueChange={setFilterBrand}>
-            <SelectTrigger className="w-32 h-9 text-sm"><SelectValue placeholder="Nhãn hàng" /></SelectTrigger>
+            <SelectTrigger className="w-[31%] md:w-32 h-9 text-xs md:text-sm"><SelectValue placeholder="Nhãn" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả nhãn</SelectItem>
               {allBrands.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterUnit} onValueChange={setFilterUnit}>
-            <SelectTrigger className="w-28 h-9 text-sm"><Filter className="mr-1 h-3 w-3" /><SelectValue placeholder="Đơn vị" /></SelectTrigger>
+            <SelectTrigger className="w-[31%] md:w-28 h-9 text-xs md:text-sm"><Filter className="mr-1 h-3 w-3 shrink-0" /><SelectValue placeholder="ĐV" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tất cả</SelectItem>
               {allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
