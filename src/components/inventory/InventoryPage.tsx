@@ -51,6 +51,7 @@ export function InventoryPage(props: InventoryPageProps) {
   const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true); // mặc định thu gọn
 
   const currentQ = quarters?.find(q => q.quarter === selQ && q.year === selYear);
   const currentQLocked = !!currentQ?.locked;
