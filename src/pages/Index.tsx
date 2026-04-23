@@ -378,16 +378,42 @@ function IndexInner() {
     addNotification(`Đang ngẫu nhiên hóa lại Q${q}/${y} (giữ đơn đã khóa)...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, setRegenSeeds, setGeneratedQuarters, addNotification]);
 
-  /** Tạo NHIỀU đơn nhập "bổ sung" để bù số tiền thiếu cho 1 quý — chia đều nhiều NCC */
-  const handleCreateSupplementary = useCallback((q: number, y: number, shortfall: number) => {
-    const orders = generateSupplementaryOrder(q, y, shortfall, activeProducts, activeSuppliers);
-    if (!orders || orders.length === 0) {
-      addNotification('Không thể tạo đơn bù: thiếu sản phẩm/NCC hợp lệ', 'warning');
-      return;
-    }
-    orders.forEach(o => addImportOrder(o));
-    addNotification(`Đã tạo ${orders.length} đơn bù phân bổ cho ${orders.length} NCC`, 'success');
-  }, [activeProducts, activeSuppliers, addImportOrder, addNotification]);
+  /**
+   * Cân bằng quý: giữ nguyên đơn thủ công + đơn auto đã KHÓA,
+   * xóa các đơn auto chưa khóa trong quý → useEffect sẽ tự sinh lại
+   * sao cho tổng (manual + locked + auto mới) ≈ target.
+   * KHÔNG đổi seed → cấu trúc đơn auto mới sẽ ổn định/lặp lại.
+   */
+  const handleRebalanceQuarter = useCallback((q: number, y: number) => {
+    const key = `${q}-${y}`;
+    // Invalidate generatedQuarters[key] để buộc regen, KHÔNG tăng seed
+    setGeneratedQuarters(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    const keptImportIds = new Set<string>();
+    setImportOrders(prev => prev.filter(o => {
+      if (o.tag !== 'auto') return true;
+      const d = new Date(o.date);
+      const sameQ = Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+      if (!sameQ) return true;
+      if (o.locked) { keptImportIds.add(o.id); return true; }
+      return false;
+    }));
+    setSalesOrders(prev => prev.filter(o => {
+      if (o.tag !== 'auto') return true;
+      const d = new Date(o.date);
+      const sameQ = Math.ceil((d.getMonth() + 1) / 3) === q && d.getFullYear() === y;
+      if (!sameQ) return true;
+      return !!o.locked;
+    }));
+    setInventoryBatches(prev => prev.filter(b => {
+      if (b.quarter !== q || b.year !== y) return true;
+      return keptImportIds.has(b.importOrderId);
+    }));
+    addNotification(`Đang cân bằng Q${q}/${y} (giữ thủ công + đơn đã khóa)...`, 'info');
+  }, [setImportOrders, setSalesOrders, setInventoryBatches, setGeneratedQuarters, addNotification]);
 
   const renderTab = () => {
     switch (activeTab) {
@@ -425,7 +451,7 @@ function IndexInner() {
             quarters={quarters}
             onAutoReplenish={handleAutoReplenish}
             onClearAutoOrders={handleClearAutoOrders}
-            onCreateSupplementaryOrder={handleCreateSupplementary}
+            onRebalanceQuarter={handleRebalanceQuarter}
           />
         );
       case 'inventory':

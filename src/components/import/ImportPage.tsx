@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle, Shuffle, Eraser } from 'lucide-react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle, Shuffle, Eraser, Scale } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
@@ -30,10 +30,10 @@ interface ImportPageProps {
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
   onClearAutoOrders?: (q: number, y: number) => void;
-  onCreateSupplementaryOrder?: (q: number, y: number, shortfall: number) => void;
+  onRebalanceQuarter?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onCreateSupplementaryOrder }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onRebalanceQuarter }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -144,10 +144,10 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   const isShort = targetRev > 0 && importRatio < 0.80 && !currentQLocked;
   const shortfall = Math.max(0, targetRev * 0.95 - currentQTotalImport);
 
-  const handleCreateSupplementary = () => {
-    if (!onCreateSupplementaryOrder || shortfall <= 0) return;
-    onCreateSupplementaryOrder(selQ, selYear, shortfall);
-    addNotification(`Đang tạo đơn bù ~${formatCompactVND(shortfall)} cho Q${selQ}/${selYear}`, 'success');
+  const handleRebalance = () => {
+    if (!onRebalanceQuarter) return;
+    onRebalanceQuarter(selQ, selYear);
+    addNotification(`Đang cân bằng lại Q${selQ}/${selYear} (giữ thủ công + đơn đã khóa)`, 'success');
   };
 
   const totalImport = filteredOrders.reduce((s, o) => s + o.total, 0);
@@ -204,9 +204,9 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                 Đã nhập {formatCompactVND(currentQTotalImport)} / Mục tiêu {formatCompactVND(targetRev)} · Thiếu ~{formatCompactVND(shortfall)}
               </div>
             </div>
-            {onCreateSupplementaryOrder && (
-              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleCreateSupplementary}>
-                <Wand2 className="mr-1 h-3.5 w-3.5" /> Tạo đơn bù
+            {onRebalanceQuarter && (
+              <Button size="sm" className="h-8 text-xs shrink-0" onClick={handleRebalance}>
+                <Scale className="mr-1 h-3.5 w-3.5" /> Cân bằng
               </Button>
             )}
           </div>
