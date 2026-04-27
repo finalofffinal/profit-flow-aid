@@ -110,38 +110,46 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
       g.itemRowIdxs.forEach(i => rowToGroup.set(i, gi));
     });
 
+    // === Vẽ TIÊU ĐỀ BẢNG thủ công (chỉ 1 lần đầu quý) — to, nổi bật, tách biệt khỏi day rows ===
+    const tableLeft = 14;
+    const colW = [32, 110, 35]; // tổng = 177mm
+    const headerH = 14;
+    // Nền tím đậm
+    doc.setFillColor(60, 20, 90);
+    doc.rect(tableLeft, currentY, colW[0] + colW[1] + colW[2], headerH, 'F');
+    // Đường viền trắng giữa các cột
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.5);
+    doc.line(tableLeft + colW[0], currentY, tableLeft + colW[0], currentY + headerH);
+    doc.line(tableLeft + colW[0] + colW[1], currentY, tableLeft + colW[0] + colW[1], currentY + headerH);
+    // Chữ vàng kem, to (16pt), in đậm
+    doc.setFont(PDF_FONT, 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(255, 235, 150);
+    const baselineY = currentY + headerH / 2 + 2.5;
+    doc.text('Ngày tháng', tableLeft + colW[0] / 2, baselineY, { align: 'center' });
+    doc.text('Diễn giải', tableLeft + colW[0] + colW[1] / 2, baselineY, { align: 'center' });
+    doc.text('Số tiền (VNĐ)', tableLeft + colW[0] + colW[1] + colW[2] / 2, baselineY, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+    currentY += headerH;
+
     autoTable(doc, {
       startY: currentY,
-      // Show table head only on the FIRST page of this quarter table — not repeated on subsequent pages
-      head: [['Ngày tháng', 'Diễn giải', 'Số tiền (VNĐ)']],
+      // KHÔNG dùng head — đã vẽ thủ công ở trên, sẽ KHÔNG lặp lại ở các trang sau
       body: rows.map(r => [r.date, r.desc, r.amount]),
-      showHead: 'firstPage',
       rowPageBreak: 'avoid',
       styles: { font: PDF_FONT, fontSize: 9, cellPadding: 2, valign: 'middle' },
-      // Header bảng: NỔI BẬT — nền tím đậm, chữ trắng RẤT TO (16pt), tách biệt hẳn với day rows vàng
-      headStyles: {
-        font: PDF_FONT,
-        fontStyle: 'bold',
-        fillColor: [60, 20, 90],
-        fontSize: 16,
-        halign: 'center',
-        textColor: [255, 235, 150],
-        cellPadding: 6,
-        lineColor: [255, 255, 255],
-        lineWidth: 0.4,
-        minCellHeight: 16,
-      },
       bodyStyles: { font: PDF_FONT, textColor: [40, 40, 40] },
       columnStyles: {
-        0: { cellWidth: 32, halign: 'center' },
-        1: { cellWidth: 110 },
-        2: { cellWidth: 35, halign: 'right' },
+        0: { cellWidth: colW[0], halign: 'center' },
+        1: { cellWidth: colW[1] },
+        2: { cellWidth: colW[2], halign: 'right' },
       },
       didParseCell: (data) => {
         if (data.section !== 'body') return;
         const row = rows[data.row.index];
         if (!row) return;
-        // Day rows: nền vàng nhạt, chữ nâu sẫm 10pt
+        // Day rows: nền vàng nhạt, chữ nâu sẫm
         if (row.kind === 'day' && data.row.index !== rows.length - 1) {
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.fontSize = 10;
@@ -156,24 +164,23 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
           data.cell.styles.textColor = [80, 40, 0];
         }
       },
-      // Keep each day group (day row + its product items) together — avoid splitting across pages
+      // Giữ ngày + sản phẩm của ngày đó liền nhau, không tách giữa 2 trang
       willDrawCell: (data) => {
         if (data.section !== 'body') return;
+        if (data.column.index !== 0) return; // chỉ check 1 lần ở cột đầu
         const groupIdx = rowToGroup.get(data.row.index);
         if (groupIdx === undefined) return;
         const group = dayGroups[groupIdx];
-        // Only check at the day-row boundary
         if (data.row.index !== group.dayRowIdx) return;
         const pageHeight = doc.internal.pageSize.getHeight();
         const bottomMargin = 15;
-        // Estimate group height: day row (~10mm) + items (~6mm each)
         const estHeight = 10 + group.itemRowIdxs.length * 6;
         if (data.cursor && data.cursor.y + estHeight > pageHeight - bottomMargin) {
           doc.addPage();
           data.cursor.y = 20;
         }
       },
-      margin: { left: 14, right: 14 },
+      margin: { left: tableLeft, right: 14, top: 20 },
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 10;
