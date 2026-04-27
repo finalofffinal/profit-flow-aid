@@ -94,22 +94,42 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
 
     rows.push({ kind: 'day', date: '', desc: `TỔNG CỘNG QUÝ ${q}/${year}`, amount: formatVNDNumber(quarterTotal) });
 
+    // Build day groups so each day + its product items stay together (no page break in middle)
+    type DayGroup = { dayRowIdx: number; itemRowIdxs: number[] };
+    const dayGroups: DayGroup[] = [];
+    rows.forEach((r, idx) => {
+      if (r.kind === 'day' && idx !== rows.length - 1) {
+        dayGroups.push({ dayRowIdx: idx, itemRowIdxs: [] });
+      } else if (r.kind === 'item' && dayGroups.length > 0) {
+        dayGroups[dayGroups.length - 1].itemRowIdxs.push(idx);
+      }
+    });
+    const rowToGroup = new Map<number, number>();
+    dayGroups.forEach((g, gi) => {
+      rowToGroup.set(g.dayRowIdx, gi);
+      g.itemRowIdxs.forEach(i => rowToGroup.set(i, gi));
+    });
+
     autoTable(doc, {
       startY: currentY,
+      // Show table head only on the FIRST page of this quarter table — not repeated on subsequent pages
       head: [['Ngày tháng', 'Diễn giải', 'Số tiền (VNĐ)']],
       body: rows.map(r => [r.date, r.desc, r.amount]),
+      showHead: 'firstPage',
+      rowPageBreak: 'avoid',
       styles: { font: PDF_FONT, fontSize: 9, cellPadding: 2, valign: 'middle' },
-      // Header bảng: nền xanh đậm, chữ trắng to (14pt) → tương phản mạnh với day rows
+      // Header bảng: NỔI BẬT — nền tím đậm, chữ trắng RẤT TO (16pt), tách biệt hẳn với day rows vàng
       headStyles: {
         font: PDF_FONT,
         fontStyle: 'bold',
-        fillColor: [25, 35, 70],
-        fontSize: 14,
+        fillColor: [60, 20, 90],
+        fontSize: 16,
         halign: 'center',
-        textColor: [255, 255, 255],
-        cellPadding: 4,
+        textColor: [255, 235, 150],
+        cellPadding: 6,
         lineColor: [255, 255, 255],
-        lineWidth: 0.3,
+        lineWidth: 0.4,
+        minCellHeight: 16,
       },
       bodyStyles: { font: PDF_FONT, textColor: [40, 40, 40] },
       columnStyles: {
@@ -118,9 +138,10 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
         2: { cellWidth: 35, halign: 'right' },
       },
       didParseCell: (data) => {
+        if (data.section !== 'body') return;
         const row = rows[data.row.index];
         if (!row) return;
-        // Day rows: nền vàng nhạt, chữ nâu sẫm 10pt — KHÁC HẲN header xanh đậm
+        // Day rows: nền vàng nhạt, chữ nâu sẫm 10pt
         if (row.kind === 'day' && data.row.index !== rows.length - 1) {
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.fontSize = 10;
@@ -133,6 +154,23 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
           data.cell.styles.fontSize = 12;
           data.cell.styles.fillColor = [255, 230, 180];
           data.cell.styles.textColor = [80, 40, 0];
+        }
+      },
+      // Keep each day group (day row + its product items) together — avoid splitting across pages
+      willDrawCell: (data) => {
+        if (data.section !== 'body') return;
+        const groupIdx = rowToGroup.get(data.row.index);
+        if (groupIdx === undefined) return;
+        const group = dayGroups[groupIdx];
+        // Only check at the day-row boundary
+        if (data.row.index !== group.dayRowIdx) return;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const bottomMargin = 15;
+        // Estimate group height: day row (~10mm) + items (~6mm each)
+        const estHeight = 10 + group.itemRowIdxs.length * 6;
+        if (data.cursor && data.cursor.y + estHeight > pageHeight - bottomMargin) {
+          doc.addPage();
+          data.cursor.y = 20;
         }
       },
       margin: { left: 14, right: 14 },
