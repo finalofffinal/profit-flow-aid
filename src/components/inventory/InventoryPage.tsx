@@ -95,9 +95,13 @@ export function InventoryPage(props: InventoryPageProps) {
 
   // End-of-quarter summary for selected Q+Y
   const quarterSummary = useMemo(() => {
-    const lastMonth = selQ * 3;
-    const lastDay = new Date(selYear, lastMonth, 0);
-    const lastDayStr = lastDay.toISOString().split('T')[0];
+    const lastMonth = selQ * 3; // 3, 6, 9, 12
+    const lastDay = new Date(selYear, lastMonth, 0); // local: ngày cuối tháng
+    // Format thủ công để tránh bug timezone của toISOString() (lùi 1 ngày khi TZ > 0)
+    const yyyy = lastDay.getFullYear();
+    const mm = String(lastDay.getMonth() + 1).padStart(2, '0');
+    const dd = String(lastDay.getDate()).padStart(2, '0');
+    const lastDayStr = `${yyyy}-${mm}-${dd}`;
 
     const qImports = importOrders.filter(o => {
       if (o.deletedAt) return false;

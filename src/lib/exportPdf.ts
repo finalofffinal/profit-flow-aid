@@ -170,6 +170,19 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
     currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
+  // === Đánh số trang: "Trang X / Y" ở góc dưới phải mỗi trang ===
+  const totalPages = doc.getNumberOfPages();
+  const pageWidthMM = doc.internal.pageSize.getWidth();
+  const pageHeightMM = doc.internal.pageSize.getHeight();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont(PDF_FONT, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text(`Trang ${i} / ${totalPages}`, pageWidthMM - 14, pageHeightMM - 8, { align: 'right' });
+  }
+  doc.setTextColor(0, 0, 0);
+
   const suffix = quarters.length === 4 ? `${year}` : `Q${quarters.join('-')}_${year}`;
   doc.save(`S2a-HKD_${suffix}.pdf`);
 }
