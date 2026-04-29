@@ -110,23 +110,23 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
       g.itemRowIdxs.forEach(i => rowToGroup.set(i, gi));
     });
 
-    // === Vẽ TIÊU ĐỀ BẢNG thủ công (chỉ 1 lần đầu quý) — to, nổi bật, tách biệt khỏi day rows ===
+    // === Vẽ TIÊU ĐỀ BẢNG thủ công (chỉ 1 lần đầu quý) — đỏ pastel nhạt, chữ nhỏ ===
     const tableLeft = 14;
     const colW = [32, 110, 35]; // tổng = 177mm
-    const headerH = 14;
-    // Nền tím đậm
-    doc.setFillColor(60, 20, 90);
+    const headerH = 9;
+    // Nền đỏ pastel nhạt
+    doc.setFillColor(255, 218, 224);
     doc.rect(tableLeft, currentY, colW[0] + colW[1] + colW[2], headerH, 'F');
     // Đường viền trắng giữa các cột
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(0.5);
     doc.line(tableLeft + colW[0], currentY, tableLeft + colW[0], currentY + headerH);
     doc.line(tableLeft + colW[0] + colW[1], currentY, tableLeft + colW[0] + colW[1], currentY + headerH);
-    // Chữ vàng kem, to (16pt), in đậm
+    // Chữ đỏ sẫm, nhỏ (10pt), in đậm
     doc.setFont(PDF_FONT, 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(255, 235, 150);
-    const baselineY = currentY + headerH / 2 + 2.5;
+    doc.setFontSize(10);
+    doc.setTextColor(155, 40, 60);
+    const baselineY = currentY + headerH / 2 + 1.6;
     doc.text('Ngày tháng', tableLeft + colW[0] / 2, baselineY, { align: 'center' });
     doc.text('Diễn giải', tableLeft + colW[0] + colW[1] / 2, baselineY, { align: 'center' });
     doc.text('Số tiền (VNĐ)', tableLeft + colW[0] + colW[1] + colW[2] / 2, baselineY, { align: 'center' });
@@ -162,22 +162,6 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
           data.cell.styles.fontSize = 12;
           data.cell.styles.fillColor = [255, 230, 180];
           data.cell.styles.textColor = [80, 40, 0];
-        }
-      },
-      // Giữ ngày + sản phẩm của ngày đó liền nhau, không tách giữa 2 trang
-      willDrawCell: (data) => {
-        if (data.section !== 'body') return;
-        if (data.column.index !== 0) return; // chỉ check 1 lần ở cột đầu
-        const groupIdx = rowToGroup.get(data.row.index);
-        if (groupIdx === undefined) return;
-        const group = dayGroups[groupIdx];
-        if (data.row.index !== group.dayRowIdx) return;
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const bottomMargin = 15;
-        const estHeight = 10 + group.itemRowIdxs.length * 6;
-        if (data.cursor && data.cursor.y + estHeight > pageHeight - bottomMargin) {
-          doc.addPage();
-          data.cursor.y = 20;
         }
       },
       margin: { left: tableLeft, right: 14, top: 20 },
