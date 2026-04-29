@@ -164,22 +164,6 @@ export function exportSalesPdf(salesOrders: SaleOrder[], year: number, quarters:
           data.cell.styles.textColor = [80, 40, 0];
         }
       },
-      // Giữ ngày + sản phẩm của ngày đó liền nhau, không tách giữa 2 trang
-      willDrawCell: (data) => {
-        if (data.section !== 'body') return;
-        if (data.column.index !== 0) return; // chỉ check 1 lần ở cột đầu
-        const groupIdx = rowToGroup.get(data.row.index);
-        if (groupIdx === undefined) return;
-        const group = dayGroups[groupIdx];
-        if (data.row.index !== group.dayRowIdx) return;
-        const pageHeight = doc.internal.pageSize.getHeight();
-        const bottomMargin = 15;
-        const estHeight = 10 + group.itemRowIdxs.length * 6;
-        if (data.cursor && data.cursor.y + estHeight > pageHeight - bottomMargin) {
-          doc.addPage();
-          data.cursor.y = 20;
-        }
-      },
       margin: { left: tableLeft, right: 14, top: 20 },
     });
 
