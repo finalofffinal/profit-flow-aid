@@ -21,8 +21,10 @@ function getDaysInQuarter(q: number, year: number): string[] {
   for (let m = startMonth; m < startMonth + 3; m++) {
     const daysInMonth = new Date(year, m + 1, 0).getDate();
     for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, m, d);
-      days.push(date.toISOString().split('T')[0]);
+      const yyyy = year;
+      const mm = String(m + 1).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      days.push(`${yyyy}-${mm}-${dd}`);
     }
   }
   return days;
