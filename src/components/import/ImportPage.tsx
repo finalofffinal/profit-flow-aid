@@ -242,9 +242,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <SelectContent>
                 <SelectItem value="all">Tag</SelectItem>
                 <SelectItem value="auto">⚪ Tự động</SelectItem>
-                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
                 <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
               </SelectContent>
             </Select>
             <Select value={supplierFilter} onValueChange={setSupplierFilter}>
