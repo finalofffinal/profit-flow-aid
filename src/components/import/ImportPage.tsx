@@ -279,7 +279,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                 const isEditingThisDate = editingDate === order.id;
 
                 return (
-                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'special' ? 'border-destructive/30' : order.tag === 'supplementary' ? 'border-amber-500/30' : order.tag === 'upgraded' ? 'border-blue-600/30' : 'border-border'}`}>
+                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'supplementary' ? 'border-amber-500/30' : 'border-border'}`}>
                     <button className="flex w-full items-center gap-2 p-3 text-left hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(order.id)}>
                       {isExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">
