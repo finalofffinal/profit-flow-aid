@@ -78,6 +78,8 @@ export interface ImportOrder {
   date: string;
   items: ImportOrderItem[];
   total: number;
+  /** Số tiền chiết khấu trừ trực tiếp vào tổng đơn (chỉ áp dụng cho đơn bổ sung) */
+  discount?: number;
   tag: ImportTag;
   locked: boolean;
   images: string[];
