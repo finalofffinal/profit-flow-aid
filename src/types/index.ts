@@ -54,7 +54,7 @@ export interface QuarterData {
 
 export type TabId = 'dashboard' | 'import' | 'inventory' | 'sales' | 'catalog';
 
-export type ImportTag = 'auto' | 'special' | 'supplementary' | 'upgraded';
+export type ImportTag = 'auto' | 'supplementary';
 export type PaymentMethod = 'cash' | 'transfer';
 export type OrderTag = ImportTag;
 
