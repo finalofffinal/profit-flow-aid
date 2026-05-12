@@ -198,9 +198,7 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
             <SelectContent>
               <SelectItem value="all">Tất cả</SelectItem>
               <SelectItem value="auto">⚪ Tự động</SelectItem>
-              <SelectItem value="special">🔴 Đặc biệt</SelectItem>
               <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-              <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
             </SelectContent>
           </Select>
           {allBrands.length > 0 && (
