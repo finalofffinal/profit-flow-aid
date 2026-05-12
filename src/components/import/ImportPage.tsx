@@ -242,9 +242,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <SelectContent>
                 <SelectItem value="all">Tag</SelectItem>
                 <SelectItem value="auto">⚪ Tự động</SelectItem>
-                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
                 <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
               </SelectContent>
             </Select>
             <Select value={supplierFilter} onValueChange={setSupplierFilter}>
@@ -281,7 +279,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                 const isEditingThisDate = editingDate === order.id;
 
                 return (
-                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'special' ? 'border-destructive/30' : order.tag === 'supplementary' ? 'border-amber-500/30' : order.tag === 'upgraded' ? 'border-blue-600/30' : 'border-border'}`}>
+                  <div key={order.id} className={`rounded-xl border shadow-sm overflow-hidden ${order.tag === 'supplementary' ? 'border-amber-500/30' : 'border-border'}`}>
                     <button className="flex w-full items-center gap-2 p-3 text-left hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(order.id)}>
                       {isExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">
@@ -366,7 +364,19 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                             <span className="font-semibold shrink-0 ml-2">{formatVND(item.total)}</span>
                           </div>
                         ))}
-                        <div className="flex justify-end pt-1 border-t border-border text-xs font-bold text-primary">
+                        {order.discount && order.discount > 0 ? (
+                          <>
+                            <div className="flex justify-between text-xs text-muted-foreground pt-1 border-t border-border">
+                              <span>Tạm tính</span>
+                              <span>{formatVND(order.items.reduce((s, it) => s + it.total, 0))}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-amber-600">
+                              <span>Chiết khấu</span>
+                              <span>− {formatVND(order.discount)}</span>
+                            </div>
+                          </>
+                        ) : null}
+                        <div className={`flex justify-end ${order.discount && order.discount > 0 ? '' : 'pt-1 border-t border-border'} text-xs font-bold text-primary`}>
                           Tổng đơn: {formatVND(order.total)}
                         </div>
                       </div>
@@ -441,19 +451,30 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
 }) {
   const [supplierId, setSupplierId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [tag, setTag] = useState<ImportTag>('special');
-  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; quantity: number }[]>([]);
+  // Tất cả đơn thủ công đều là "Bổ sung"
+  const tag: ImportTag = 'supplementary';
+  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; quantity: number; buyPrice?: number }[]>([]);
   const [images, setImages] = useState<string[]>([]);
+  const [discountInput, setDiscountInput] = useState(''); // x1000 convention
 
   const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
-  const orderTotal = useMemo(() => {
+  const subtotal = useMemo(() => {
     return selectedProducts.reduce((sum, sp) => {
       const product = products.find(p => p.id === sp.productId);
       if (!product) return sum;
-      return sum + product.buyPrice * sp.quantity;
+      const price = sp.buyPrice ?? product.buyPrice;
+      return sum + price * sp.quantity;
     }, 0);
   }, [selectedProducts, products]);
+
+  const discount = useMemo(() => {
+    const v = parseFloat(discountInput.replace(/,/g, '.'));
+    if (isNaN(v) || v <= 0) return 0;
+    return Math.round(v * 1000);
+  }, [discountInput]);
+
+  const orderTotal = Math.max(0, subtotal - discount);
 
   const addItem = () => setSelectedProducts(prev => [...prev, { productId: '', quantity: 1 }]);
   const removeItem = (i: number) => setSelectedProducts(prev => prev.filter((_, idx) => idx !== i));
@@ -478,34 +499,38 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
       .filter(sp => sp.productId && sp.quantity > 0)
       .map(sp => {
         const product = products.find(p => p.id === sp.productId)!;
+        const price = sp.buyPrice ?? product.buyPrice;
         return {
           productId: product.id, productName: product.name,
           supplierId: product.supplierId, supplierName: supplier.name,
           unit: product.unit, conversionUnit: product.conversionUnit || product.unit,
           conversionRate: product.conversionRate || 1,
           quantity: Math.max(1, sp.quantity),
-          buyPrice: product.buyPrice,
-          total: product.buyPrice * Math.max(1, sp.quantity),
+          buyPrice: price,
+          total: price * Math.max(1, sp.quantity),
         };
       });
     if (items.length === 0) return;
+    const sub = items.reduce((s, it) => s + it.total, 0);
     onSubmit({
       supplierId, supplierName: supplier.name, date, items,
-      total: items.reduce((s, it) => s + it.total, 0),
+      total: Math.max(0, sub - discount),
+      discount: discount > 0 ? discount : undefined,
       tag, locked: false, images,
     });
     onClose();
     setSupplierId('');
     setSelectedProducts([]);
     setImages([]);
+    setDiscountInput('');
   };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Thêm đơn nhập hàng</DialogTitle>
-          <DialogDescription>Chọn NCC và sản phẩm từ danh mục (số lượng không giới hạn)</DialogDescription>
+          <DialogTitle>Thêm đơn nhập (Bổ sung)</DialogTitle>
+          <DialogDescription>Có thể chỉnh giá nhập từng sản phẩm và nhập tiền chiết khấu</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -521,39 +546,26 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
               <Input className="mt-1" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <div>
-            <Label className="text-xs">Tag đơn hàng</Label>
-            <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-                <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          {tag === 'supplementary' && (
-            <div className="space-y-2">
-              <Label className="text-xs">Ảnh đính kèm (tối đa 5)</Label>
-              <div className="flex gap-2 flex-wrap">
-                {images.map((img, i) => (
-                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border">
-                    <img src={img} alt="" className="w-full h-full object-cover" />
-                    <button className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-bl p-0.5" onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-                {images.length < 5 && (
-                  <label className="w-16 h-16 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors">
-                    <Camera className="h-5 w-5 text-muted-foreground" />
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-                  </label>
-                )}
-              </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Ảnh đính kèm (tối đa 5)</Label>
+            <div className="flex gap-2 flex-wrap">
+              {images.map((img, i) => (
+                <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border">
+                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  <button className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-bl p-0.5" onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {images.length < 5 && (
+                <label className="w-16 h-16 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors">
+                  <Camera className="h-5 w-5 text-muted-foreground" />
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                </label>
+              )}
             </div>
-          )}
+          </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -562,26 +574,71 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
             </div>
             {selectedProducts.map((sp, i) => {
               const prod = products.find(p => p.id === sp.productId);
-              const lineTotal = prod ? prod.buyPrice * sp.quantity : 0;
+              const price = sp.buyPrice ?? (prod?.buyPrice ?? 0);
+              const lineTotal = price * sp.quantity;
               return (
-                <div key={i} className="flex items-center gap-2">
-                  <Select value={sp.productId} onValueChange={v => { const u = [...selectedProducts]; u[i].productId = v; setSelectedProducts(u); }}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                    <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input className="w-16" type="number" min={1} value={sp.quantity} onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
-                  <span className="w-24 shrink-0 text-right text-xs font-bold tabular-nums text-primary">
-                    {lineTotal > 0 ? formatVND(lineTotal) : '—'}
-                  </span>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
+                <div key={i} className="space-y-1.5 rounded-lg border p-2">
+                  <div className="flex items-center gap-2">
+                    <Select value={sp.productId} onValueChange={v => {
+                      const u = [...selectedProducts];
+                      const p = products.find(pp => pp.id === v);
+                      u[i] = { ...u[i], productId: v, buyPrice: p?.buyPrice };
+                      setSelectedProducts(u);
+                    }}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                      <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
+                  </div>
+                  {prod && (
+                    <div className="grid grid-cols-3 gap-2 items-center">
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">SL</Label>
+                        <Input className="h-8 text-xs" type="number" min={1} value={sp.quantity}
+                          onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Giá nhập (×1000)</Label>
+                        <Input className="h-8 text-xs" type="text" inputMode="decimal"
+                          value={price > 0 ? (price / 1000).toString() : ''}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value.replace(/,/g, '.'));
+                            const u = [...selectedProducts];
+                            u[i].buyPrice = isNaN(v) ? 0 : Math.round(v * 1000);
+                            setSelectedProducts(u);
+                          }} />
+                      </div>
+                      <div className="text-right">
+                        <Label className="text-[10px] text-muted-foreground">Thành tiền</Label>
+                        <div className="text-xs font-bold tabular-nums text-primary truncate">{formatVND(lineTotal)}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
-            {/* Order total */}
             {selectedProducts.length > 0 && (
-              <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
-                Tổng đơn: {formatVND(orderTotal)}
+              <div className="space-y-1.5 pt-2 border-t">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Tạm tính</span>
+                  <span className="font-semibold">{formatVND(subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Chiết khấu (×1000)</Label>
+                  <Input className="h-8 text-xs w-32 text-right" type="text" inputMode="decimal"
+                    placeholder="0" value={discountInput}
+                    onChange={e => setDiscountInput(e.target.value)} />
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-xs text-amber-600">
+                    <span>Giảm giá</span>
+                    <span>− {formatVND(discount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-end pt-1 border-t text-sm font-bold text-primary">
+                  Tổng đơn: {formatVND(orderTotal)}
+                </div>
               </div>
             )}
           </div>
@@ -602,17 +659,36 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
   onClose: () => void;
   onSubmit: (updates: Partial<ImportOrder>) => void;
 }) {
+  const isAuto = order.tag === 'auto';
   const [date, setDate] = useState(order.date.split('T')[0]);
-  const [tag, setTag] = useState<ImportTag>(order.tag);
   const [supplierId, setSupplierId] = useState(order.supplierId);
-  const [items, setItems] = useState(order.items.map(it => ({ productId: it.productId, quantity: it.quantity })));
+  const [items, setItems] = useState(order.items.map(it => ({
+    productId: it.productId,
+    quantity: it.quantity,
+    buyPrice: it.buyPrice,
+  })));
+  const [discountInput, setDiscountInput] = useState(
+    order.discount && order.discount > 0 ? (order.discount / 1000).toString() : ''
+  );
 
   const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
-  const total = useMemo(() => items.reduce((s, it) => {
+  const subtotal = useMemo(() => items.reduce((s, it) => {
     const p = products.find(pp => pp.id === it.productId);
-    return s + (p ? p.buyPrice * it.quantity : 0);
-  }, 0), [items, products]);
+    if (!p) return s;
+    // Đơn auto LUÔN dùng baseBuyPrice từ catalog. Đơn bổ sung dùng giá đã sửa (nếu có).
+    const price = isAuto ? (p.baseBuyPrice ?? p.buyPrice) : (it.buyPrice ?? p.buyPrice);
+    return s + price * it.quantity;
+  }, 0), [items, products, isAuto]);
+
+  const discount = useMemo(() => {
+    if (isAuto) return 0;
+    const v = parseFloat(discountInput.replace(/,/g, '.'));
+    if (isNaN(v) || v <= 0) return 0;
+    return Math.round(v * 1000);
+  }, [discountInput, isAuto]);
+
+  const total = Math.max(0, subtotal - discount);
 
   const handleSubmit = () => {
     const supplier = suppliers.find(s => s.id === supplierId);
@@ -621,19 +697,21 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
       .filter(it => it.productId && it.quantity > 0)
       .map(it => {
         const p = products.find(pp => pp.id === it.productId)!;
+        const price = isAuto ? (p.baseBuyPrice ?? p.buyPrice) : (it.buyPrice ?? p.buyPrice);
         return {
           productId: p.id, productName: p.name,
           supplierId: p.supplierId, supplierName: supplier.name,
           unit: p.unit, conversionUnit: p.conversionUnit || p.unit,
           conversionRate: p.conversionRate || 1,
-          quantity: it.quantity, buyPrice: p.buyPrice,
-          total: p.buyPrice * it.quantity,
+          quantity: it.quantity, buyPrice: price,
+          total: price * it.quantity,
         };
       });
     if (newItems.length === 0) return;
     onSubmit({
-      date, tag: order.tag === 'auto' ? 'auto' : tag, supplierId, supplierName: supplier.name,
+      date, supplierId, supplierName: supplier.name,
       items: newItems,
+      discount: !isAuto && discount > 0 ? discount : undefined,
     });
   };
 
@@ -641,8 +719,12 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
     <Dialog open={true} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Sửa đơn nhập</DialogTitle>
-          <DialogDescription>Chỉnh ngày, NCC, tag, sản phẩm và số lượng</DialogDescription>
+          <DialogTitle>Sửa đơn nhập {isAuto ? '(Tự động)' : '(Bổ sung)'}</DialogTitle>
+          <DialogDescription>
+            {isAuto
+              ? 'Đơn tự động dùng giá nhập từ tab Danh mục, không sửa được giá hay chiết khấu'
+              : 'Có thể sửa giá nhập từng sản phẩm và chiết khấu'}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -658,54 +740,87 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
               <Input className="mt-1" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <div>
-            <Label className="text-xs">Tag</Label>
-            {order.tag === 'auto' ? (
-              <div className="mt-1 flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
-                ⚙️ Tự động (không thể đổi tag của đơn tự sinh)
-              </div>
-            ) : (
-              <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-                  <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                  <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold">Sản phẩm ({items.length})</Label>
-              <Button variant="outline" size="sm" onClick={() => setItems(prev => [...prev, { productId: '', quantity: 1 }])} disabled={!supplierId}>
+              <Button variant="outline" size="sm" onClick={() => setItems(prev => [...prev, { productId: '', quantity: 1, buyPrice: 0 }])} disabled={!supplierId}>
                 <Plus className="mr-1 h-3 w-3" /> Thêm SP
               </Button>
             </div>
             {items.map((it, i) => {
               const prod = products.find(p => p.id === it.productId);
-              const lineTotal = prod ? prod.buyPrice * it.quantity : 0;
+              const price = isAuto
+                ? (prod?.baseBuyPrice ?? prod?.buyPrice ?? 0)
+                : (it.buyPrice ?? prod?.buyPrice ?? 0);
+              const lineTotal = price * it.quantity;
               return (
-                <div key={i} className="flex items-center gap-2">
-                  <Select value={it.productId} onValueChange={v => { const u = [...items]; u[i].productId = v; setItems(u); }}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                    <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input className="w-16" type="number" min={1} value={it.quantity}
-                    onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
-                  <span className="w-24 shrink-0 text-right text-xs font-bold tabular-nums text-primary">
-                    {lineTotal > 0 ? formatVND(lineTotal) : '—'}
-                  </span>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
-                    onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
+                <div key={i} className="space-y-1.5 rounded-lg border p-2">
+                  <div className="flex items-center gap-2">
+                    <Select value={it.productId} onValueChange={v => {
+                      const u = [...items];
+                      const p = products.find(pp => pp.id === v);
+                      u[i] = { ...u[i], productId: v, buyPrice: p?.buyPrice ?? 0 };
+                      setItems(u);
+                    }}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                      <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                      onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {prod && (
+                    <div className="grid grid-cols-3 gap-2 items-center">
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">SL</Label>
+                        <Input className="h-8 text-xs" type="number" min={1} value={it.quantity}
+                          onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Giá nhập (×1000)</Label>
+                        <Input className="h-8 text-xs" type="text" inputMode="decimal"
+                          disabled={isAuto}
+                          value={price > 0 ? (price / 1000).toString() : ''}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value.replace(/,/g, '.'));
+                            const u = [...items];
+                            u[i].buyPrice = isNaN(v) ? 0 : Math.round(v * 1000);
+                            setItems(u);
+                          }} />
+                      </div>
+                      <div className="text-right">
+                        <Label className="text-[10px] text-muted-foreground">Thành tiền</Label>
+                        <div className="text-xs font-bold tabular-nums text-primary truncate">{formatVND(lineTotal)}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
             {items.length > 0 && (
-              <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
-                Tổng: {formatVND(total)}
+              <div className="space-y-1.5 pt-2 border-t">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Tạm tính</span>
+                  <span className="font-semibold">{formatVND(subtotal)}</span>
+                </div>
+                {!isAuto && (
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs">Chiết khấu (×1000)</Label>
+                    <Input className="h-8 text-xs w-32 text-right" type="text" inputMode="decimal"
+                      placeholder="0" value={discountInput}
+                      onChange={e => setDiscountInput(e.target.value)} />
+                  </div>
+                )}
+                {discount > 0 && (
+                  <div className="flex justify-between text-xs text-amber-600">
+                    <span>Giảm giá</span>
+                    <span>− {formatVND(discount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-end pt-1 border-t text-sm font-bold text-primary">
+                  Tổng: {formatVND(total)}
+                </div>
               </div>
             )}
           </div>

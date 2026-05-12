@@ -54,7 +54,7 @@ export interface QuarterData {
 
 export type TabId = 'dashboard' | 'import' | 'inventory' | 'sales' | 'catalog';
 
-export type ImportTag = 'auto' | 'special' | 'supplementary' | 'upgraded';
+export type ImportTag = 'auto' | 'supplementary';
 export type PaymentMethod = 'cash' | 'transfer';
 export type OrderTag = ImportTag;
 
@@ -78,6 +78,8 @@ export interface ImportOrder {
   date: string;
   items: ImportOrderItem[];
   total: number;
+  /** Số tiền chiết khấu trừ trực tiếp vào tổng đơn (chỉ áp dụng cho đơn bổ sung) */
+  discount?: number;
   tag: ImportTag;
   locked: boolean;
   images: string[];

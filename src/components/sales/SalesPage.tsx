@@ -198,9 +198,7 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
             <SelectContent>
               <SelectItem value="all">Tất cả</SelectItem>
               <SelectItem value="auto">⚪ Tự động</SelectItem>
-              <SelectItem value="special">🔴 Đặc biệt</SelectItem>
               <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-              <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
             </SelectContent>
           </Select>
           {allBrands.length > 0 && (
@@ -235,9 +233,7 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                     {ds.totalRevenue === 0 && ds.orders.some(o => o.items[0]?.productId === '__tet__') && (
                       <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px]">🏮 Nghỉ Tết</Badge>
                     )}
-                    {ds.orders.some(o => o.tag === 'special') && <span className="h-2 w-2 rounded-full bg-destructive" />}
                     {ds.orders.some(o => o.tag === 'supplementary') && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                    {ds.orders.some(o => o.tag === 'upgraded') && <span className="h-2 w-2 rounded-full bg-blue-600" />}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                     {ds.totalRevenue === 0 ? (
@@ -266,7 +262,7 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                       );
                     }
                     return (
-                      <div key={order.id} className={`p-2.5 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'special' ? 'border-l-destructive bg-destructive/5' : order.tag === 'supplementary' ? 'border-l-amber-500 bg-amber-500/5' : order.tag === 'upgraded' ? 'border-l-blue-600 bg-blue-600/5' : ''}`}>
+                      <div key={order.id} className={`p-2.5 ${order.tag !== 'auto' ? 'border-l-2' : ''} ${order.tag === 'supplementary' ? 'border-l-amber-500 bg-amber-500/5' : ''}`}>
                         {/* Order header: tag + total only — keep it minimal */}
                         <div className="flex items-center justify-between gap-2 mb-1">
                           <div className="flex items-center gap-1.5 min-w-0">

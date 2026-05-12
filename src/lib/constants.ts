@@ -23,16 +23,18 @@ export const VIETNAM_HOLIDAYS: Record<string, number> = {
 
 export const IMPORT_TAG_LABELS: Record<string, string> = {
   auto: 'Tự động',
-  special: 'Đặc biệt',
   supplementary: 'Bổ sung',
-  upgraded: 'Nâng cấp',
+  // Legacy fallbacks (dữ liệu cũ)
+  special: 'Bổ sung',
+  upgraded: 'Bổ sung',
 };
 
 export const IMPORT_TAG_COLORS: Record<string, string> = {
   auto: 'bg-secondary text-secondary-foreground',
-  special: 'bg-destructive/20 text-destructive border-destructive/30',
   supplementary: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
-  upgraded: 'bg-blue-600/20 text-blue-700 dark:text-blue-400 border-blue-600/30',
+  // Legacy fallbacks
+  special: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
+  upgraded: 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30',
 };
 
 export const PAYMENT_LABELS: Record<string, string> = {
