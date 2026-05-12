@@ -647,17 +647,36 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
   onClose: () => void;
   onSubmit: (updates: Partial<ImportOrder>) => void;
 }) {
+  const isAuto = order.tag === 'auto';
   const [date, setDate] = useState(order.date.split('T')[0]);
-  const [tag, setTag] = useState<ImportTag>(order.tag);
   const [supplierId, setSupplierId] = useState(order.supplierId);
-  const [items, setItems] = useState(order.items.map(it => ({ productId: it.productId, quantity: it.quantity })));
+  const [items, setItems] = useState(order.items.map(it => ({
+    productId: it.productId,
+    quantity: it.quantity,
+    buyPrice: it.buyPrice,
+  })));
+  const [discountInput, setDiscountInput] = useState(
+    order.discount && order.discount > 0 ? (order.discount / 1000).toString() : ''
+  );
 
   const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
-  const total = useMemo(() => items.reduce((s, it) => {
+  const subtotal = useMemo(() => items.reduce((s, it) => {
     const p = products.find(pp => pp.id === it.productId);
-    return s + (p ? p.buyPrice * it.quantity : 0);
-  }, 0), [items, products]);
+    if (!p) return s;
+    // Đơn auto LUÔN dùng baseBuyPrice từ catalog. Đơn bổ sung dùng giá đã sửa (nếu có).
+    const price = isAuto ? (p.baseBuyPrice ?? p.buyPrice) : (it.buyPrice ?? p.buyPrice);
+    return s + price * it.quantity;
+  }, 0), [items, products, isAuto]);
+
+  const discount = useMemo(() => {
+    if (isAuto) return 0;
+    const v = parseFloat(discountInput.replace(/,/g, '.'));
+    if (isNaN(v) || v <= 0) return 0;
+    return Math.round(v * 1000);
+  }, [discountInput, isAuto]);
+
+  const total = Math.max(0, subtotal - discount);
 
   const handleSubmit = () => {
     const supplier = suppliers.find(s => s.id === supplierId);
@@ -666,19 +685,21 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
       .filter(it => it.productId && it.quantity > 0)
       .map(it => {
         const p = products.find(pp => pp.id === it.productId)!;
+        const price = isAuto ? (p.baseBuyPrice ?? p.buyPrice) : (it.buyPrice ?? p.buyPrice);
         return {
           productId: p.id, productName: p.name,
           supplierId: p.supplierId, supplierName: supplier.name,
           unit: p.unit, conversionUnit: p.conversionUnit || p.unit,
           conversionRate: p.conversionRate || 1,
-          quantity: it.quantity, buyPrice: p.buyPrice,
-          total: p.buyPrice * it.quantity,
+          quantity: it.quantity, buyPrice: price,
+          total: price * it.quantity,
         };
       });
     if (newItems.length === 0) return;
     onSubmit({
-      date, tag: order.tag === 'auto' ? 'auto' : tag, supplierId, supplierName: supplier.name,
+      date, supplierId, supplierName: supplier.name,
       items: newItems,
+      discount: !isAuto && discount > 0 ? discount : undefined,
     });
   };
 
@@ -686,8 +707,12 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
     <Dialog open={true} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Sửa đơn nhập</DialogTitle>
-          <DialogDescription>Chỉnh ngày, NCC, tag, sản phẩm và số lượng</DialogDescription>
+          <DialogTitle>Sửa đơn nhập {isAuto ? '(Tự động)' : '(Bổ sung)'}</DialogTitle>
+          <DialogDescription>
+            {isAuto
+              ? 'Đơn tự động dùng giá nhập từ tab Danh mục, không sửa được giá hay chiết khấu'
+              : 'Có thể sửa giá nhập từng sản phẩm và chiết khấu'}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -703,54 +728,87 @@ function EditImportDialog({ order, products, suppliers, onClose, onSubmit }: {
               <Input className="mt-1" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <div>
-            <Label className="text-xs">Tag</Label>
-            {order.tag === 'auto' ? (
-              <div className="mt-1 flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
-                ⚙️ Tự động (không thể đổi tag của đơn tự sinh)
-              </div>
-            ) : (
-              <Select value={tag} onValueChange={v => setTag(v as ImportTag)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="special">🔴 Đặc biệt</SelectItem>
-                  <SelectItem value="supplementary">🟡 Bổ sung</SelectItem>
-                  <SelectItem value="upgraded">🔵 Nâng cấp</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold">Sản phẩm ({items.length})</Label>
-              <Button variant="outline" size="sm" onClick={() => setItems(prev => [...prev, { productId: '', quantity: 1 }])} disabled={!supplierId}>
+              <Button variant="outline" size="sm" onClick={() => setItems(prev => [...prev, { productId: '', quantity: 1, buyPrice: 0 }])} disabled={!supplierId}>
                 <Plus className="mr-1 h-3 w-3" /> Thêm SP
               </Button>
             </div>
             {items.map((it, i) => {
               const prod = products.find(p => p.id === it.productId);
-              const lineTotal = prod ? prod.buyPrice * it.quantity : 0;
+              const price = isAuto
+                ? (prod?.baseBuyPrice ?? prod?.buyPrice ?? 0)
+                : (it.buyPrice ?? prod?.buyPrice ?? 0);
+              const lineTotal = price * it.quantity;
               return (
-                <div key={i} className="flex items-center gap-2">
-                  <Select value={it.productId} onValueChange={v => { const u = [...items]; u[i].productId = v; setItems(u); }}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                    <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Input className="w-16" type="number" min={1} value={it.quantity}
-                    onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
-                  <span className="w-24 shrink-0 text-right text-xs font-bold tabular-nums text-primary">
-                    {lineTotal > 0 ? formatVND(lineTotal) : '—'}
-                  </span>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
-                    onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
+                <div key={i} className="space-y-1.5 rounded-lg border p-2">
+                  <div className="flex items-center gap-2">
+                    <Select value={it.productId} onValueChange={v => {
+                      const u = [...items];
+                      const p = products.find(pp => pp.id === v);
+                      u[i] = { ...u[i], productId: v, buyPrice: p?.buyPrice ?? 0 };
+                      setItems(u);
+                    }}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
+                      <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                      onClick={() => setItems(prev => prev.filter((_, idx) => idx !== i))}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {prod && (
+                    <div className="grid grid-cols-3 gap-2 items-center">
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">SL</Label>
+                        <Input className="h-8 text-xs" type="number" min={1} value={it.quantity}
+                          onChange={e => { const u = [...items]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setItems(u); }} />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Giá nhập (×1000)</Label>
+                        <Input className="h-8 text-xs" type="text" inputMode="decimal"
+                          disabled={isAuto}
+                          value={price > 0 ? (price / 1000).toString() : ''}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value.replace(/,/g, '.'));
+                            const u = [...items];
+                            u[i].buyPrice = isNaN(v) ? 0 : Math.round(v * 1000);
+                            setItems(u);
+                          }} />
+                      </div>
+                      <div className="text-right">
+                        <Label className="text-[10px] text-muted-foreground">Thành tiền</Label>
+                        <div className="text-xs font-bold tabular-nums text-primary truncate">{formatVND(lineTotal)}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
             {items.length > 0 && (
-              <div className="flex justify-end pt-2 border-t text-sm font-bold text-primary">
-                Tổng: {formatVND(total)}
+              <div className="space-y-1.5 pt-2 border-t">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Tạm tính</span>
+                  <span className="font-semibold">{formatVND(subtotal)}</span>
+                </div>
+                {!isAuto && (
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs">Chiết khấu (×1000)</Label>
+                    <Input className="h-8 text-xs w-32 text-right" type="text" inputMode="decimal"
+                      placeholder="0" value={discountInput}
+                      onChange={e => setDiscountInput(e.target.value)} />
+                  </div>
+                )}
+                {discount > 0 && (
+                  <div className="flex justify-between text-xs text-amber-600">
+                    <span>Giảm giá</span>
+                    <span>− {formatVND(discount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-end pt-1 border-t text-sm font-bold text-primary">
+                  Tổng: {formatVND(total)}
+                </div>
               </div>
             )}
           </div>
