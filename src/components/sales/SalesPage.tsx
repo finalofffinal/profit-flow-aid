@@ -233,9 +233,7 @@ export function SalesPage({ salesOrders, products = [], quarters, addNotificatio
                     {ds.totalRevenue === 0 && ds.orders.some(o => o.items[0]?.productId === '__tet__') && (
                       <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px]">🏮 Nghỉ Tết</Badge>
                     )}
-                    {ds.orders.some(o => o.tag === 'special') && <span className="h-2 w-2 rounded-full bg-destructive" />}
                     {ds.orders.some(o => o.tag === 'supplementary') && <span className="h-2 w-2 rounded-full bg-amber-500" />}
-                    {ds.orders.some(o => o.tag === 'upgraded') && <span className="h-2 w-2 rounded-full bg-blue-600" />}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                     {ds.totalRevenue === 0 ? (
