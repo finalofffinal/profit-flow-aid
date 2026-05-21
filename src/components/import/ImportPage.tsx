@@ -447,6 +447,21 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   );
 }
 
+// Item shape inside Add dialog: supports a one-time "ad-hoc" product NOT in catalog
+type AddItem = {
+  productId: string;       // empty = unset; 'custom' = ad-hoc
+  quantity: number;
+  buyPrice?: number;
+  // Ad-hoc only fields:
+  customName?: string;
+  customUnit?: string;
+  customConversionUnit?: string;
+  customConversionRate?: number;
+  customSellPrice?: number;
+};
+
+import { Checkbox } from '@/components/ui/checkbox';
+
 function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
   open: boolean; onClose: () => void;
   suppliers: Supplier[]; products: Product[];
@@ -454,22 +469,30 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
 }) {
   const [supplierId, setSupplierId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  // Tất cả đơn thủ công đều là "Bổ sung"
   const tag: ImportTag = 'supplementary';
-  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; quantity: number; buyPrice?: number }[]>([]);
-  const [images, setImages] = useState<string[]>([]);
-  const [discountInput, setDiscountInput] = useState(''); // x1000 convention
+  const [selectedProducts, setSelectedProducts] = useState<AddItem[]>([]);
+  const [discountInput, setDiscountInput] = useState('');
+  const [hasVat, setHasVat] = useState(false);
 
   const supplierProducts = useMemo(() => products.filter(p => !p.deletedAt && p.supplierId === supplierId), [products, supplierId]);
 
-  const subtotal = useMemo(() => {
-    return selectedProducts.reduce((sum, sp) => {
-      const product = products.find(p => p.id === sp.productId);
-      if (!product) return sum;
-      const price = sp.buyPrice ?? product.buyPrice;
-      return sum + price * sp.quantity;
-    }, 0);
-  }, [selectedProducts, products]);
+  const getLine = (sp: AddItem): { price: number; total: number; valid: boolean } => {
+    if (sp.productId === 'custom') {
+      const price = sp.buyPrice ?? 0;
+      return { price, total: price * sp.quantity, valid: !!sp.customName && price > 0 && sp.quantity > 0 };
+    }
+    const product = products.find(p => p.id === sp.productId);
+    if (!product) return { price: 0, total: 0, valid: false };
+    const price = sp.buyPrice ?? product.buyPrice;
+    return { price, total: price * sp.quantity, valid: true };
+  };
+
+  const subtotal = useMemo(
+    () => selectedProducts.reduce((s, sp) => s + getLine(sp).total, 0),
+    [selectedProducts, products],
+  );
+
+  const vat = useMemo(() => hasVat ? Math.round(subtotal * 0.08) : 0, [hasVat, subtotal]);
 
   const discount = useMemo(() => {
     const v = parseFloat(discountInput.replace(/,/g, '.'));
@@ -477,55 +500,60 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
     return Math.round(v * 1000);
   }, [discountInput]);
 
-  const orderTotal = Math.max(0, subtotal - discount);
+  const orderTotal = Math.max(0, subtotal + vat - discount);
 
   const addItem = () => setSelectedProducts(prev => [...prev, { productId: '', quantity: 1 }]);
   const removeItem = (i: number) => setSelectedProducts(prev => prev.filter((_, idx) => idx !== i));
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    Array.from(files).slice(0, 5 - images.length).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        setImages(prev => [...prev.slice(0, 4), result]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
 
   const handleSubmit = () => {
     const supplier = suppliers.find(s => s.id === supplierId);
     if (!supplier) return;
     const items: ImportOrder['items'] = selectedProducts
-      .filter(sp => sp.productId && sp.quantity > 0)
       .map(sp => {
+        const line = getLine(sp);
+        if (!line.valid || sp.quantity <= 0) return null;
+        if (sp.productId === 'custom') {
+          return {
+            productId: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            productName: sp.customName!.trim(),
+            supplierId: supplier.id,
+            supplierName: supplier.name,
+            unit: (sp.customUnit || 'cái').trim(),
+            conversionUnit: (sp.customConversionUnit || sp.customUnit || 'cái').trim(),
+            conversionRate: sp.customConversionRate && sp.customConversionRate > 0 ? sp.customConversionRate : 1,
+            quantity: Math.max(1, sp.quantity),
+            buyPrice: line.price,
+            total: line.price * Math.max(1, sp.quantity),
+          };
+        }
         const product = products.find(p => p.id === sp.productId)!;
-        const price = sp.buyPrice ?? product.buyPrice;
         return {
           productId: product.id, productName: product.name,
           supplierId: product.supplierId, supplierName: supplier.name,
           unit: product.unit, conversionUnit: product.conversionUnit || product.unit,
           conversionRate: product.conversionRate || 1,
           quantity: Math.max(1, sp.quantity),
-          buyPrice: price,
-          total: price * Math.max(1, sp.quantity),
+          buyPrice: line.price,
+          total: line.price * Math.max(1, sp.quantity),
         };
-      });
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
     if (items.length === 0) return;
     const sub = items.reduce((s, it) => s + it.total, 0);
+    const vatAmt = hasVat ? Math.round(sub * 0.08) : 0;
     onSubmit({
       supplierId, supplierName: supplier.name, date, items,
-      total: Math.max(0, sub - discount),
+      total: Math.max(0, sub + vatAmt - discount),
       discount: discount > 0 ? discount : undefined,
-      tag, locked: false, images,
+      hasVat,
+      vat: vatAmt > 0 ? vatAmt : undefined,
+      tag, locked: false, images: [],
     });
     onClose();
     setSupplierId('');
     setSelectedProducts([]);
-    setImages([]);
     setDiscountInput('');
+    setHasVat(false);
   };
 
   return (
@@ -533,7 +561,7 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm đơn nhập (Bổ sung)</DialogTitle>
-          <DialogDescription>Có thể chỉnh giá nhập từng sản phẩm và nhập tiền chiết khấu</DialogDescription>
+          <DialogDescription>Sửa giá nhập từng SP, thêm SP ngoài danh mục, VAT 8% và chiết khấu</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -551,52 +579,75 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs">Ảnh đính kèm (tối đa 5)</Label>
-            <div className="flex gap-2 flex-wrap">
-              {images.map((img, i) => (
-                <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border">
-                  <img src={img} alt="" className="w-full h-full object-cover" />
-                  <button className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-bl p-0.5" onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-              {images.length < 5 && (
-                <label className="w-16 h-16 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors">
-                  <Camera className="h-5 w-5 text-muted-foreground" />
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
-                </label>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold">Sản phẩm</Label>
               <Button variant="outline" size="sm" onClick={addItem} disabled={!supplierId}><Plus className="mr-1 h-3 w-3" /> Thêm SP</Button>
             </div>
             {selectedProducts.map((sp, i) => {
-              const prod = products.find(p => p.id === sp.productId);
-              const price = sp.buyPrice ?? (prod?.buyPrice ?? 0);
-              const lineTotal = price * sp.quantity;
+              const isCustom = sp.productId === 'custom';
+              const prod = isCustom ? null : products.find(p => p.id === sp.productId);
+              const { price, total: lineTotal } = getLine(sp);
               return (
                 <div key={i} className="space-y-1.5 rounded-lg border p-2">
                   <div className="flex items-center gap-2">
                     <Select value={sp.productId} onValueChange={v => {
                       const u = [...selectedProducts];
-                      const p = products.find(pp => pp.id === v);
-                      u[i] = { ...u[i], productId: v, buyPrice: p?.buyPrice };
+                      if (v === 'custom') {
+                        u[i] = { ...u[i], productId: 'custom', buyPrice: 0, customName: '', customUnit: 'cái', customConversionUnit: 'cái', customConversionRate: 1, customSellPrice: 0 };
+                      } else {
+                        const p = products.find(pp => pp.id === v);
+                        u[i] = { productId: v, quantity: u[i].quantity, buyPrice: p?.buyPrice };
+                      }
                       setSelectedProducts(u);
                     }}>
                       <SelectTrigger className="flex-1"><SelectValue placeholder="Chọn SP" /></SelectTrigger>
-                      <SelectContent>{supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                      <SelectContent>
+                        {supplierProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                        <SelectItem value="custom">+ Sản phẩm mới (chỉ đơn này)</SelectItem>
+                      </SelectContent>
                     </Select>
                     <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(i)}><X className="h-3.5 w-3.5" /></Button>
                   </div>
-                  {prod && (
+
+                  {isCustom && (
+                    <div className="space-y-1.5 p-2 rounded bg-muted/30 border border-dashed">
+                      <Input className="h-8 text-xs" placeholder="Tên sản phẩm (vd: Nước mắm ABC)"
+                        value={sp.customName || ''}
+                        onChange={e => { const u = [...selectedProducts]; u[i].customName = e.target.value; setSelectedProducts(u); }} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input className="h-8 text-xs" placeholder="Đơn vị lớn (vd: thùng)"
+                          value={sp.customUnit || ''}
+                          onChange={e => { const u = [...selectedProducts]; u[i].customUnit = e.target.value; setSelectedProducts(u); }} />
+                        <Input className="h-8 text-xs" placeholder="Đơn vị bé (vd: chai)"
+                          value={sp.customConversionUnit || ''}
+                          onChange={e => { const u = [...selectedProducts]; u[i].customConversionUnit = e.target.value; setSelectedProducts(u); }} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Qui đổi (1 lớn = ? bé)</Label>
+                          <Input className="h-8 text-xs" type="number" min={1}
+                            value={sp.customConversionRate ?? 1}
+                            onChange={e => { const u = [...selectedProducts]; u[i].customConversionRate = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-muted-foreground">Giá bán/đv lớn (×1000)</Label>
+                          <Input className="h-8 text-xs" type="text" inputMode="decimal"
+                            value={(sp.customSellPrice ?? 0) > 0 ? ((sp.customSellPrice ?? 0) / 1000).toString() : ''}
+                            onChange={e => {
+                              const v = parseFloat(e.target.value.replace(/,/g, '.'));
+                              const u = [...selectedProducts];
+                              u[i].customSellPrice = isNaN(v) ? 0 : Math.round(v * 1000);
+                              setSelectedProducts(u);
+                            }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(prod || isCustom) && (
                     <div className="grid grid-cols-3 gap-2 items-center">
                       <div>
-                        <Label className="text-[10px] text-muted-foreground">SL</Label>
+                        <Label className="text-[10px] text-muted-foreground">SL ({isCustom ? (sp.customUnit || 'đv') : prod?.unit})</Label>
                         <Input className="h-8 text-xs" type="number" min={1} value={sp.quantity}
                           onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
                       </div>
@@ -627,6 +678,17 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
                   <span>Tạm tính</span>
                   <span className="font-semibold">{formatVND(subtotal)}</span>
                 </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox checked={hasVat} onCheckedChange={v => setHasVat(!!v)} />
+                    <span className="text-xs">Thuế GTGT 8%</span>
+                  </label>
+                  <span className="text-xs font-semibold text-blue-600 tabular-nums">
+                    {hasVat ? `+ ${formatVND(vat)}` : '—'}
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-xs">Chiết khấu (×1000)</Label>
                   <Input className="h-8 text-xs w-32 text-right" type="text" inputMode="decimal"
