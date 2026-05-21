@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { usePeriod } from '@/contexts/PeriodContext';
 import { TimeRangeFilter, TimeRange, filterByTimeRange } from '@/components/common/TimeRangeFilter';
 import { exportImportPdf } from '@/lib/exportImportPdf';
@@ -460,7 +461,8 @@ type AddItem = {
   customSellPrice?: number;
 };
 
-import { Checkbox } from '@/components/ui/checkbox';
+
+
 
 function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
   open: boolean; onClose: () => void;
