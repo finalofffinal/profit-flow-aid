@@ -13,7 +13,7 @@ import {
   useQuarters, useImportOrders, useSalesOrders, useInventoryBatches,
   useRegenSeeds, useGeneratedQuarters,
 } from '@/hooks/useStore';
-import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder, DATA_ENGINE_VERSION } from '@/lib/dataEngine';
+import { generateQuarterData, computeCarryOverStock, computeInventorySnapshot, generateSupplementaryOrder, generateSupplementaryAutoOrders, DATA_ENGINE_VERSION } from '@/lib/dataEngine';
 import { syncFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { TabId, QuarterData } from '@/types';
