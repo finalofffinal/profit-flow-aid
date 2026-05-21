@@ -267,7 +267,13 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('bánh tráng') || has('banh trang')) {
     return {
       ordersCount: [1, 1],
-      allowedProducts: (p) => nm(p.name, 'vuông', 'vuong', 'tròn', 'tron'),
+      // Chỉ "vuông" và "tròn (lớn)" — KHÔNG nhận tròn nhỏ
+      allowedProducts: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'vuông', 'vuong')) return true;
+        if (nm(ln, 'tròn', 'tron')) return nm(ln, 'lớn', 'lon', '(lớn)', '(lon)');
+        return false;
+      },
       maxQtyPerQuarter: () => 2,
       maxQtyPerProduct: () => 2,
     };
@@ -494,6 +500,8 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'nấm đông cô', 'nam dong co')) return 3;
         if (nm(ln, 'sốt thịt nướng gói 70', 'sot thit nuong goi 70')) return 2;
         if (nm(ln, 'hương việt', 'huong viet')) return 3;
+        // Aji-Mayo: 10 đơn vị, dồn vào 1 đơn duy nhất / quý
+        if (nm(ln, 'aji-mayo', 'mayonnaise')) return 10;
         return 2;
       },
       maxQtyPerQuarter: (p) => {
@@ -514,6 +522,8 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'tương hột 250', 'tuong hot 250')) return 6;
         if (nm(ln, 'tương ớt 830', 'tuong ot 830')) return 2;
         if (nm(ln, 'bột chiên xù 1kg', 'bot chien xu 1kg')) return 2;
+        // Generic "tương đen" (không có size 700/5L): 2/quý
+        if (nm(ln, 'tương đen', 'tuong den') && !nm(ln, '700', '5l')) return 2;
         return undefined;
       },
     };
@@ -756,7 +766,24 @@ function generateSupplierImports(
   // ===== Đối với NCC lớn (>10 SP): bao phủ toàn bộ + cân bằng tiền =====
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
-  if (isLargeSupplier) {
+  if (rule.uniqueAcrossOrders && autoCount > 0) {
+    // Chợ Lớn: mỗi SP xuất hiện DUY NHẤT 1 lần trong toàn bộ N đơn,
+    // phân phối ~đều ra các đơn (chênh lệch ≤1 SP giữa các đơn).
+    const shuffled = [...eligible].sort(() => rand() - 0.5);
+    shuffled.forEach((p, i) => {
+      const orderIdx = i % autoCount;
+      const ruleMax = rule.maxQtyPerProduct?.(p) ?? 1;
+      const qCap = rule.maxQtyPerQuarter?.(p);
+      const minReq = rule.minQtyPerOrder?.(p);
+      const cap = qCap !== undefined ? Math.min(ruleMax, qCap) : ruleMax;
+      let qty = minReq ?? Math.max(1, Math.min(cap, Math.floor(1 + rand() * cap)));
+      qty = Math.min(qty, cap);
+      if (qty <= 0) return;
+      orderItems[orderIdx].push(buildItem(p, supplier, qty));
+      qtyUsedQuarter.set(p.id, qty);
+      productsUsed.add(p.id);
+    });
+  } else if (isLargeSupplier) {
     // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
     // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
     // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
