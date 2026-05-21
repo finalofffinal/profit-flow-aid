@@ -359,19 +359,27 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                             <span className="font-semibold shrink-0 ml-2">{formatVND(item.total)}</span>
                           </div>
                         ))}
-                        {order.discount && order.discount > 0 ? (
+                        {(order.discount && order.discount > 0) || order.vat ? (
                           <>
                             <div className="flex justify-between text-xs text-muted-foreground pt-1 border-t border-border">
                               <span>Tạm tính</span>
                               <span>{formatVND(order.items.reduce((s, it) => s + it.total, 0))}</span>
                             </div>
-                            <div className="flex justify-between text-xs text-amber-600">
-                              <span>Chiết khấu</span>
-                              <span>− {formatVND(order.discount)}</span>
-                            </div>
+                            {order.vat ? (
+                              <div className="flex justify-between text-xs text-blue-600">
+                                <span>Thuế GTGT (8%)</span>
+                                <span>+ {formatVND(order.vat)}</span>
+                              </div>
+                            ) : null}
+                            {order.discount && order.discount > 0 ? (
+                              <div className="flex justify-between text-xs text-amber-600">
+                                <span>Chiết khấu</span>
+                                <span>− {formatVND(order.discount)}</span>
+                              </div>
+                            ) : null}
                           </>
                         ) : null}
-                        <div className={`flex justify-end ${order.discount && order.discount > 0 ? '' : 'pt-1 border-t border-border'} text-xs font-bold text-primary`}>
+                        <div className={`flex justify-end ${(order.discount && order.discount > 0) || order.vat ? '' : 'pt-1 border-t border-border'} text-xs font-bold text-primary`}>
                           Tổng đơn: {formatVND(order.total)}
                         </div>
                       </div>
