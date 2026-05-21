@@ -49,6 +49,9 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [showGenAuto, setShowGenAuto] = useState(false);
+  const [genSupplierId, setGenSupplierId] = useState<string>('');
+  const [genCount, setGenCount] = useState<number>(1);
 
   const currentQLocked = isQuarterLocked ? isQuarterLocked(selQ, selYear) : false;
   const currentQuarter = quarters?.find(q => q.quarter === selQ && q.year === selYear);
