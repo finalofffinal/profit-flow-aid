@@ -31,10 +31,11 @@ interface ImportPageProps {
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
   onClearAutoOrders?: (q: number, y: number) => void;
+  onGenerateAutoOrders?: (q: number, y: number, supplierId: string, count: number) => void;
   onRebalanceQuarter?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onRebalanceQuarter }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onGenerateAutoOrders, onRebalanceQuarter }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
@@ -48,6 +49,9 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   const [timeRange, setTimeRange] = useState<TimeRange>('quarter');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [showGenAuto, setShowGenAuto] = useState(false);
+  const [genSupplierId, setGenSupplierId] = useState<string>('');
+  const [genCount, setGenCount] = useState<number>(1);
 
   const currentQLocked = isQuarterLocked ? isQuarterLocked(selQ, selYear) : false;
   const currentQuarter = quarters?.find(q => q.quarter === selQ && q.year === selYear);
@@ -184,7 +188,13 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <span className="hidden md:inline">Ngẫu nhiên</span>
             </Button>
           )}
-          {/* Đã bỏ nút "Xóa auto" theo spec mới — chỉ giữ "Ngẫu nhiên" */}
+          {onGenerateAutoOrders && !currentQLocked && (
+            <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2" onClick={() => { setGenSupplierId(suppliers[0]?.id || ''); setGenCount(1); setShowGenAuto(true); }} title="Tạo thêm đơn tự động (bỏ qua giới hạn số đơn của NCC)">
+              <Wand2 className="h-3.5 w-3.5 md:mr-1" />
+              <span className="hidden md:inline">Tạo đơn tự động</span>
+            </Button>
+          )}
+          {/* Đã bỏ nút "Xóa auto" theo spec mới */}
           <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
@@ -440,6 +450,56 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           }}
         />
       )}
+
+      {/* Generate Auto Orders Dialog */}
+      <Dialog open={showGenAuto} onOpenChange={setShowGenAuto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tạo đơn tự động bổ sung</DialogTitle>
+            <DialogDescription>
+              Tạo thêm đơn tự động cho 1 nhà cung cấp trong Q{selQ}/{selYear}.
+              Không bị giới hạn số đơn tối đa/quý của NCC.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Nhà cung cấp</Label>
+              <Select value={genSupplierId} onValueChange={setGenSupplierId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.filter(s => !s.deletedAt).map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Số đơn cần tạo</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={genCount}
+                onChange={e => setGenCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                className="h-9"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGenAuto(false)}>Hủy</Button>
+            <Button
+              onClick={() => {
+                if (!genSupplierId || !onGenerateAutoOrders) return;
+                onGenerateAutoOrders(selQ, selYear, genSupplierId, genCount);
+                setShowGenAuto(false);
+              }}
+              disabled={!genSupplierId}
+            >
+              Tạo {genCount} đơn
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
