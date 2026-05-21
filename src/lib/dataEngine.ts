@@ -679,9 +679,10 @@ function generateSupplierImports(
   days: string[],
   rand: () => number,
   stockMap: Map<string, number>,
+  overrideOrdersCount?: number,
 ): { orders: ImportOrder[]; batches: InventoryBatch[] } {
   const rule = getSupplierRule(supplier.name);
-  if (rule.manualOnly) return { orders: [], batches: [] };
+  if (rule.manualOnly && overrideOrdersCount === undefined) return { orders: [], batches: [] };
 
   const eligible = prods.filter(p => {
     if (rule.excludeProduct?.(p)) return false;
@@ -691,8 +692,13 @@ function generateSupplierImports(
   if (eligible.length === 0) return { orders: [], batches: [] };
 
   const [minOrders, maxOrders] = rule.ordersCount;
-  const total = rule.fixedOrdersCount ?? (minOrders + Math.floor(rand() * (maxOrders - minOrders + 1)));
-  const autoCount = rule.fixedOrdersCount ?? Math.max(0, total - manualOrdersCount);
+  let autoCount: number;
+  if (overrideOrdersCount !== undefined) {
+    autoCount = Math.max(0, overrideOrdersCount);
+  } else {
+    const total = rule.fixedOrdersCount ?? (minOrders + Math.floor(rand() * (maxOrders - minOrders + 1)));
+    autoCount = rule.fixedOrdersCount ?? Math.max(0, total - manualOrdersCount);
+  }
   if (autoCount === 0) return { orders: [], batches: [] };
 
   // Schedule order days — RẢI ĐỀU CẢ QUÝ nhưng ƯU TIÊN ĐẦU/GIỮA (gối đầu hàng).
