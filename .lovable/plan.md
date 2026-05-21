@@ -1,56 +1,77 @@
+# Kế hoạch: Cập nhật logic đơn tự động Tab Nhập hàng
+
+## 1. UI — Tab Nhập hàng (`ImportPage.tsx`)
+
+- **Xóa** nút "Xóa auto" (Eraser).
+- **Giữ** nút "Ngẫu nhiên" (Shuffle): regenerate đơn auto, tôn trọng đơn auto đã khóa + đơn bổ sung.
+- **Thêm** nút mới **"Tạo đơn tự động"** (icon Plus/Wand2):
+  - Mở dialog yêu cầu nhập **số lượng đơn** (số nguyên tùy ý).
+  - Tạo `N` đơn auto **bổ sung** vào quý hiện tại, KHÔNG bị giới hạn bởi `ordersCount` của rule NCC.
+  - Mỗi đơn chỉ gồm các sản phẩm có **yêu cầu ≥ 2 đơn vị lớn/quý** (sản phẩm fixed-1 bị loại).
+  - Số lượng vẫn tuân thủ `maxQtyPerProduct/maxQtyPerOrder`.
+  - Đơn tạo bởi nút này có `tag='auto'` (có thể bị Ngẫu nhiên thay đổi, trừ khi khóa).
+
+## 2. Logic — `dataEngine.ts`
+
+### 2a. Viết lại toàn bộ `getSupplierRule()` theo spec mới
+
+Mở rộng interface để hỗ trợ:
+
+- `allowedProducts?: (p) => boolean` — whitelist SP được phép xuất hiện trong auto.
+- `minItemsPerOrder?: number` — cho TADA/Địa Đạo/Chợ Lớn (≥5 SP/đơn).
+- `fixedOrdersCount?: number` — Chợ Lớn cố định 5 đơn.
+
+Rule theo NCC (đơn vị: "đơn vị lớn"/quý):
 
 
-# Q2/Q3: Nhập nhiều, tồn kho cao, bán dần
+| NCC            | #đơn/quý | Whitelist + qty                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| -------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **hpv**        | 3–5      | Hạt nêm 1.8Kg: 1/q; Shiitake 330ML: max 20/q, mỗi lần ≥10; Xúc xích Bin&Bon: ≤20/q, ≥5/đơn; NM Nam Ngư 750: ≤3/đơn; NM Đệ Nhị: ≤3/đơn; NM Siêu Tiết Kiệm 5L: ≤2/đơn; Nhất Ca: 1/q; Nhị Ca: ≤3/đơn; Tương ớt 500ML: 3/q. Khác → loại.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **bánh tráng** | 1        | BT vuông: 2/q; BT tròn lớn: 2/q.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **đường**      | 3        | Đường trắng bao: 1/q; Đường trắng đóng gói: 1/q; Đường mía: 1/q; Phèn viên: 3/đơn.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **mắm**        | 1        | Ruốc nhỏ 1, trung 2, lớn 3; Tôm Bắc nhỏ/lớn 1; Nêm nhỏ 1, lớn 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **giấm**       | 1        | Tinh luyện 2; Nuôi 1; Cốt 10 chai/q.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **vĩnh thuận** | 0        | manualOnly                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **sen việt**   | 1        | Bột chiên giòn 1KG: 1; 150G: 2; Bơ thực vật 1KG: 1; Dầu nành 1L: 2; 2L: 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **đậu**        | 1        | Đen 2; Đỏ 1; Xanh hột 1; Xanh tróc vỏ 2; Xanh nửa vàng 1; Phộng nhỏ 2; Điều màu 5.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **cô lan**     | 1        | Bún tàu 1; Miến dong HN 10 bịch; Măng 2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **mỹ nga**     | 1        | NM 800ML: 3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **liên thành** | 1        | NM chay 1; NM nhãn vàng 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **huy hoàng**  | 1        | Bún tươi 10 gói.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **chấn hưng**  | 1        | Mắm nêm pha 170ML 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **TADA**       | ≥5       | minItems=5/đơn; whitelist ~30 SP với cap chi tiết (Tương ớt 700ML ≤3/đơn, Tương đen 5L 1/q, Lẩu thái 4/đơn, Dầu giấm 4/đơn, Sốt lẩu chua HS 2/q, Sa tế tôm 90G 4/đơn 450G 2/đơn, Tương đen 2/q, Dầu hào 350G 2/đơn, Nấm mèo 5/đơn, Nấm đông cô 3/đơn, NT Thanh Dịu+Đậm Đặc 2/q, Sốt xá xíu gói 2/q, Sốt thịt nướng hủ 200G 4/q, gói 70G 2/đơn, Ớt sa tế 150G & ớt khô 100G 1/q mỗi loại, NT Hương Việt ≤3/đơn, Dầu hào 820G 3/q, Xì dầu đặc biệt 5/q, Sốt hải sản 5/q, Chao 4 loại 1/q mỗi, Hạt nêm nấm hương 250G+450G 1/q mỗi, Aji-Mayo 10/1 đơn duy nhất, Sườn kí 2/q, Tương hột 250G 6/q, Tương ớt 830G 2/q, Bột chiên xù 1KG 2/q). |
+| **địa đạo**    | ≥6       | minItems=5/đơn; whitelist riêng (đa số 1/q; Cooking Oil 1L/2L ≤3/đơn; Bột ngọt 454 ≤2/đơn, 400G ≤3, 1KG ≤5, 5KG ≤3; Nhất Ca 1/q, Nhị Ca 3/q; NM Nam Ngư 750 ≤3/đơn, Đệ Nhị ≤5/đơn; Hạt nêm 400G+900G 2/q, Tương ớt+cà 2.1KG 2/q; Tương ớt 830ML 3/q; Tương cà+ớt 270ML 2/q).                                                                                                                                                                                                                                                                                                                                                            |
+| **chợ lớn**    | fixed 5  | Whitelist ~55 SP (đã liệt kê cụ thể), mỗi SP **chỉ xuất hiện 1 lần** duy nhất trong 5 đơn, phân phối đều ~11 SP/đơn.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
-## Yêu cầu
 
-Q2 & Q3 doanh thu thấp → vẫn **nhập hàng nhiều** (chuẩn bị kho cho Q4 cao điểm) → **hàng dồn lại trong kho**, bán ra từ từ. Đây là logic stockpiling trước mùa cao điểm — không phải nhập-bán cân bằng.
+### 2b. Cập nhật generator (`generateSupplierImports`)
 
-## Hiện trạng vs Mục tiêu
+- Lọc SP qua `allowedProducts` (nếu có) thay vì `excludeProduct`.
+- Tôn trọng `minItemsPerOrder` (mặc định 3, TADA/Địa Đạo = 5).
+- Chợ Lớn: nhánh đặc biệt — phân phối không trùng giữa các đơn.
+- Khi randomize (Ngẫu nhiên): SP đã xuất hiện trong đơn bổ sung + đơn auto đã khóa được trừ khỏi cap còn lại, các đơn auto mới tập trung vào SP **chưa đủ**.
 
-| Quý | Doanh thu | Nhập (ratio) | Tồn cuối quý | Trạng thái hiện tại |
-|---|---|---|---|---|
-| Q1 | Trung bình | 0.30–0.40× (bán nốt 2025) | Cạn dần | ✓ OK |
-| **Q2** | **Thấp** | **Cần 1.8–2.2×** (nhập gấp đôi bán) | **Dồn cao** | Đang 1.6–1.8 → **tăng** |
-| **Q3** | **Thấp** | **Cần 2.0–2.4×** (nhập gấp 2-2.4× bán) | **Dồn rất cao** | Đang 1.7–1.9 → **tăng** |
-| Q4 | Cao điểm | 1.20–1.30× (nhập hơn bán 20-30%) | Vừa phải | ✓ OK |
+### 2c. Hàm mới: `generateSupplementaryAutoOrders(quarter, products, suppliers, N)`
 
-Số lượng "X thùng + Y chai" hiện cao bất thường KHÔNG phải do ratio nhập sai — mà do **`endingStockRatio` snapshot quá lớn** (20–31%) khiến FIFO giữ lại quá nhiều batch cuối quý. Ratio nhập phải GIỮ CAO (đúng ý user), chỉ giảm `endingStockRatio` xuống vừa phải.
+- Tạo N đơn auto, chỉ với SP có `maxQtyPerQuarter >= 2` hoặc `maxQtyPerProduct >= 2` từ rule.
+- Bỏ qua tổng cap `ordersCount` của rule.
+- Phân phối SP ngẫu nhiên qua N đơn, tôn trọng `maxQtyPerProduct`.
 
-## Giải pháp — `src/lib/dataEngine.ts`
+## 3. Wiring
 
-Tinh chỉnh `getQuarterInventoryProfile`:
+- `Index.tsx` (hoặc nơi truyền props): truyền callback `onGenerateAutoOrders(q, y, count)` xuống `ImportPage`.
+- Bỏ prop `onClearAutoOrders` (đã xóa nút).
+- `constants.ts`: không thay đổi (tag auto/supplementary đã có).
 
-| Quý | `seasonalRatio` mới | `endingStockRatio` mới | Ý nghĩa |
-|---|---|---|---|
-| Q1 | 0.30–0.40 (giữ) | 0.05–0.10 (giữ) | Cạn nốt tồn 2025 |
-| **Q2** | **1.80–2.00** ↑ | **0.15–0.20** ↓ từ 0.20–0.31 | Nhập gấp đôi bán, dồn vừa phải |
-| **Q3** | **2.00–2.20** ↑ | **0.18–0.22** ↓ từ 0.20–0.31 | Nhập gấp 2× bán, dồn cao chuẩn bị Q4 |
-| Q4 | 1.20–1.30 (giữ) | 0.08–0.12 (giữ) | Bán xả tồn Q3 + nhập bù 20-30% |
+## Phạm vi file
 
-**Cơ chế FIFO sẽ tự xử lý**:
-- Q2/Q3 nhập batch lớn → sales orders chỉ tiêu thụ một phần → batch còn lại nằm trong kho.
-- `computeInventorySnapshot` cuối Q2/Q3 sẽ thấy nhiều batch dư → "X thùng + Y chai" hiển thị đúng số dồn.
-- Sang Q4, `computeCarryOverStock` mang tồn Q3 sang → Q4 bán mạnh, tồn giảm.
+- `src/lib/dataEngine.ts` — viết lại `getSupplierRule` + thêm `generateSupplementaryAutoOrders`.
+- `src/components/import/ImportPage.tsx` — bỏ nút "Xóa auto", thêm nút + dialog "Tạo đơn tự động".
+- `src/pages/Index.tsx` — wiring callback mới, bỏ callback cũ.
 
-**Không động `endingStockRatio` quá thấp** vì cần thật sự có hàng dồn trong kho cuối Q2/Q3 (đó là điểm chính của yêu cầu).
+## Câu hỏi xác nhận trước khi code
 
-## File sẽ sửa
-
-- `src/lib/dataEngine.ts` — `getQuarterInventoryProfile`: tăng `seasonalRatio` Q2/Q3, giảm nhẹ `endingStockRatio` Q2/Q3.
-
-## Không động
-
-- `src/components/inventory/InventoryPage.tsx` (UI đã đúng).
-- `src/lib/exportPdf.ts`, `exportExcel.ts`.
-- Logic doanh thu Sales = 100% target Dashboard.
-- Logic FIFO `computeInventorySnapshot`, `computeCarryOverStock`.
-
-## Kết quả mong đợi
-
-- Tab Nhập hàng Q2: tổng nhập **~2× tổng bán** (vd bán 150tr → nhập ~300tr).
-- Tab Nhập hàng Q3: tổng nhập **~2.1× tổng bán** (vd bán 160tr → nhập ~340tr).
-- Tab Kho hàng cuối Q2: chênh lệch **+150tr** (xanh), tồn mỗi SP **vài chục đơn vị** (vd 8 thùng + 3 chai).
-- Tab Kho hàng cuối Q3: chênh lệch **+180tr** (xanh), tồn dồn cao hơn Q2.
-- Tab Kho hàng cuối Q4: chênh lệch nhỏ (~+20-30% bán), tồn giảm rõ rệt vì xả cho mùa cao điểm.
-
+1. **Logic "Xóa auto"**: tôi bỏ hoàn toàn nút này. Bạn vẫn có thể xóa từng đơn auto thủ công qua icon Trash trên mỗi đơn — OK chứ?
+2. **Khi bấm "Ngẫu nhiên"**: hiện tại regen toàn bộ đơn auto theo `ordersCount` của rule (3–5 cho HPV, v.v.). Sau update, "Ngẫu nhiên" có nên tự động **bổ sung thêm SP chưa đủ cap** vào các đơn auto mới (không tăng số đơn vượt rule), hay chỉ regen với số đơn theo rule như cũ?
+3. **Đơn tạo bởi "Tạo đơn tự động"**: khi bấm Ngẫu nhiên, các đơn này có bị xóa/tạo lại không, hay được giữ riêng (chỉ khóa mới giữ được)? Theo spec bạn viết: "có thể bị thay đổi nếu nút Ngẫu nhiên kích hoạt, tuy nhiên nếu đơn này bị khóa thì không bị thay đổi" → tôi hiểu là **bị xóa và tạo lại** giống đơn auto bình thường. Đúng không?  
+Giữ nguyên các đơn đã khóa và các đơn bổ sung

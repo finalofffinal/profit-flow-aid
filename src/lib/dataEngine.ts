@@ -188,115 +188,149 @@ export interface GeneratedData {
 
 interface SupplierRuleResult {
   ordersCount: [number, number];
+  /** Cố định số đơn (override ordersCount). Dùng cho Chợ Lớn = 5. */
+  fixedOrdersCount?: number;
   /** Số lượng đơn vị lớn tối đa mỗi sản phẩm trong 1 đơn (mặc định 3) */
-  maxQtyPerProduct?: (product: Product) => number;
+  maxQtyPerProduct?: (product: Product) => number | undefined;
   /** Cap tổng cả quý cho 1 sản phẩm (cộng dồn các đơn) */
   maxQtyPerQuarter?: (product: Product) => number | undefined;
   /** Số lượng tối thiểu mỗi đơn (e.g. miến dong = 10) */
   minQtyPerOrder?: (product: Product) => number | undefined;
   /** Loại bỏ sản phẩm khỏi đơn tự động */
   excludeProduct?: (product: Product) => boolean;
+  /** Whitelist: chỉ những SP này mới xuất hiện trong đơn tự động */
+  allowedProducts?: (product: Product) => boolean;
+  /** Số SP tối thiểu trong 1 đơn (mặc định 3, TADA/Địa Đạo = 5) */
+  minItemsPerOrder?: number;
   /** Ưu tiên không trùng sản phẩm giữa các đơn trong cùng quý */
   preferUniquePerQuarter?: boolean;
+  /** Mỗi SP chỉ xuất hiện DUY NHẤT 1 lần trong tất cả đơn (Chợ Lớn) */
+  uniqueAcrossOrders?: boolean;
   /** Không tạo tự động */
   manualOnly?: boolean;
 }
+
+// Helper: name matching (case-insensitive)
+const nm = (name: string, ...patterns: string[]): boolean => {
+  const ln = name.toLowerCase();
+  return patterns.some(p => ln.includes(p.toLowerCase()));
+};
 
 function getSupplierRule(supplierName: string): SupplierRuleResult {
   const n = supplierName.toLowerCase();
   const has = (s: string) => n.includes(s.toLowerCase());
 
-  // QUY ƯỚC: maxQtyPerProduct/maxQtyPerQuarter trả `undefined` = KHÔNG có rule cứng cho SP đó.
-  // Caller dùng default mềm (3) khi tạo đơn ban đầu, NHƯNG khi rebalance scale lên/xuống
-  // sẽ KHÔNG clamp (cho phép tăng tự nhiên). Chỉ SP có rule cứng (số cụ thể) mới bị clamp.
-
-  // Vifon: 1 đơn/quý, tổng ≤3 đơn vị lớn, BẮT BUỘC đủ 2 SP khác nhau
-  if (has('vifon')) return {
-    ordersCount: [1, 1],
-    maxQtyPerProduct: () => 2,        // ≤2 mỗi SP để đảm bảo đủ chỗ cho 2 SP
-    maxQtyPerQuarter: () => 2,        // tổng cả quý cho 1 SP cũng ≤2
-    preferUniquePerQuarter: false,
-  };
-
-  if (has('liên thành') || has('lien thanh')) {
-    return { ordersCount: [1, 1], maxQtyPerProduct: () => 1 };
-  }
-
-  if (has('ánh 3 miền') || has('anh 3 mien')) {
-    return { ordersCount: [2, 2] };
-  }
-
-  if (has('cô lan') || has('co lan')) {
+  // ===== HPV: 3-5 đơn/quý, whitelist =====
+  if (has('hpv')) {
+    const isAllowed = (p: Product) => {
+      const ln = p.name.toLowerCase();
+      return nm(ln, 'hạt nêm 1,8', 'hạt nêm 1.8', 'hat nem 1.8', 'hat nem 1,8')
+        || nm(ln, 'shiitake')
+        || nm(ln, 'xúc xích', 'xuc xich', 'bin & bon', 'bin&bon', 'bin bon')
+        || nm(ln, 'nam ngư 750', 'nam ngu 750')
+        || nm(ln, 'đệ nhị', 'de nhi')
+        || nm(ln, 'siêu tiết kiệm 5l', 'sieu tiet kiem 5l')
+        || nm(ln, 'nhất ca', 'nhat ca')
+        || nm(ln, 'nhị ca', 'nhi ca')
+        || nm(ln, 'tương ớt 500ml', 'tuong ot 500ml');
+    };
     return {
-      ordersCount: [2, 2],
-      preferUniquePerQuarter: true,
+      ordersCount: [3, 5],
+      allowedProducts: isAllowed,
+      maxQtyPerQuarter: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'hạt nêm 1,8', 'hạt nêm 1.8', 'hat nem 1.8', 'hat nem 1,8')) return 1;
+        if (nm(ln, 'shiitake')) return 20;
+        if (nm(ln, 'xúc xích', 'xuc xich', 'bin & bon', 'bin&bon')) return 20;
+        if (nm(ln, 'nhất ca', 'nhat ca')) return 1;
+        if (nm(ln, 'tương ớt 500ml', 'tuong ot 500ml')) return 3;
+        return undefined;
+      },
       maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('miến dong')) return 10;
-        if (lp.includes('bún tàu') || lp.includes('bun tau')) return 1;
-        if (lp.includes('măng') || lp.includes('mang')) return 2;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'nam ngư 750', 'nam ngu 750')) return 3;
+        if (nm(ln, 'đệ nhị', 'de nhi')) return 3;
+        if (nm(ln, 'siêu tiết kiệm 5l', 'sieu tiet kiem 5l')) return 2;
+        if (nm(ln, 'nhị ca', 'nhi ca')) return 3;
+        if (nm(ln, 'shiitake')) return 10;
         return undefined;
       },
       minQtyPerOrder: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('miến dong')) return 10;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'shiitake')) return 10;
+        if (nm(ln, 'xúc xích', 'xuc xich', 'bin & bon', 'bin&bon')) return 5;
         return undefined;
       },
     };
   }
 
-  if (has('đậu') || has('dau')) {
+  if (has('bánh tráng') || has('banh trang')) {
     return {
-      ordersCount: [2, 2],
-      preferUniquePerQuarter: true,
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'vuông', 'vuong', 'tròn', 'tron'),
+      maxQtyPerQuarter: () => 2,
       maxQtyPerProduct: () => 2,
     };
   }
 
-  if (has('hpv')) {
+  if (has('đường') || has('duong')) {
     return {
-      ordersCount: [9, 12], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
-      excludeProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        return lp.includes('nam ngư cao cấp 500ml') || lp.includes('nam ngu cao cap 500ml')
-          || lp.includes('nam ngư nhãn vàng 650ml') || lp.includes('nam ngu nhan vang 650ml')
-          || lp.includes('tương ớt 250ml') || lp.includes('tuong ot 250ml')
-          || lp.includes('nhị ca') || lp.includes('nhi ca');
-      },
+      ordersCount: [3, 3],
+      allowedProducts: (p) => nm(p.name, 'đường trắng bao', 'duong trang bao',
+        'đường trắng đóng gói', 'duong trang dong goi',
+        'đường mía', 'duong mia', 'phèn viên', 'phen vien'),
       maxQtyPerQuarter: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('hạt nêm 1,8kg') || lp.includes('hat nem 1,8kg') || lp.includes('hạt nêm 1.8kg')) return 1;
-        if (lp.includes('shiitake')) return 4;
-        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 20;
-        return undefined;
+        if (nm(p.name, 'phèn viên', 'phen vien')) return undefined;
+        return 1;
       },
       maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 10;
-        if (lp.includes('nhất ca') || lp.includes('nhat ca')) return 1;
-        if (lp.includes('tương ớt 500ml') || lp.includes('tuong ot 500ml')) return 1;
-        return undefined;
-      },
-      minQtyPerOrder: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('xúc xích') || lp.includes('xuc xich') || lp.includes('bin & bon') || lp.includes('bin&bon')) return 5;
-        return undefined;
+        if (nm(p.name, 'phèn viên', 'phen vien')) return 3;
+        return 1;
       },
     };
   }
 
-  if (has('meizan')) {
+  // Mắm (NCC tên "mắm" — không phải Mỹ Nga/Liên Thành)
+  if ((has('mắm') || has('mam')) && !has('mỹ nga') && !has('my nga')
+      && !has('liên thành') && !has('lien thanh') && !has('chấn hưng') && !has('chan hung')) {
     return {
-      ordersCount: [2, 2],
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'ruốc', 'ruoc', 'tôm bắc', 'tom bac', 'nêm', 'nem'),
       maxQtyPerQuarter: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'ruốc nhỏ', 'ruoc nho')) return 1;
+        if (nm(ln, 'ruốc trung', 'ruoc trung')) return 2;
+        if (nm(ln, 'ruốc lớn', 'ruoc lon')) return 3;
+        if (nm(ln, 'tôm bắc', 'tom bac')) return 1;
+        if (nm(ln, 'nêm nhỏ', 'nem nho')) return 1;
+        if (nm(ln, 'nêm lớn', 'nem lon')) return 2;
         return undefined;
       },
       maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('bơ thực vật') || lp.includes('bo thuc vat')) return 1;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'ruốc lớn', 'ruoc lon')) return 3;
+        if (nm(ln, 'ruốc trung', 'ruoc trung', 'nêm lớn', 'nem lon')) return 2;
+        return 1;
+      },
+    };
+  }
+
+  if (has('giấm') || has('giam')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'tinh luyện', 'tinh luyen', 'nuôi', 'nuoi', 'cốt', 'cot'),
+      maxQtyPerQuarter: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'tinh luyện', 'tinh luyen')) return 2;
+        if (nm(ln, 'nuôi', 'nuoi')) return 1;
+        if (nm(ln, 'cốt', 'cot')) return 10;
         return undefined;
+      },
+      maxQtyPerProduct: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'cốt', 'cot')) return 10;
+        if (nm(ln, 'tinh luyện', 'tinh luyen')) return 2;
+        return 1;
       },
     };
   }
@@ -305,141 +339,326 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
     return { ordersCount: [0, 0], manualOnly: true };
   }
 
-  if (has('giấm') || has('giam')) {
+  if (has('sen việt') || has('sen viet')) {
     return {
       ordersCount: [1, 1],
-      maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('cốt') || lp.includes('cot')) return 6;
-        if (lp.includes('tinh luyện') || lp.includes('tinh luyen')
-          || lp.includes('nuôi') || lp.includes('nuoi')) return 3;
-        return undefined;
-      },
-    };
-  }
-
-  if (has('mắm') || has('mam')) {
-    return {
-      ordersCount: [3, 3],
-      maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        if (lp.includes('mắm tôm bắc') || lp.includes('mam tom bac')) return 2;
-        return 3;
-      },
-    };
-  }
-
-  if (has('đường') || has('duong')) {
-    return {
-      ordersCount: [2, 2],
-      maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        const brand = (p.brand || '').toLowerCase();
-        if (lp.includes('an khê') || lp.includes('an khe')) return 1;
-        if (lp.includes('phèn') || lp.includes('phen')) return 3;
-        if (lp.includes('đường trắng') || lp.includes('duong trang')) {
-          if (brand.includes('biên hòa') || brand.includes('bien hoa')) return 2;
-          return 2;
-        }
-        return undefined;
-      },
-    };
-  }
-
-  if (has('bánh tráng') || has('banh trang')) {
-    return { ordersCount: [1, 1], maxQtyPerProduct: () => 2 };
-  }
-
-  if (has('chợ lớn') || has('cho lon')) {
-    return {
-      ordersCount: [9, 12], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
-      maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        const brand = (p.brand || '').toLowerCase();
-        if (lp.includes('nước mắm cá cơm') && (brand.includes('hạnh phúc') || brand.includes('hanh phuc'))) return 1;
-        if (lp.includes('aji-quick') || lp.includes('aji-mayo') || lp.includes('mayonnaise')) return 10;
-        if (lp.includes('bánh phồng tôm') || lp.includes('banh phong tom')) return 1;
-        if (lp.includes('la hán quả') || lp.includes('la han qua')) return 1;
-        if (lp.includes('giấm gạo') || lp.includes('giam gao')) return 1;
-        if (lp.includes('rong canh')) return 1;
-        if (lp.includes('da heo')) return 1;
-        return 3;
-      },
+      allowedProducts: (p) => nm(p.name, 'bột chiên giòn', 'bot chien gion',
+        'bơ thực vật 1kg', 'bo thuc vat 1kg', 'dầu nành', 'dau nanh'),
       maxQtyPerQuarter: (p) => {
-        const lp = p.name.toLowerCase();
-        const brand = (p.brand || '').toLowerCase();
-        if (lp.includes('nước mắm cá cơm') && (brand.includes('hạnh phúc') || brand.includes('hanh phuc'))) return 1;
-        if (lp.includes('aji-quick') || lp.includes('aji-mayo') || lp.includes('mayonnaise')) return 20;
-        if (lp.includes('bánh phồng tôm') || lp.includes('banh phong tom')) return 1;
-        if (lp.includes('la hán quả') || lp.includes('la han qua')) return 1;
-        if (lp.includes('giấm gạo') || lp.includes('giam gao')) return 1;
-        if (lp.includes('rong canh')) return 1;
-        if (lp.includes('da heo')) return 1;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'bột chiên giòn 1kg', 'bot chien gion 1kg')) return 1;
+        if (nm(ln, 'bột chiên giòn 150', 'bot chien gion 150')) return 2;
+        if (nm(ln, 'bơ thực vật 1kg', 'bo thuc vat 1kg')) return 1;
+        if (nm(ln, 'dầu nành 1l', 'dau nanh 1l')) return 2;
+        if (nm(ln, 'dầu nành 2l', 'dau nanh 2l')) return 2;
         return undefined;
       },
+      maxQtyPerProduct: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, '150')) return 2;
+        if (nm(ln, 'dầu nành', 'dau nanh')) return 2;
+        return 1;
+      },
+    };
+  }
+
+  if (has('đậu') || has('dau')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'đậu', 'dau', 'điều màu', 'dieu mau'),
+      maxQtyPerQuarter: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'đậu đen', 'dau den')) return 2;
+        if (nm(ln, 'đậu đỏ', 'dau do')) return 1;
+        if (nm(ln, 'đậu xanh hột', 'dau xanh hot')) return 1;
+        if (nm(ln, 'đậu xanh tróc vỏ', 'dau xanh troc vo')) return 2;
+        if (nm(ln, 'đậu xanh nửa vàng', 'dau xanh nua vang')) return 1;
+        if (nm(ln, 'đậu phộng nhỏ', 'dau phong nho')) return 2;
+        if (nm(ln, 'điều màu', 'dieu mau')) return 5;
+        return undefined;
+      },
+      maxQtyPerProduct: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'điều màu', 'dieu mau')) return 5;
+        if (nm(ln, 'đậu đen', 'dau den', 'tróc vỏ', 'troc vo', 'phộng nhỏ', 'phong nho')) return 2;
+        return 1;
+      },
+    };
+  }
+
+  if (has('cô lan') || has('co lan')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'bún tàu', 'bun tau', 'miến dong', 'mien dong', 'măng', 'mang'),
+      maxQtyPerQuarter: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'bún tàu', 'bun tau')) return 1;
+        if (nm(ln, 'miến dong', 'mien dong')) return 10;
+        if (nm(ln, 'măng', 'mang')) return 2;
+        return undefined;
+      },
+      maxQtyPerProduct: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'miến dong', 'mien dong')) return 10;
+        if (nm(ln, 'măng', 'mang')) return 2;
+        return 1;
+      },
+      minQtyPerOrder: (p) => nm(p.name, 'miến dong', 'mien dong') ? 10 : undefined,
+    };
+  }
+
+  if (has('mỹ nga') || has('my nga')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, '800ml', '800 ml'),
+      maxQtyPerQuarter: () => 3,
+      maxQtyPerProduct: () => 3,
+    };
+  }
+
+  if (has('liên thành') || has('lien thanh')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'mắm chay', 'mam chay', 'nhãn vàng', 'nhan vang'),
+      maxQtyPerQuarter: () => 1,
+      maxQtyPerProduct: () => 1,
+    };
+  }
+
+  if (has('huy hoàng') || has('huy hoang')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'bún tươi', 'bun tuoi'),
+      maxQtyPerQuarter: () => 10,
+      maxQtyPerProduct: () => 10,
+      minQtyPerOrder: () => 10,
+    };
+  }
+
+  if (has('chấn hưng') || has('chan hung')) {
+    return {
+      ordersCount: [1, 1],
+      allowedProducts: (p) => nm(p.name, 'mắm nêm pha', 'mam nem pha', '170ml'),
+      maxQtyPerQuarter: () => 1,
+      maxQtyPerProduct: () => 1,
     };
   }
 
   if (has('tada')) {
+    const isAllowed = (p: Product) => {
+      const ln = p.name.toLowerCase();
+      return nm(ln, 'tương ớt 700', 'tuong ot 700',
+        'tương đen 700', 'tuong den 700',
+        'tương ớt 5l', 'tuong ot 5l',
+        'tương đen 5l', 'tuong den 5l',
+        'lẩu thái', 'lau thai',
+        'dầu giấm', 'dau giam',
+        'sốt lẩu chua hải sản', 'sot lau chua hai san',
+        'sa tế tôm', 'sa te tom',
+        'tương đen', 'tuong den',
+        'dầu hào', 'dau hao',
+        'nấm mèo', 'nam meo',
+        'nấm đông cô', 'nam dong co',
+        'thanh dịu', 'thanh diu',
+        'đậm đặc', 'dam dac',
+        'sốt xá xíu', 'sot xa xiu',
+        'sốt thịt nướng', 'sot thit nuong',
+        'ớt sa tế 150', 'ot sa te 150',
+        'ớt khô sa tế', 'ot kho sa te',
+        'hương việt', 'huong viet',
+        'xì dầu đặc biệt', 'xi dau dac biet',
+        'sốt hải sản', 'sot hai san',
+        'chao',
+        'hạt nêm nấm hương', 'hat nem nam huong',
+        'aji-mayo', 'mayonnaise',
+        'sườn kí', 'suon ki',
+        'tương hột', 'tuong hot',
+        'tương ớt 830', 'tuong ot 830',
+        'bột chiên xù 1kg', 'bot chien xu 1kg');
+    };
     return {
-      ordersCount: [10, 13], // ~3-4 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
+      ordersCount: [5, 7],
+      minItemsPerOrder: 5,
+      allowedProducts: isAllowed,
       maxQtyPerProduct: (p) => {
-        const brand = (p.brand || '').toLowerCase();
-        if (brand.includes('phúc bình dương') || brand.includes('phuc binh duong')) return 1;
-        return 3;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'tương ớt 700', 'tuong ot 700')) return 3;
+        if (nm(ln, 'tương đen 700', 'tuong den 700')) return 3;
+        if (nm(ln, 'tương ớt 5l', 'tuong ot 5l')) return 3;
+        if (nm(ln, 'lẩu thái', 'lau thai')) return 4;
+        if (nm(ln, 'dầu giấm', 'dau giam')) return 4;
+        if (nm(ln, 'sa tế tôm 90', 'sa te tom 90')) return 4;
+        if (nm(ln, 'sa tế tôm 450', 'sa te tom 450')) return 2;
+        if (nm(ln, 'dầu hào 350', 'dau hao 350')) return 2;
+        if (nm(ln, 'nấm mèo', 'nam meo')) return 5;
+        if (nm(ln, 'nấm đông cô', 'nam dong co')) return 3;
+        if (nm(ln, 'sốt thịt nướng gói 70', 'sot thit nuong goi 70')) return 2;
+        if (nm(ln, 'hương việt', 'huong viet')) return 3;
+        return 2;
       },
       maxQtyPerQuarter: (p) => {
-        const brand = (p.brand || '').toLowerCase();
-        if (brand.includes('phúc bình dương') || brand.includes('phuc binh duong')) return 1;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'tương đen 5l', 'tuong den 5l')) return 1;
+        if (nm(ln, 'sốt lẩu chua hải sản', 'sot lau chua hai san')) return 2;
+        if (nm(ln, 'thanh dịu', 'thanh diu', 'đậm đặc', 'dam dac')) return 2;
+        if (nm(ln, 'sốt xá xíu', 'sot xa xiu')) return 2;
+        if (nm(ln, 'sốt thịt nướng hủ 200', 'sot thit nuong hu 200')) return 4;
+        if (nm(ln, 'ớt sa tế 150', 'ot sa te 150', 'ớt khô sa tế', 'ot kho sa te')) return 1;
+        if (nm(ln, 'dầu hào 820', 'dau hao 820')) return 3;
+        if (nm(ln, 'xì dầu đặc biệt', 'xi dau dac biet')) return 5;
+        if (nm(ln, 'sốt hải sản', 'sot hai san')) return 5;
+        if (nm(ln, 'chao')) return 1;
+        if (nm(ln, 'hạt nêm nấm hương', 'hat nem nam huong')) return 1;
+        if (nm(ln, 'aji-mayo', 'mayonnaise')) return 10;
+        if (nm(ln, 'sườn kí', 'suon ki')) return 2;
+        if (nm(ln, 'tương hột 250', 'tuong hot 250')) return 6;
+        if (nm(ln, 'tương ớt 830', 'tuong ot 830')) return 2;
+        if (nm(ln, 'bột chiên xù 1kg', 'bot chien xu 1kg')) return 2;
         return undefined;
       },
     };
   }
 
   if (has('địa đạo') || has('dia dao')) {
+    const isAllowed = (p: Product) => {
+      const ln = p.name.toLowerCase();
+      return nm(ln, 'giấm gạo', 'giam gao',
+        'aji-ngon', 'ajingon',
+        'miến đậu xanh', 'mien dau xanh',
+        'tương ớt 500', 'tuong ot 500',
+        'thượng vàng', 'thuong vang',
+        'đặc biệt', 'dac biet',
+        'nui',
+        'bún tươi', 'bun tuoi',
+        'bún gạo gói', 'bun gao goi',
+        'cốt dừa', 'cot dua',
+        'hạt nêm 3kg', 'hat nem 3kg',
+        'tương xí muội', 'tuong xi muoi',
+        'tương cà 830', 'tuong ca 830',
+        'cooking oil',
+        'bột ngọt', 'bot ngot',
+        'nhất ca', 'nhat ca',
+        'nhị ca', 'nhi ca',
+        'nam ngư 750', 'nam ngu 750',
+        'đệ nhị', 'de nhi',
+        'hạt nêm 400', 'hat nem 400', 'hạt nêm 900', 'hat nem 900',
+        'tương ớt 2.1', 'tuong ot 2.1',
+        'tương cà 2.1', 'tuong ca 2.1',
+        'tương ớt 830', 'tuong ot 830',
+        'tương cà 270', 'tuong ca 270',
+        'tương ớt 270', 'tuong ot 270');
+    };
     return {
-      ordersCount: [12, 15], // ~4-5 đơn/tháng × 3 tháng — tối thiểu hóa số đơn
+      ordersCount: [6, 8],
+      minItemsPerOrder: 5,
+      allowedProducts: isAllowed,
       maxQtyPerProduct: (p) => {
-        const lp = p.name.toLowerCase();
-        const brand = (p.brand || '').toLowerCase();
-        if (lp.includes('aji-ngon 900g') || (lp.includes('3kg') && brand.includes('knorr'))
-          || lp.includes('xí muội 270g') || lp.includes('xi muoi 270g')
-          || lp.includes('xí muội 2.1kg') || lp.includes('xi muoi 2.1kg')) return 1;
-        if (lp.includes('nhất ca') || lp.includes('nhat ca')) return 1;
-        if (lp.includes('miến đậu xanh') || lp.includes('mien dau xanh')) return 1;
-        if (lp.includes('nui dài') || lp.includes('nui dai')
-          || lp.includes('nui ngắn') || lp.includes('nui ngan')
-          || lp.includes('nui xoắn') || lp.includes('nui xoan')
-          || lp.includes('bún tươi') || lp.includes('bun tuoi')
-          || lp.includes('cốt dừa') || lp.includes('cot dua')) return 1;
-        if (lp.includes('tương ớt 2.1kg') || lp.includes('tuong ot 2.1kg')
-          || lp.includes('tương cà 2.1kg') || lp.includes('tuong ca 2.1kg')) return 1;
-        return 3;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'cooking oil 1l')) return 3;
+        if (nm(ln, 'cooking oil 2l')) return 3;
+        if (nm(ln, 'bột ngọt 454', 'bot ngot 454')) return 2;
+        if (nm(ln, 'bột ngọt 400', 'bot ngot 400')) return 3;
+        if (nm(ln, 'bột ngọt 1kg', 'bot ngot 1kg')) return 5;
+        if (nm(ln, 'bột ngọt 5kg', 'bot ngot 5kg')) return 3;
+        if (nm(ln, 'nam ngư 750', 'nam ngu 750')) return 3;
+        if (nm(ln, 'đệ nhị', 'de nhi')) return 5;
+        return 2;
       },
       maxQtyPerQuarter: (p) => {
-        const lp = p.name.toLowerCase();
-        const brand = (p.brand || '').toLowerCase();
-        if (lp.includes('aji-ngon 900g')) return 1;
-        if (lp.includes('3kg') && brand.includes('knorr')) return 1;
-        if (lp.includes('xí muội 270g') || lp.includes('xi muoi 270g')) return 1;
-        if (lp.includes('xí muội 2.1kg') || lp.includes('xi muoi 2.1kg')) return 1;
-        if (lp.includes('nhất ca') || lp.includes('nhat ca')) return 1;
-        if (lp.includes('miến đậu xanh') || lp.includes('mien dau xanh')) return 1;
-        if ((lp.includes('hạt nêm 400g') || lp.includes('hạt nêm 900g'))
-          && (brand.includes('ajimoto') || brand.includes('ajinomoto'))) return 3;
-        if ((lp.includes('hạt nêm 400g') || lp.includes('hạt nêm 900g'))
-          && brand.includes('knorr')) return 3;
-        if (lp.includes('nui') || lp.includes('bún tươi') || lp.includes('bun tuoi')
-          || lp.includes('cốt dừa') || lp.includes('cot dua')) return 1;
-        if (lp.includes('tương ớt 2.1kg') || lp.includes('tuong ot 2.1kg')
-          || lp.includes('tương cà 2.1kg') || lp.includes('tuong ca 2.1kg')) return 1;
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'nhất ca', 'nhat ca')) return 1;
+        if (nm(ln, 'nhị ca', 'nhi ca')) return 3;
+        if (nm(ln, 'hạt nêm 400', 'hat nem 400', 'hạt nêm 900', 'hat nem 900')) return 2;
+        if (nm(ln, 'tương ớt 2.1', 'tuong ot 2.1', 'tương cà 2.1', 'tuong ca 2.1')) return 2;
+        if (nm(ln, 'tương ớt 830', 'tuong ot 830')) return 3;
+        if (nm(ln, 'tương cà 270', 'tuong ca 270', 'tương ớt 270', 'tuong ot 270')) return 2;
+        if (nm(ln, 'giấm gạo', 'giam gao', 'aji-ngon', 'ajingon',
+          'miến đậu xanh', 'mien dau xanh',
+          'tương ớt 500', 'tuong ot 500',
+          'thượng vàng', 'thuong vang',
+          'đặc biệt', 'dac biet',
+          'nui', 'bún tươi', 'bun tuoi', 'bún gạo gói', 'bun gao goi',
+          'cốt dừa', 'cot dua',
+          'hạt nêm 3kg', 'hat nem 3kg',
+          'tương xí muội', 'tuong xi muoi',
+          'tương cà 830', 'tuong ca 830')) return 1;
         return undefined;
       },
     };
   }
 
-  // Default fallback - không có rule cứng cho NCC này
-  return { ordersCount: [2, 2] };
+  if (has('chợ lớn') || has('cho lon')) {
+    const allowList = [
+      'nước mắm cá cơm','bột chiên xù 100','bánh phồng tôm','táo đỏ',
+      'nấm hương','la hán quả','la han qua','nấm tuyết','nam tuyet',
+      'tiêu đen','tieu den','tiêu sọ','tieu so','ớt hàn quốc','ot han quoc',
+      'kỷ tử','ky tu','hoành thành','hoanh thanh','tàu hủ ki','tau hu ki',
+      'da heo','bơ thực vật 200','bo thuc vat 200','vị rang phở','vi rang pho',
+      'bột sắn dây','bot san day','rong canh','phèn','phen',
+      'sốt thịt nướng 240','sot thit nuong 240','ngũ vị hương','ngu vi huong',
+      'nhãn nhục','nhan nhuc','hạt chia','hat chia','cải','cai',
+      'mai quế lộ','mai que lo','rong nấu','rong nau','rong cuộn','rong cuon',
+      'óc chó','oc cho','hạnh nhân','hanh nhan','kim châm','kim cham',
+      'hạt é','hat e','muối ớt xanh','muoi ot xanh',
+      'soup','hạt nêm nấm hương 450','hat nem nam huong 450',
+      'miến khô minh châu','mien kho minh chau',
+      'hoa cúc','hoa cuc','macca','rau câu','rau cau','râu câu',
+      'bột cà ri','bot ca ri','bột bò kho','bot bo kho',
+      'bột la gu','bot la gu','bột bún bò','bot bun bo',
+      'tiềm thuốc bắc','tiem thuoc bac',
+      'sen khô','sen kho','mè','me ','long nhãn','long nhan',
+      'nho khô','nho kho','hạt điều','hat dieu',
+      'cá hộp 3 cô gái','ca hop 3 co gai','bơ thực vật 80','bo thuc vat 80',
+    ];
+    const isAllowed = (p: Product) => allowList.some(s => nm(p.name, s));
+    return {
+      ordersCount: [5, 5],
+      fixedOrdersCount: 5,
+      minItemsPerOrder: 5,
+      uniqueAcrossOrders: true,
+      allowedProducts: isAllowed,
+      maxQtyPerQuarter: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'bột chiên xù 100', 'bot chien xu 100')) return 20;
+        if (nm(ln, 'nấm hương', 'nam huong') && !nm(ln, 'hạt nêm', 'hat nem')) return 2;
+        if (nm(ln, 'tiêu đen', 'tieu den')) return 3;
+        if (nm(ln, 'ớt hàn quốc', 'ot han quoc')) return 2;
+        if (nm(ln, 'kỷ tử', 'ky tu')) return 4;
+        if (nm(ln, 'hoành thành', 'hoanh thanh')) return 10;
+        if (nm(ln, 'vị rang phở', 'vi rang pho')) return 5;
+        if (nm(ln, 'bột sắn dây', 'bot san day')) return 2;
+        if (nm(ln, 'nhãn nhục', 'nhan nhuc')) return 2;
+        if (nm(ln, 'hạt chia', 'hat chia')) return 2;
+        if (nm(ln, 'mai quế lộ', 'mai que lo')) return 3;
+        if (nm(ln, 'óc chó', 'oc cho')) return 2;
+        if (nm(ln, 'hạnh nhân', 'hanh nhan')) return 3;
+        if (nm(ln, 'hạt é', 'hat e')) return 2;
+        if (nm(ln, 'soup')) return 4;
+        if (nm(ln, 'miến khô minh châu', 'mien kho minh chau')) return 2;
+        if (nm(ln, 'macca', 'rau câu', 'rau cau', 'râu câu')) return 2;
+        if (nm(ln, 'bột cà ri', 'bot ca ri', 'bột bò kho', 'bot bo kho',
+          'bột la gu', 'bot la gu', 'bột bún bò', 'bot bun bo')) return 3;
+        if (nm(ln, 'mè', 'me ')) return 2;
+        return 1;
+      },
+      maxQtyPerProduct: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'bột chiên xù 100', 'bot chien xu 100')) return 20;
+        if (nm(ln, 'hoành thành', 'hoanh thanh')) return 10;
+        if (nm(ln, 'vị rang phở', 'vi rang pho')) return 5;
+        if (nm(ln, 'kỷ tử', 'ky tu')) return 4;
+        if (nm(ln, 'tiêu đen', 'tieu den', 'mai quế lộ', 'mai que lo',
+          'hạnh nhân', 'hanh nhan',
+          'bột cà ri', 'bot ca ri', 'bột bò kho', 'bot bo kho',
+          'bột la gu', 'bot la gu', 'bột bún bò', 'bot bun bo')) return 3;
+        if (nm(ln, 'soup')) return 4;
+        return 2;
+      },
+    };
+  }
+
+  // Default fallback - không có rule cứng (không tạo đơn auto)
+  return { ordersCount: [0, 0], manualOnly: true };
 }
 
 // ============================================================================
@@ -464,12 +683,16 @@ function generateSupplierImports(
   const rule = getSupplierRule(supplier.name);
   if (rule.manualOnly) return { orders: [], batches: [] };
 
-  const eligible = prods.filter(p => !rule.excludeProduct?.(p));
+  const eligible = prods.filter(p => {
+    if (rule.excludeProduct?.(p)) return false;
+    if (rule.allowedProducts && !rule.allowedProducts(p)) return false;
+    return true;
+  });
   if (eligible.length === 0) return { orders: [], batches: [] };
 
   const [minOrders, maxOrders] = rule.ordersCount;
-  const total = minOrders + Math.floor(rand() * (maxOrders - minOrders + 1));
-  const autoCount = Math.max(0, total - manualOrdersCount);
+  const total = rule.fixedOrdersCount ?? (minOrders + Math.floor(rand() * (maxOrders - minOrders + 1)));
+  const autoCount = rule.fixedOrdersCount ?? Math.max(0, total - manualOrdersCount);
   if (autoCount === 0) return { orders: [], batches: [] };
 
   // Schedule order days — RẢI ĐỀU CẢ QUÝ nhưng ƯU TIÊN ĐẦU/GIỮA (gối đầu hàng).
@@ -632,7 +855,7 @@ function generateSupplierImports(
 
   // Yêu cầu: KHÔNG có đơn chỉ 1 SP, hạn chế đơn 2 SP (trừ khi NCC chỉ có ≤2 SP).
   // Dồn đơn nhỏ sang đơn liền kề có ít SP nhất để cân bằng.
-  const minItemsPerOrder = eligible.length <= 2 ? 1 : 3;
+  const minItemsPerOrder = rule.minItemsPerOrder ?? (eligible.length <= 2 ? 1 : 3);
   let merged = true;
   while (merged) {
     merged = false;
