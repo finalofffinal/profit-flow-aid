@@ -334,11 +334,13 @@ export function useImportOrders() {
     setOrders(prev => prev.map(o => {
       if (o.id !== id) return o;
       const merged = { ...o, ...updates };
-      // Recompute total when items or discount change
-      if (updates.items || updates.discount !== undefined) {
+      // Recompute total when items/discount/vat change
+      if (updates.items || updates.discount !== undefined || updates.hasVat !== undefined || updates.vat !== undefined) {
         const items = merged.items || [];
         const subtotal = items.reduce((s, it) => s + it.total, 0);
-        merged.total = Math.max(0, subtotal - (merged.discount || 0));
+        const vat = merged.hasVat ? Math.round(subtotal * 0.08) : 0;
+        merged.vat = vat;
+        merged.total = Math.max(0, subtotal + vat - (merged.discount || 0));
       }
       return merged;
     }));
