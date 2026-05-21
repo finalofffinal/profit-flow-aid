@@ -415,6 +415,23 @@ function IndexInner() {
     addNotification(`Đang cân bằng Q${q}/${y} (giữ thủ công + đơn đã khóa)...`, 'info');
   }, [setImportOrders, setSalesOrders, setInventoryBatches, setGeneratedQuarters, addNotification]);
 
+  /**
+   * Tạo thêm N đơn auto cho 1 NCC trong 1 quý, KHÔNG bị giới hạn ordersCount của rule.
+   * Các đơn này sẽ chèn trực tiếp vào importOrders (không trigger full regen).
+   */
+  const handleGenerateAutoOrders = useCallback((q: number, y: number, supplierId: string, count: number) => {
+    const supplier = activeSuppliers.find(s => s.id === supplierId);
+    if (!supplier) { addNotification('Không tìm thấy nhà cung cấp', 'warning'); return; }
+    const { orders, batches } = generateSupplementaryAutoOrders(q, y, supplier, activeProducts, count);
+    if (orders.length === 0) {
+      addNotification(`Không thể tạo đơn — không có sản phẩm phù hợp cho ${supplier.name}`, 'warning');
+      return;
+    }
+    setImportOrders(prev => [...prev, ...orders]);
+    setInventoryBatches(prev => [...prev, ...batches]);
+    addNotification(`Đã tạo ${orders.length} đơn tự động cho ${supplier.name} Q${q}/${y}`, 'success');
+  }, [activeSuppliers, activeProducts, setImportOrders, setInventoryBatches, addNotification]);
+
   const renderTab = () => {
     switch (activeTab) {
       case 'dashboard':
