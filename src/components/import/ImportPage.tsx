@@ -184,11 +184,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <span className="hidden md:inline">Ngẫu nhiên</span>
             </Button>
           )}
-          {onClearAutoOrders && !currentQLocked && (
-            <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 text-destructive hidden md:inline-flex" onClick={() => onClearAutoOrders(selQ, selYear)} title="Xóa tất cả auto">
-              <Eraser className="mr-1 h-3.5 w-3.5" /> Xóa auto
-            </Button>
-          )}
+          {/* Đã bỏ nút "Xóa auto" theo spec mới — chỉ giữ "Ngẫu nhiên" */}
           <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
