@@ -319,7 +319,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                       </div>
                       {!currentQLocked && (
                         <div data-admin-only className="flex items-center gap-0.5 shrink-0">
-                          {/* Khóa/Mở khóa cho đơn auto: khi khóa, regen sẽ giữ nguyên */}
+                          {/* Khóa đơn auto → chuyển thành "Bổ sung" để không bị ảnh hưởng bởi Ngẫu nhiên */}
                           {order.tag === 'auto' && onUpdateOrder && (
                             <Button
                               variant="ghost"
@@ -327,20 +327,15 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
                               className="h-7 w-7"
                               onClick={e => {
                                 e.stopPropagation();
-                                onUpdateOrder(order.id, { locked: !order.locked });
-                                addNotification(
-                                  order.locked ? 'Đã mở khóa đơn tự động' : 'Đã khóa đơn tự động — sẽ giữ nguyên khi tạo lại',
-                                  'info'
-                                );
+                                onUpdateOrder(order.id, { tag: 'supplementary', locked: false });
+                                addNotification('Đã khóa đơn — chuyển thành Bổ sung, không bị Ngẫu nhiên tác động', 'info');
                               }}
-                              title={order.locked ? 'Mở khóa đơn này' : 'Khóa đơn này (giữ nguyên khi Ngẫu nhiên/Tạo đơn bù)'}
+                              title="Khóa đơn (chuyển thành Bổ sung — Ngẫu nhiên sẽ giữ nguyên)"
                             >
-                              {order.locked
-                                ? <Lock className="h-3.5 w-3.5 text-amber-600" />
-                                : <Lock className="h-3.5 w-3.5 text-muted-foreground/50" />}
+                              <Lock className="h-3.5 w-3.5 text-muted-foreground/50" />
                             </Button>
                           )}
-                          {!order.locked && order.tag !== 'auto' && onUpdateOrder && (
+                          {order.tag !== 'auto' && onUpdateOrder && (
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={e => { e.stopPropagation(); setEditingOrderId(order.id); }}>
                               <Pencil className="h-3.5 w-3.5 text-primary" />
                             </Button>
