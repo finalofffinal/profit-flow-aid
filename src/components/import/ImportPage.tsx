@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Camera, Calendar, FileDown, Wand2, Pencil, AlertTriangle, Shuffle, Eraser, Scale } from 'lucide-react';
+import { Search, Trash2, Plus, ChevronDown, ChevronRight, Lock, RotateCcw, Trash, X, Filter, Undo2, Calendar, FileDown, Wand2, Pencil, AlertTriangle, Shuffle, Eraser, Scale } from 'lucide-react';
 import { ImportOrder, Supplier, Product, ImportTag, QuarterData } from '@/types';
 import { formatVND, formatCompactVND } from '@/lib/currency';
 import { IMPORT_TAG_LABELS, IMPORT_TAG_COLORS } from '@/lib/constants';
