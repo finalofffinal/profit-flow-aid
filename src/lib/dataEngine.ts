@@ -766,7 +766,24 @@ function generateSupplierImports(
   // ===== Đối với NCC lớn (>10 SP): bao phủ toàn bộ + cân bằng tiền =====
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
-  if (isLargeSupplier) {
+  if (rule.uniqueAcrossOrders && autoCount > 0) {
+    // Chợ Lớn: mỗi SP xuất hiện DUY NHẤT 1 lần trong toàn bộ N đơn,
+    // phân phối ~đều ra các đơn (chênh lệch ≤1 SP giữa các đơn).
+    const shuffled = [...eligible].sort(() => rand() - 0.5);
+    shuffled.forEach((p, i) => {
+      const orderIdx = i % autoCount;
+      const ruleMax = rule.maxQtyPerProduct?.(p) ?? 1;
+      const qCap = rule.maxQtyPerQuarter?.(p);
+      const minReq = rule.minQtyPerOrder?.(p);
+      const cap = qCap !== undefined ? Math.min(ruleMax, qCap) : ruleMax;
+      let qty = minReq ?? Math.max(1, Math.min(cap, Math.floor(1 + rand() * cap)));
+      qty = Math.min(qty, cap);
+      if (qty <= 0) return;
+      orderItems[orderIdx].push(buildItem(p, supplier, qty));
+      qtyUsedQuarter.set(p.id, qty);
+      productsUsed.add(p.id);
+    });
+  } else if (isLargeSupplier) {
     // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
     // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
     // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
