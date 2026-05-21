@@ -855,7 +855,7 @@ function generateSupplierImports(
 
   // Yêu cầu: KHÔNG có đơn chỉ 1 SP, hạn chế đơn 2 SP (trừ khi NCC chỉ có ≤2 SP).
   // Dồn đơn nhỏ sang đơn liền kề có ít SP nhất để cân bằng.
-  const minItemsPerOrder = eligible.length <= 2 ? 1 : 3;
+  const minItemsPerOrder = rule.minItemsPerOrder ?? (eligible.length <= 2 ? 1 : 3);
   let merged = true;
   while (merged) {
     merged = false;
