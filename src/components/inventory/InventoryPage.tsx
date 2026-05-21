@@ -19,27 +19,37 @@ interface InventoryPageProps {
   addNotification?: (msg: string, type?: any) => void;
 }
 
-/**
- * Hiển thị tồn kho theo "đơn vị lớn + đơn vị nhỏ".
- * qty: số đơn vị nhỏ (child) đang còn — InventoryBatch.quantity là theo unit (parent), nên cần đổi.
- * Trả về vd "1 thùng + 5 chai" hoặc "5 chai" nếu không đủ thùng / không có đv lớn.
- */
-function formatStockUnits(qtyInParent: number, conversionRate: number, parentUnit: string, childUnit: string): string {
-  const rate = conversionRate > 0 ? conversionRate : 1;
-  const totalChild = Math.round(qtyInParent * rate);
-  if (totalChild <= 0) return `0 ${childUnit || parentUnit}`;
-  if (rate <= 1 || !childUnit || childUnit === parentUnit) {
-    return `${totalChild} ${parentUnit}`;
+/** Format "X lớn + Y bé" (theo thứ tự đv lớn → đv bé). */
+function formatBigSmall(totalSmall: number, rate: number, bigUnit: string, smallUnit: string): string {
+  if (totalSmall <= 0) return `0 ${smallUnit || bigUnit}`;
+  if (rate <= 1 || !smallUnit || smallUnit === bigUnit) {
+    return `${totalSmall} ${bigUnit}`;
   }
-  const parents = Math.floor(totalChild / rate);
-  const remainder = totalChild - parents * rate;
-  if (parents === 0) return `${remainder} ${childUnit}`;
-  if (remainder === 0) return `${parents} ${parentUnit}`;
-  return `${parents} ${parentUnit} + ${remainder} ${childUnit}`;
+  const bigs = Math.floor(totalSmall / rate);
+  const smalls = totalSmall - bigs * rate;
+  if (bigs === 0) return `${smalls} ${smallUnit}`;
+  if (smalls === 0) return `${bigs} ${bigUnit}`;
+  return `${bigs} ${bigUnit} + ${smalls} ${smallUnit}`;
+}
+
+interface ProductStock {
+  productId: string;
+  productName: string;
+  supplierId: string;
+  supplierName: string;
+  brand: string;
+  unit: string;             // đv lớn
+  conversionUnit: string;   // đv bé
+  conversionRate: number;
+  importedBig: number;      // tổng nhập đv lớn (quarter)
+  importedSmall: number;    // tổng nhập đv bé (quarter)
+  soldSmall: number;        // tổng bán đv bé (quarter)
+  remainingSmall: number;   // còn lại đv bé (capped: max 0..importedSmall)
+  totalValue: number;       // giá trị tồn = remainingSmall * (buyPrice/rate)
+  avgBuyPricePerSmall: number;
 }
 
 export function InventoryPage(props: InventoryPageProps) {
-  const batches = props.batches ?? [];
   const suppliers = props.suppliers ?? [];
   const importOrders = props.importOrders ?? [];
   const salesOrders = props.salesOrders ?? [];
@@ -49,9 +59,10 @@ export function InventoryPage(props: InventoryPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [collapsedSuppliers, setCollapsedSuppliers] = useState<Set<string>>(new Set());
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
-  const [summaryCollapsed, setSummaryCollapsed] = useState(true); // mặc định thu gọn
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
 
   const currentQ = quarters?.find(q => q.quarter === selQ && q.year === selYear);
   const currentQLocked = !!currentQ?.locked;
@@ -62,42 +73,101 @@ export function InventoryPage(props: InventoryPageProps) {
     return Array.from(set).sort();
   }, [products]);
 
-  const filtered = useMemo(() => {
-    let result = batches.filter(b => b.quarter === selQ && b.year === selYear);
-    if (supplierFilter !== 'all') result = result.filter(b => b.supplierId === supplierFilter);
-    if (brandFilter !== 'all') {
-      result = result.filter(b => {
-        const p = products.find(pp => pp.id === b.productId);
-        return p?.brand === brandFilter;
+  // Aggregate per-product per current quarter; cap remaining = max(0, imported - sold)
+  const productStocks = useMemo<ProductStock[]>(() => {
+    const inQuarter = (dateStr: string) => {
+      const d = new Date(dateStr);
+      return Math.ceil((d.getMonth() + 1) / 3) === selQ && d.getFullYear() === selYear;
+    };
+
+    const map = new Map<string, ProductStock>();
+
+    importOrders.forEach(o => {
+      if (o.deletedAt || !inQuarter(o.date)) return;
+      o.items.forEach(it => {
+        const rate = it.conversionRate || 1;
+        const big = it.quantity;
+        const small = big * rate;
+        const existing = map.get(it.productId);
+        if (existing) {
+          existing.importedBig += big;
+          existing.importedSmall += small;
+          // weighted avg price per small unit
+          const prevValue = existing.avgBuyPricePerSmall * (existing.importedSmall - small);
+          const newValue = (it.buyPrice / rate) * small;
+          existing.avgBuyPricePerSmall = existing.importedSmall > 0
+            ? (prevValue + newValue) / existing.importedSmall : 0;
+        } else {
+          const p = products.find(pp => pp.id === it.productId);
+          map.set(it.productId, {
+            productId: it.productId,
+            productName: it.productName,
+            supplierId: it.supplierId,
+            supplierName: it.supplierName,
+            brand: p?.brand || '',
+            unit: it.unit,
+            conversionUnit: it.conversionUnit || it.unit,
+            conversionRate: rate,
+            importedBig: big,
+            importedSmall: small,
+            soldSmall: 0,
+            remainingSmall: 0,
+            totalValue: 0,
+            avgBuyPricePerSmall: it.buyPrice / rate,
+          });
+        }
       });
+    });
+
+    salesOrders.forEach(o => {
+      if (o.deletedAt || !inQuarter(o.date)) return;
+      o.items.forEach(it => {
+        const ps = map.get(it.productId);
+        if (!ps) return;
+        ps.soldSmall += it.quantity;
+      });
+    });
+
+    // Cap remaining
+    const result: ProductStock[] = [];
+    for (const ps of map.values()) {
+      const rem = Math.max(0, ps.importedSmall - ps.soldSmall);
+      ps.remainingSmall = Math.min(rem, ps.importedSmall);
+      ps.totalValue = Math.round(ps.remainingSmall * ps.avgBuyPricePerSmall);
+      if (ps.remainingSmall > 0) result.push(ps);
     }
-    if (!search.trim()) return result;
-    const q = search.toLowerCase();
-    return result.filter(b =>
-      b.productName.toLowerCase().includes(q) ||
-      b.supplierName.toLowerCase().includes(q)
-    );
-  }, [batches, search, selQ, selYear, brandFilter, supplierFilter, products]);
+    return result;
+  }, [importOrders, salesOrders, products, selQ, selYear]);
 
-  const quarterBatches = useMemo(
-    () => batches.filter(b => b.quarter === selQ && b.year === selYear),
-    [batches, selQ, selYear],
-  );
+  // Filters
+  const filtered = useMemo(() => {
+    let result = productStocks;
+    if (supplierFilter !== 'all') result = result.filter(p => p.supplierId === supplierFilter);
+    if (brandFilter !== 'all') result = result.filter(p => p.brand === brandFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(p =>
+        p.productName.toLowerCase().includes(q) ||
+        p.supplierName.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [productStocks, search, brandFilter, supplierFilter]);
 
+  // Group by supplier
   const grouped = useMemo(() => {
-    const map = new Map<string, InventoryBatch[]>();
-    filtered.forEach(b => {
-      if (!map.has(b.supplierId)) map.set(b.supplierId, []);
-      map.get(b.supplierId)!.push(b);
+    const map = new Map<string, ProductStock[]>();
+    filtered.forEach(p => {
+      if (!map.has(p.supplierId)) map.set(p.supplierId, []);
+      map.get(p.supplierId)!.push(p);
     });
     return map;
   }, [filtered]);
 
-  // End-of-quarter summary for selected Q+Y
+  // Quarter-level summary
   const quarterSummary = useMemo(() => {
-    const lastMonth = selQ * 3; // 3, 6, 9, 12
-    const lastDay = new Date(selYear, lastMonth, 0); // local: ngày cuối tháng
-    // Format thủ công để tránh bug timezone của toISOString() (lùi 1 ngày khi TZ > 0)
+    const lastMonth = selQ * 3;
+    const lastDay = new Date(selYear, lastMonth, 0);
     const yyyy = lastDay.getFullYear();
     const mm = String(lastDay.getMonth() + 1).padStart(2, '0');
     const dd = String(lastDay.getDate()).padStart(2, '0');
@@ -116,27 +186,21 @@ export function InventoryPage(props: InventoryPageProps) {
 
     const totalImport = qImports.reduce((s, o) => s + o.total, 0);
     const totalSalesRevenue = qSales.reduce((s, o) => s + o.totalRevenue, 0);
-    const stockValue = quarterBatches.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
+    const stockValue = productStocks.reduce((s, p) => s + p.totalValue, 0);
     const totalImportQty = qImports.reduce((s, o) => s + o.items.reduce((is, it) => is + it.quantity, 0), 0);
     const totalSalesQty = qSales.reduce((s, o) => s + o.items.reduce((is, it) => is + it.quantity, 0), 0);
-    const totalStockQty = quarterBatches.reduce((s, b) => s + b.quantity, 0);
+    const totalStockSmall = productStocks.reduce((s, p) => s + p.remainingSmall, 0);
     const netQuarterFlow = totalImport - totalSalesRevenue;
 
     return {
-      totalImport,
-      totalSalesRevenue,
-      stockValue: Math.max(0, stockValue),
-      totalStockQty,
-      lastDay: lastDayStr,
-      importOrderCount: qImports.length,
-      salesOrderCount: qSales.length,
-      totalImportQty,
-      totalSalesQty,
-      netQuarterFlow,
-      netIsNegative: netQuarterFlow < 0,
-      batchCount: quarterBatches.length,
+      totalImport, totalSalesRevenue, stockValue,
+      totalStockSmall, lastDay: lastDayStr,
+      importOrderCount: qImports.length, salesOrderCount: qSales.length,
+      totalImportQty, totalSalesQty,
+      netQuarterFlow, netIsNegative: netQuarterFlow < 0,
+      productCount: productStocks.length,
     };
-  }, [selQ, selYear, importOrders, salesOrders, quarterBatches]);
+  }, [selQ, selYear, importOrders, salesOrders, productStocks]);
 
   const toggleSupplier = (id: string) => {
     setCollapsedSuppliers(prev => {
@@ -145,9 +209,16 @@ export function InventoryPage(props: InventoryPageProps) {
       return next;
     });
   };
+  const toggleProduct = (id: string) => {
+    setExpandedProducts(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const handleExportPdf = () => {
-    exportInventoryPdf(batches, products, suppliers, selQ, selYear);
+    exportInventoryPdf(props.batches, products, suppliers, selQ, selYear);
     addNotification?.(`Đã xuất PDF Kho hàng Q${selQ}/${selYear}`, 'success');
   };
 
@@ -156,7 +227,7 @@ export function InventoryPage(props: InventoryPageProps) {
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b-2 border-primary/20 p-3 space-y-2">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-bold">Kho hàng</h2>
-          <Badge variant="outline" className="font-bold">{filtered.length} lô</Badge>
+          <Badge variant="outline" className="font-bold">{filtered.length} SP</Badge>
           <div className="flex-1" />
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExportPdf}>
             <FileDown className="mr-1 h-3.5 w-3.5" /> PDF Q{selQ}/{selYear}
@@ -190,7 +261,7 @@ export function InventoryPage(props: InventoryPageProps) {
           </Select>
         </div>
 
-        {/* End-of-quarter summary — COLLAPSED by default */}
+        {/* Quarter summary */}
         <div className="rounded-lg border border-border overflow-hidden">
           <button
             type="button"
@@ -244,6 +315,7 @@ export function InventoryPage(props: InventoryPageProps) {
                 }`}>
                   {quarterSummary.netIsNegative ? '−' : '+'}{formatVND(Math.abs(quarterSummary.netQuarterFlow))}
                 </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Giá trị tồn: {formatVND(quarterSummary.stockValue)}</p>
               </div>
             </div>
           )}
@@ -251,33 +323,10 @@ export function InventoryPage(props: InventoryPageProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3 pb-20 lg:pb-4">
-        {Array.from(grouped.entries()).map(([supplierId, supplierBatches]) => {
+        {Array.from(grouped.entries()).map(([supplierId, supplierStocks]) => {
           const supplier = suppliers.find(s => s.id === supplierId);
           const isCollapsed = collapsedSuppliers.has(supplierId);
-          const totalQty = supplierBatches.reduce((s, b) => s + b.quantity, 0);
-          const totalValue = supplierBatches.reduce((s, b) => s + b.quantity * b.buyPrice, 0);
-
-          const productMap = new Map<string, { name: string; batches: number; totalQty: number; totalValue: number; unit: string; brand: string; conversionRate: number; conversionUnit: string }>();
-          supplierBatches.forEach(b => {
-            const prod = products.find(p => p.id === b.productId);
-            const existing = productMap.get(b.productId);
-            if (existing) {
-              existing.batches++;
-              existing.totalQty += b.quantity;
-              existing.totalValue += b.quantity * b.buyPrice;
-            } else {
-              productMap.set(b.productId, {
-                name: b.productName,
-                batches: 1,
-                totalQty: b.quantity,
-                totalValue: b.quantity * b.buyPrice,
-                unit: b.unit,
-                brand: prod?.brand || '',
-                conversionRate: prod?.conversionRate || 1,
-                conversionUnit: prod?.conversionUnit || b.unit,
-              });
-            }
-          });
+          const totalValue = supplierStocks.reduce((s, p) => s + p.totalValue, 0);
 
           return (
             <div key={supplierId} className="rounded-xl border border-border shadow-sm overflow-hidden">
@@ -286,27 +335,69 @@ export function InventoryPage(props: InventoryPageProps) {
                 <Package className="h-4 w-4 shrink-0 text-primary" />
                 <div className="flex-1 min-w-0">
                   <span className="font-bold text-sm">{supplier?.name || 'Khác'}</span>
-                  <p className="text-xs text-muted-foreground">{productMap.size} SP · {totalQty} đvị · {formatVND(totalValue)}</p>
+                  <p className="text-xs text-muted-foreground">{supplierStocks.length} SP · {formatVND(totalValue)}</p>
                 </div>
               </button>
               {!isCollapsed && (
-                <div className="border-t border-border p-3 space-y-2 animate-in slide-in-from-top-1">
-                  {Array.from(productMap.entries()).map(([pid, info]) => {
-                    const stockLabel = formatStockUnits(info.totalQty, info.conversionRate, info.unit, info.conversionUnit);
+                <div className="border-t border-border p-2 space-y-2 animate-in slide-in-from-top-1">
+                  {supplierStocks.map(ps => {
+                    const isExpanded = expandedProducts.has(ps.productId);
+                    const stockLabel = formatBigSmall(ps.remainingSmall, ps.conversionRate, ps.unit, ps.conversionUnit);
+                    const isLow = ps.remainingSmall <= 5;
+                    const importedLabel = formatBigSmall(ps.importedSmall, ps.conversionRate, ps.unit, ps.conversionUnit);
                     return (
-                      <div key={pid} className={`flex items-center justify-between text-xs p-2 rounded-lg ${info.totalQty <= 5 ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted/30'}`}>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {info.brand && <Badge variant="outline" className="text-[9px] h-4">{info.brand}</Badge>}
-                            <p className="font-semibold">{info.name}</p>
-                            {info.totalQty <= 5 && <Badge variant="destructive" className="text-[9px] h-4"><AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Sắp hết</Badge>}
+                      <div key={ps.productId} className={`rounded-lg border ${isLow ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-muted/20'} overflow-hidden`}>
+                        <button
+                          className="flex w-full items-center justify-between p-2 text-left hover:bg-muted/40 transition-colors text-xs"
+                          onClick={() => toggleProduct(ps.productId)}
+                        >
+                          <div className="min-w-0 flex items-center gap-1.5">
+                            {isExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {ps.brand && <Badge variant="outline" className="text-[9px] h-4">{ps.brand}</Badge>}
+                                <p className="font-semibold">{ps.productName}</p>
+                                {isLow && <Badge variant="destructive" className="text-[9px] h-4"><AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Sắp hết</Badge>}
+                              </div>
+                            </div>
                           </div>
-                          <p className="text-muted-foreground">{info.batches} lô · {info.unit}</p>
-                        </div>
-                        <div className="text-right shrink-0 ml-2">
-                          <p className={`font-bold ${info.totalQty <= 5 ? 'text-destructive' : 'text-foreground'}`}>{stockLabel}</p>
-                          <p className="text-muted-foreground">{formatVND(info.totalValue)}</p>
-                        </div>
+                          <div className="text-right shrink-0 ml-2">
+                            <p className={`font-bold ${isLow ? 'text-destructive' : 'text-foreground'}`}>
+                              {stockLabel}
+                              {ps.conversionRate > 1 && ps.conversionUnit !== ps.unit && (
+                                <span className="text-muted-foreground font-normal"> · ={ps.remainingSmall} {ps.conversionUnit}</span>
+                              )}
+                            </p>
+                            <p className="text-muted-foreground">{formatVND(ps.totalValue)}</p>
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="border-t border-border/50 px-2.5 py-1.5 space-y-1 text-[11px] bg-background/40 animate-in slide-in-from-top-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3 w-3 text-emerald-600" />Nhập</span>
+                              <span className="font-medium">
+                                {ps.importedBig} {ps.unit}
+                                {ps.conversionRate > 1 && ps.conversionUnit !== ps.unit && (
+                                  <span className="text-muted-foreground"> = {ps.importedSmall} {ps.conversionUnit}</span>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground flex items-center gap-1"><TrendingDown className="h-3 w-3 text-destructive" />Bán</span>
+                              <span className="font-medium">{ps.soldSmall} {ps.conversionUnit}</span>
+                            </div>
+                            <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                              <span className="text-muted-foreground">Còn lại</span>
+                              <span className="font-bold text-primary">
+                                {stockLabel}
+                                {ps.conversionRate > 1 && ps.conversionUnit !== ps.unit && (
+                                  <span className="font-normal text-muted-foreground"> = {ps.remainingSmall} {ps.conversionUnit}</span>
+                                )}
+                                {' · '}{formatVND(ps.totalValue)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -318,7 +409,7 @@ export function InventoryPage(props: InventoryPageProps) {
 
         {filtered.length === 0 && (
           <div className="py-16 text-center text-sm text-muted-foreground">
-            {search ? 'Không tìm thấy' : `Chưa có hàng trong kho Q${selQ}/${selYear}.`}
+            {search ? 'Không tìm thấy' : `Chưa có hàng tồn trong Q${selQ}/${selYear}.`}
           </div>
         )}
       </div>
