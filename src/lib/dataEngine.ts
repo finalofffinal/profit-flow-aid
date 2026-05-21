@@ -500,6 +500,8 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'nấm đông cô', 'nam dong co')) return 3;
         if (nm(ln, 'sốt thịt nướng gói 70', 'sot thit nuong goi 70')) return 2;
         if (nm(ln, 'hương việt', 'huong viet')) return 3;
+        // Aji-Mayo: 10 đơn vị, dồn vào 1 đơn duy nhất / quý
+        if (nm(ln, 'aji-mayo', 'mayonnaise')) return 10;
         return 2;
       },
       maxQtyPerQuarter: (p) => {
@@ -520,6 +522,8 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'tương hột 250', 'tuong hot 250')) return 6;
         if (nm(ln, 'tương ớt 830', 'tuong ot 830')) return 2;
         if (nm(ln, 'bột chiên xù 1kg', 'bot chien xu 1kg')) return 2;
+        // Generic "tương đen" (không có size 700/5L): 2/quý
+        if (nm(ln, 'tương đen', 'tuong den') && !nm(ln, '700', '5l')) return 2;
         return undefined;
       },
     };
