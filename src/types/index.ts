@@ -80,6 +80,10 @@ export interface ImportOrder {
   total: number;
   /** Số tiền chiết khấu trừ trực tiếp vào tổng đơn (chỉ áp dụng cho đơn bổ sung) */
   discount?: number;
+  /** Có áp dụng thuế GTGT 8% không (chỉ áp dụng cho đơn bổ sung) */
+  hasVat?: boolean;
+  /** Số tiền thuế GTGT đã tính (= 8% subtotal trước chiết khấu) */
+  vat?: number;
   tag: ImportTag;
   locked: boolean;
   images: string[];
