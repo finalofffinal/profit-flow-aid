@@ -1013,6 +1013,29 @@ function buildItem(p: Product, supplier: Supplier, qty: number): ImportOrderItem
   };
 }
 
+/**
+ * Tạo N đơn tự động bổ sung cho 1 NCC trong 1 quý.
+ * KHÔNG bị giới hạn `ordersCount`/`fixedOrdersCount` của rule —
+ * chỉ tuân theo whitelist sản phẩm + maxQtyPerProduct/maxQtyPerQuarter.
+ * Đơn có tag = 'auto' và vẫn có thể bị Ngẫu nhiên hóa (trừ khi khóa).
+ */
+export function generateSupplementaryAutoOrders(
+  quarter: number,
+  year: number,
+  supplier: Supplier,
+  products: Product[],
+  count: number,
+  seed: number = Date.now(),
+): { orders: ImportOrder[]; batches: InventoryBatch[] } {
+  if (count <= 0) return { orders: [], batches: [] };
+  const days = getDaysInQuarter(quarter, year);
+  const rand = seededRandom(seed);
+  const stockMap = new Map<string, number>();
+  const prods = products.filter(p => !p.deletedAt && p.supplierId === supplier.id);
+  if (prods.length === 0) return { orders: [], batches: [] };
+  return generateSupplierImports(supplier, prods, 0, days, rand, stockMap, count);
+}
+
 // ============================================================================
 // MAIN GENERATOR
 // ============================================================================
