@@ -31,10 +31,11 @@ interface ImportPageProps {
   quarters?: QuarterData[];
   onAutoReplenish?: (q: number, y: number) => void;
   onClearAutoOrders?: (q: number, y: number) => void;
+  onGenerateAutoOrders?: (q: number, y: number, supplierId: string, count: number) => void;
   onRebalanceQuarter?: (q: number, y: number) => void;
 }
 
-export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onRebalanceQuarter }: ImportPageProps) {
+export function ImportPage({ importOrders, activeOrders, deletedOrders, suppliers, products, addOrder, deleteOrder, restoreOrder, permanentDeleteOrder, addNotification, onUpdateOrderDate, onUpdateOrder, isQuarterLocked, quarters, onAutoReplenish, onClearAutoOrders, onGenerateAutoOrders, onRebalanceQuarter }: ImportPageProps) {
   const { quarter: selQ, year: selYear } = usePeriod();
   const [search, setSearch] = useState('');
   const [showTrash, setShowTrash] = useState(false);
