@@ -188,7 +188,13 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <span className="hidden md:inline">Ngẫu nhiên</span>
             </Button>
           )}
-          {/* Đã bỏ nút "Xóa auto" theo spec mới — chỉ giữ "Ngẫu nhiên" */}
+          {onGenerateAutoOrders && !currentQLocked && (
+            <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2" onClick={() => { setGenSupplierId(suppliers[0]?.id || ''); setGenCount(1); setShowGenAuto(true); }} title="Tạo thêm đơn tự động (bỏ qua giới hạn số đơn của NCC)">
+              <Wand2 className="h-3.5 w-3.5 md:mr-1" />
+              <span className="hidden md:inline">Tạo đơn tự động</span>
+            </Button>
+          )}
+          {/* Đã bỏ nút "Xóa auto" theo spec mới */}
           <Button data-admin-only size="sm" variant="outline" className="h-7 md:h-8 text-xs px-2 relative" onClick={() => setShowTrash(true)}>
             <Trash2 className="h-3.5 w-3.5" />
             {deletedOrders.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px] bg-destructive text-destructive-foreground">{deletedOrders.length}</Badge>}
