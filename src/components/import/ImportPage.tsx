@@ -450,6 +450,56 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
           }}
         />
       )}
+
+      {/* Generate Auto Orders Dialog */}
+      <Dialog open={showGenAuto} onOpenChange={setShowGenAuto}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tạo đơn tự động bổ sung</DialogTitle>
+            <DialogDescription>
+              Tạo thêm đơn tự động cho 1 nhà cung cấp trong Q{selQ}/{selYear}.
+              Không bị giới hạn số đơn tối đa/quý của NCC.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Nhà cung cấp</Label>
+              <Select value={genSupplierId} onValueChange={setGenSupplierId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.filter(s => !s.deletedAt).map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Số đơn cần tạo</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={genCount}
+                onChange={e => setGenCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                className="h-9"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGenAuto(false)}>Hủy</Button>
+            <Button
+              onClick={() => {
+                if (!genSupplierId || !onGenerateAutoOrders) return;
+                onGenerateAutoOrders(selQ, selYear, genSupplierId, genCount);
+                setShowGenAuto(false);
+              }}
+              disabled={!genSupplierId}
+            >
+              Tạo {genCount} đơn
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
