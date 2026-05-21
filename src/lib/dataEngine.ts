@@ -267,7 +267,13 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('bánh tráng') || has('banh trang')) {
     return {
       ordersCount: [1, 1],
-      allowedProducts: (p) => nm(p.name, 'vuông', 'vuong', 'tròn', 'tron'),
+      // Chỉ "vuông" và "tròn (lớn)" — KHÔNG nhận tròn nhỏ
+      allowedProducts: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'vuông', 'vuong')) return true;
+        if (nm(ln, 'tròn', 'tron')) return nm(ln, 'lớn', 'lon', '(lớn)', '(lon)');
+        return false;
+      },
       maxQtyPerQuarter: () => 2,
       maxQtyPerProduct: () => 2,
     };
