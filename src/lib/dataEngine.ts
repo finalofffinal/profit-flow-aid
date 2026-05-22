@@ -880,17 +880,18 @@ function generateSupplierImports(
       productsUsed.add(p.id);
     });
   } else if (isLargeSupplier) {
-    // NCC lớn (>10 SP, ~9-15 đơn/quý — tối thiểu hóa):
-    // Mỗi đơn 5-7 SP đa dạng, cân bằng tiền, bao phủ TOÀN BỘ SP.
-    // Ưu tiên ÍT đơn nhất có thể miễn sao đủ phủ tất cả SP.
     // NCC lớn (>10 SP): mỗi đơn 4-6 SP đa dạng, cân bằng tiền chặt, bao phủ TOÀN BỘ SP.
-    const targetItemsPerOrder = Math.max(4, Math.min(6, Math.ceil(eligible.length / autoCount) + 1));
+    const distributable = eligible.filter(p => !consumedIds.has(p.id));
+    const targetItemsPerOrder = Math.max(
+      rule.minItemsPerOrder ?? 4,
+      Math.min(8, Math.ceil(distributable.length / autoCount) + 1)
+    );
     const totalSlots = targetItemsPerOrder * autoCount;
-    const passes = Math.max(1, Math.ceil(totalSlots / eligible.length));
+    const passes = Math.max(1, Math.ceil(totalSlots / Math.max(1, distributable.length)));
 
     let slotCursor = 0;
     for (let pass = 0; pass < passes; pass++) {
-      const passList = [...eligible].sort(() => rand() - 0.5);
+      const passList = [...distributable].sort(() => rand() - 0.5);
       for (const p of passList) {
         if (slotCursor >= totalSlots) break;
         const orderIdx = slotCursor % autoCount;
