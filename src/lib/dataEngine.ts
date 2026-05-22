@@ -946,7 +946,7 @@ function generateSupplierImports(
     }
   } else {
     // ===== NCC nhỏ ≤10 SP: theo rule chi tiết =====
-    const shuffled = [...eligible].sort(() => rand() - 0.5);
+    const shuffled = [...eligible].filter(p => !consumedIds.has(p.id)).sort(() => rand() - 0.5);
 
     for (let oi = 0; oi < autoCount; oi++) {
       let prodsForOrder: Product[];
