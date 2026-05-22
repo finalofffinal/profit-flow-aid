@@ -1432,16 +1432,15 @@ export function generateQuarterData(
   }
 
   // ==========================================================================
-  // POST-CLAMP IMPORT BOOST (Q2/Q3/Q4)
-  // Mục tiêu: tổng gap dương Q2+Q3+Q4 ≈ |gap âm Q1| (~120tr) để cân bằng năm.
-  // Mỗi quý gap dương ≈ 35-45tr → ratio nhập/doanh thu khoảng 1.20-1.27.
-  //   • Q2: ratio ≈ 1.27   (gap dương vừa)
-  //   • Q3: ratio ≈ 1.25   (gap dương vừa, tồn cao nhất do tích lũy từ Q2)
-  //   • Q4: ratio ≈ 1.20   (gap dương nhỏ nhất, BẮT BUỘC > 1.20)
+  // POST-CLAMP IMPORT BOOST — đảm bảo TỔNG NHẬP ≥ SÀN QUÝ (QUARTER_FLOOR_RATIO)
+  //   • Q1: sàn 60%, trần 70% (đặc biệt)
+  //   • Q2: sàn 140%, không trần
+  //   • Q3: sàn 110%, không trần
+  //   • Q4: sàn 120%, không trần
   // ==========================================================================
-  const minRatioByQuarter: Record<number, number> = { 1: 0, 2: 1.27, 3: 1.25, 4: 1.22 };
-  const minRatio = minRatioByQuarter[quarter.quarter] ?? 0;
-  if (minRatio > 0) {
+  const floorRatio = QUARTER_FLOOR_RATIO[quarter.quarter] ?? 1.0;
+  const ceilingRatio = quarter.quarter === 1 ? Q1_CEILING_RATIO : Infinity;
+  if (floorRatio > 0) {
     const totalSalesTarget = quarter.targetRevenue;
     const minImportNeeded = totalSalesTarget * minRatio;
     let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
