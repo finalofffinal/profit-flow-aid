@@ -399,29 +399,26 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('cô lan') || has('co lan')) {
     return {
       ordersCount: [1, 1],
+      fixedOrdersCount: 1,
+      requireAllInEveryOrder: true,
       allowedProducts: (p) => nm(p.name, 'bún tàu', 'bun tau', 'miến dong', 'mien dong', 'măng', 'mang'),
-      maxQtyPerQuarter: (p) => {
+      fixedQtyPerOrder: (p) => {
         const ln = p.name.toLowerCase();
         if (nm(ln, 'bún tàu', 'bun tau')) return 1;
         if (nm(ln, 'miến dong', 'mien dong')) return 10;
         if (nm(ln, 'măng', 'mang')) return 2;
-        return undefined;
-      },
-      maxQtyPerProduct: (p) => {
-        const ln = p.name.toLowerCase();
-        if (nm(ln, 'miến dong', 'mien dong')) return 10;
-        if (nm(ln, 'măng', 'mang')) return 2;
         return 1;
       },
-      minQtyPerOrder: (p) => nm(p.name, 'miến dong', 'mien dong') ? 10 : undefined,
+      maxQtyPerProduct: () => 10,
     };
   }
 
   if (has('mỹ nga') || has('my nga')) {
     return {
       ordersCount: [1, 1],
+      fixedOrdersCount: 1,
       allowedProducts: (p) => nm(p.name, '800ml', '800 ml'),
-      maxQtyPerQuarter: () => 3,
+      fixedQtyPerOrder: () => 3,
       maxQtyPerProduct: () => 3,
     };
   }
@@ -429,8 +426,10 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('liên thành') || has('lien thanh')) {
     return {
       ordersCount: [1, 1],
+      fixedOrdersCount: 1,
+      requireAllInEveryOrder: true,
       allowedProducts: (p) => nm(p.name, 'mắm chay', 'mam chay', 'nhãn vàng', 'nhan vang'),
-      maxQtyPerQuarter: () => 1,
+      fixedQtyPerOrder: () => 1,
       maxQtyPerProduct: () => 1,
     };
   }
@@ -438,18 +437,19 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('huy hoàng') || has('huy hoang')) {
     return {
       ordersCount: [1, 1],
+      fixedOrdersCount: 1,
       allowedProducts: (p) => nm(p.name, 'bún tươi', 'bun tuoi'),
-      maxQtyPerQuarter: () => 10,
+      fixedQtyPerOrder: () => 10,
       maxQtyPerProduct: () => 10,
-      minQtyPerOrder: () => 10,
     };
   }
 
   if (has('chấn hưng') || has('chan hung')) {
     return {
       ordersCount: [1, 1],
+      fixedOrdersCount: 1,
       allowedProducts: (p) => nm(p.name, 'mắm nêm pha', 'mam nem pha', '170ml'),
-      maxQtyPerQuarter: () => 1,
+      fixedQtyPerOrder: () => 1,
       maxQtyPerProduct: () => 1,
     };
   }
