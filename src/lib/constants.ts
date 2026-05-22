@@ -14,6 +14,20 @@ export const CHILD_UNITS = ['Chai', 'Lon', 'Gói', 'Hộp', 'Cái', 'Chiếc', '
 
 export const MAX_YEARLY_REVENUE = 1_000_000_000; // 1 tỷ VND
 
+/**
+ * Ngưỡng SÀN cho tổng nhập hàng theo từng quý (so với targetRevenue của quý).
+ * - Auto generator phải sinh đủ để tổng nhập (manual + auto) vượt sàn này.
+ * - Q1 đặc biệt: nhập rất ít → có thêm trần Q1_CEILING_RATIO (không vượt 70%).
+ * - Q2/Q3/Q4 không có trần.
+ */
+export const QUARTER_FLOOR_RATIO: Record<number, number> = {
+  1: 0.60,
+  2: 1.40,
+  3: 1.10,
+  4: 1.20,
+};
+export const Q1_CEILING_RATIO = 0.70;
+
 export const VIETNAM_HOLIDAYS: Record<string, number> = {
   '01-01': 1.3,
   '04-30': 1.4,
