@@ -145,9 +145,13 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
   }, [activeOrders, selQ, selYear]);
 
   const targetRev = currentQuarter?.targetRevenue || 0;
+  const floorRatio = QUARTER_FLOOR_RATIO[selQ] ?? 1.0;
+  const ceilingRatio = selQ === 1 ? Q1_CEILING_RATIO : Infinity;
   const importRatio = targetRev > 0 ? currentQTotalImport / targetRev : 1;
-  const isShort = targetRev > 0 && importRatio < 0.80 && !currentQLocked;
-  const shortfall = Math.max(0, targetRev * 0.95 - currentQTotalImport);
+  const minImportNeeded = targetRev * floorRatio;
+  const isShort = targetRev > 0 && currentQTotalImport < minImportNeeded && !currentQLocked;
+  const isOverCeiling = targetRev > 0 && currentQTotalImport > targetRev * ceilingRatio && !currentQLocked;
+  const shortfall = Math.max(0, minImportNeeded - currentQTotalImport);
 
   const handleRebalance = () => {
     if (!onRebalanceQuarter) return;
