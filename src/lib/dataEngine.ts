@@ -970,10 +970,11 @@ function generateSupplierImports(
         const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
         const qCap = rule.maxQtyPerQuarter?.(p);
         const minReq = rule.minQtyPerOrder?.(p);
+        const fixedQ = rule.fixedQtyPerOrder?.(p);
         const used = qtyUsedQuarter.get(p.id) || 0;
         const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
         if (remainCap === 0) continue;
-        let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * ruleMax));
+        let qty = fixedQ ?? minReq ?? Math.max(1, Math.floor(1 + rand() * ruleMax));
         qty = Math.min(qty, ruleMax, remainCap);
         if (qty <= 0) continue;
         orderItems[oi].push(buildItem(p, supplier, qty));
