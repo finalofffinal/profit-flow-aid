@@ -522,7 +522,22 @@ type AddItem = {
   customConversionUnit?: string;
   customConversionRate?: number;
   customSellPrice?: number;
+  /** Có đơn vị bé (sub-unit) hay không. Mặc định false → bán theo đơn vị lớn. */
+  hasSubUnit?: boolean;
 };
+
+/** Parse "1.002.222" hoặc "1002222" → 1002222 (VND đầy đủ, KHÔNG nhân 1000). */
+function parseFullVND(s: string): number {
+  if (!s) return 0;
+  // Bỏ dấu chấm phân cách hàng nghìn; giữ dấu phẩy thập phân.
+  const cleaned = s.replace(/\./g, '').replace(/,/g, '.');
+  const v = parseFloat(cleaned);
+  return isNaN(v) ? 0 : Math.round(v);
+}
+function formatFullVNDInput(v: number): string {
+  if (!v) return '';
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
 
 
 
