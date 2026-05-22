@@ -865,7 +865,7 @@ function generateSupplierImports(
   } else if (rule.uniqueAcrossOrders && autoCount > 0) {
     // Chợ Lớn: mỗi SP xuất hiện DUY NHẤT 1 lần trong toàn bộ N đơn,
     // phân phối ~đều ra các đơn (chênh lệch ≤1 SP giữa các đơn).
-    const shuffled = [...eligible].sort(() => rand() - 0.5);
+    const shuffled = [...eligible].filter(p => !consumedIds.has(p.id)).sort(() => rand() - 0.5);
     shuffled.forEach((p, i) => {
       const orderIdx = i % autoCount;
       const ruleMax = rule.maxQtyPerProduct?.(p) ?? 1;
