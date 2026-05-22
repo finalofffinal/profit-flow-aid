@@ -1,7 +1,8 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 import { getLunarParts } from '@/lib/lunar';
+import { QUARTER_FLOOR_RATIO, Q1_CEILING_RATIO } from '@/lib/constants';
 
-export const DATA_ENGINE_VERSION = '2026-04-22-quarter-balance-v4';
+export const DATA_ENGINE_VERSION = '2026-05-22-quarter-floor-v1';
 
 function seededRandom(seed: number) {
   let s = seed;
@@ -1088,34 +1089,15 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   //   • Q3: ≈ 1.55–1.65  (vẫn DƯƠNG cao, nhỉnh hơn Q2)
   //   • Q4: ≈ 1.20–1.30  (vẫn DƯƠNG rõ nhưng thấp hơn Q2/Q3)
   // ⇒ targetRatio đặt = mong muốn / 0.60.
-  switch (quarterNumber) {
-    case 1:
-      // Q1 bán xả tồn 2025, nhập rất ít.
-      return {
-        seasonalRatio: 0.30 + rand() * 0.10, // 30–40% doanh thu
-        endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
-      };
-    case 2:
-      return {
-        seasonalRatio: 2.10 + rand() * 0.15, // target ~210-225%, thực tế ≈125-135% sau cap
-        endingStockRatio: 0.18 + rand() * 0.04,
-      };
-    case 3:
-      return {
-        seasonalRatio: 2.05 + rand() * 0.15, // target ~205-220%, thực tế ≈123-133%
-        endingStockRatio: 0.20 + rand() * 0.04, // tồn cuối Q3 cao nhất do tích lũy
-      };
-    case 4:
-      return {
-        seasonalRatio: 2.00 + rand() * 0.15, // target ~200-215%, thực tế ≈120-130%
-        endingStockRatio: 0.12 + rand() * 0.04, // thấp hơn Q2/Q3 vì xả mạnh
-      };
-    default:
-      return {
-        seasonalRatio: 1.0,
-        endingStockRatio: 0.12,
-      };
-  }
+  // ====== NEW: floor-based (theo QUARTER_FLOOR_RATIO) ======
+  // Trả về seasonalRatio = floor ratio (sàn tối thiểu nhập/doanh thu).
+  // Auto generator phải sinh đủ để vượt sàn này; không có trần (trừ Q1 = 70%).
+  const floor = QUARTER_FLOOR_RATIO[quarterNumber] ?? 1.0;
+  const endingStockRatioByQ: Record<number, number> = { 1: 0.04, 2: 0.18, 3: 0.20, 4: 0.13 };
+  return {
+    seasonalRatio: floor,
+    endingStockRatio: endingStockRatioByQ[quarterNumber] ?? 0.12,
+  };
 }
 
 export function generateQuarterData(
@@ -1289,7 +1271,8 @@ export function generateQuarterData(
       const currentTotal = groupOrders.reduce((s, o) => s + o.total, 0);
       if (groupOrders.length === 0 || currentTotal <= 0 || targetTotal <= 0) return currentTotal;
       const scale = targetTotal / currentTotal;
-      if (Math.abs(scale - 1) < 0.05) return currentTotal;
+      // CHỈ SCALE LÊN — không scale xuống. Sàn quý là tối thiểu, không có trần.
+      if (scale <= 1.05) return currentTotal;
 
       const qUsed = new Map<string, number>();
       for (const o of groupOrders) for (const it of o.items) {
@@ -1449,18 +1432,18 @@ export function generateQuarterData(
   }
 
   // ==========================================================================
-  // POST-CLAMP IMPORT BOOST (Q2/Q3/Q4)
-  // Mục tiêu: tổng gap dương Q2+Q3+Q4 ≈ |gap âm Q1| (~120tr) để cân bằng năm.
-  // Mỗi quý gap dương ≈ 35-45tr → ratio nhập/doanh thu khoảng 1.20-1.27.
-  //   • Q2: ratio ≈ 1.27   (gap dương vừa)
-  //   • Q3: ratio ≈ 1.25   (gap dương vừa, tồn cao nhất do tích lũy từ Q2)
-  //   • Q4: ratio ≈ 1.20   (gap dương nhỏ nhất, BẮT BUỘC > 1.20)
+  // POST-CLAMP IMPORT BOOST — đảm bảo TỔNG NHẬP ≥ SÀN QUÝ (QUARTER_FLOOR_RATIO)
+  //   • Q1: sàn 60%, trần 70% (đặc biệt)
+  //   • Q2: sàn 140%, không trần
+  //   • Q3: sàn 110%, không trần
+  //   • Q4: sàn 120%, không trần
   // ==========================================================================
-  const minRatioByQuarter: Record<number, number> = { 1: 0, 2: 1.27, 3: 1.25, 4: 1.22 };
-  const minRatio = minRatioByQuarter[quarter.quarter] ?? 0;
-  if (minRatio > 0) {
+  const floorRatio = QUARTER_FLOOR_RATIO[quarter.quarter] ?? 1.0;
+  const ceilingRatio = quarter.quarter === 1 ? Q1_CEILING_RATIO : Infinity;
+  if (floorRatio > 0) {
     const totalSalesTarget = quarter.targetRevenue;
-    const minImportNeeded = totalSalesTarget * minRatio;
+    const minImportNeeded = totalSalesTarget * floorRatio;
+    const maxImportAllowed = totalSalesTarget * ceilingRatio;
     let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
 
     if (currentImport < minImportNeeded) {
@@ -1474,7 +1457,8 @@ export function generateQuarterData(
         const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);
         let cursor = 0;
         let safety = 200;
-        while (currentImport < minImportNeeded && safety-- > 0) {
+        const smallestBoostTotal = Math.min(...sortedBoost.map(o => o.total));
+        while (currentImport < minImportNeeded && currentImport + smallestBoostTotal <= maxImportAllowed && safety-- > 0) {
           const src = sortedBoost[cursor % sortedBoost.length];
           cursor++;
           // Clone đơn (bỏ qua cap — yêu cầu nghiệp vụ).
