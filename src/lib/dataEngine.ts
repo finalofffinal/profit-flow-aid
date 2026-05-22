@@ -189,25 +189,23 @@ export interface GeneratedData {
 
 interface SupplierRuleResult {
   ordersCount: [number, number];
-  /** Cố định số đơn (override ordersCount). Dùng cho Chợ Lớn = 5. */
   fixedOrdersCount?: number;
-  /** Số lượng đơn vị lớn tối đa mỗi sản phẩm trong 1 đơn (mặc định 3) */
   maxQtyPerProduct?: (product: Product) => number | undefined;
-  /** Cap tổng cả quý cho 1 sản phẩm (cộng dồn các đơn) */
   maxQtyPerQuarter?: (product: Product) => number | undefined;
-  /** Số lượng tối thiểu mỗi đơn (e.g. miến dong = 10) */
   minQtyPerOrder?: (product: Product) => number | undefined;
-  /** Loại bỏ sản phẩm khỏi đơn tự động */
+  /** Số lượng CỐ ĐỊNH mỗi đơn (nếu set thì qty = giá trị này, ko ngẫu nhiên) */
+  fixedQtyPerOrder?: (product: Product) => number | undefined;
   excludeProduct?: (product: Product) => boolean;
-  /** Whitelist: chỉ những SP này mới xuất hiện trong đơn tự động */
   allowedProducts?: (product: Product) => boolean;
-  /** Số SP tối thiểu trong 1 đơn (mặc định 3, TADA/Địa Đạo = 5) */
   minItemsPerOrder?: number;
-  /** Ưu tiên không trùng sản phẩm giữa các đơn trong cùng quý */
   preferUniquePerQuarter?: boolean;
-  /** Mỗi SP chỉ xuất hiện DUY NHẤT 1 lần trong tất cả đơn (Chợ Lớn) */
   uniqueAcrossOrders?: boolean;
-  /** Không tạo tự động */
+  /** Mỗi đơn PHẢI chứa TẤT CẢ sản phẩm eligible (Đường, Đậu) */
+  requireAllInEveryOrder?: boolean;
+  /** SP phải dồn toàn bộ qty (maxQtyPerQuarter) vào DUY NHẤT 1 đơn (TADA Aji-Mayo, Xì dầu đặc biệt, Sốt hải sản) */
+  singleOrderProducts?: (product: Product) => boolean;
+  /** SP phải phân phối vào số đơn cố định (HPV Shiitake = 2 đơn × 10) */
+  splitAcrossOrders?: (product: Product) => { orders: number; qtyEach: number } | undefined;
   manualOnly?: boolean;
 }
 
