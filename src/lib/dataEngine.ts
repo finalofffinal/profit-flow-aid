@@ -273,7 +273,7 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('bánh tráng') || has('banh trang')) {
     return {
       ordersCount: [1, 1],
-      // Chỉ "vuông" và "tròn (lớn)" — KHÔNG nhận tròn nhỏ
+      fixedOrdersCount: 1,
       allowedProducts: (p) => {
         const ln = p.name.toLowerCase();
         if (nm(ln, 'vuông', 'vuong')) return true;
@@ -288,61 +288,65 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
   if (has('đường') || has('duong')) {
     return {
       ordersCount: [3, 3],
+      fixedOrdersCount: 3,
+      requireAllInEveryOrder: true,
       allowedProducts: (p) => nm(p.name, 'đường trắng bao', 'duong trang bao',
         'đường trắng đóng gói', 'duong trang dong goi',
         'đường mía', 'duong mia', 'phèn viên', 'phen vien'),
-      maxQtyPerQuarter: (p) => {
-        if (nm(p.name, 'phèn viên', 'phen vien')) return undefined;
-        return 1;
-      },
       maxQtyPerProduct: (p) => {
+        if (nm(p.name, 'đường trắng bao', 'duong trang bao')) return 2;
         if (nm(p.name, 'phèn viên', 'phen vien')) return 3;
         return 1;
       },
     };
   }
 
-  // Mắm (NCC tên "mắm" — không phải Mỹ Nga/Liên Thành)
+  // Mắm (NCC tên "mắm" — không phải Mỹ Nga/Liên Thành/Chấn Hưng)
   if ((has('mắm') || has('mam')) && !has('mỹ nga') && !has('my nga')
       && !has('liên thành') && !has('lien thanh') && !has('chấn hưng') && !has('chan hung')) {
     return {
-      ordersCount: [1, 1],
+      ordersCount: [2, 2],
+      fixedOrdersCount: 2,
+      minItemsPerOrder: 4,
       allowedProducts: (p) => nm(p.name, 'ruốc', 'ruoc', 'tôm bắc', 'tom bac', 'nêm', 'nem'),
       maxQtyPerQuarter: (p) => {
         const ln = p.name.toLowerCase();
-        if (nm(ln, 'ruốc nhỏ', 'ruoc nho')) return 1;
-        if (nm(ln, 'ruốc trung', 'ruoc trung')) return 2;
-        if (nm(ln, 'ruốc lớn', 'ruoc lon')) return 3;
-        if (nm(ln, 'tôm bắc', 'tom bac')) return 1;
-        if (nm(ln, 'nêm nhỏ', 'nem nho')) return 1;
-        if (nm(ln, 'nêm lớn', 'nem lon')) return 2;
+        if (nm(ln, 'ruốc nhỏ', 'ruoc nho')) return 2;
+        if (nm(ln, 'ruốc trung', 'ruoc trung')) return 3;
+        if (nm(ln, 'ruốc lớn', 'ruoc lon')) return 5;
+        if (nm(ln, 'tôm bắc nhỏ', 'tom bac nho')) return 1;
+        if (nm(ln, 'tôm bắc lớn', 'tom bac lon')) return 2;
+        if (nm(ln, 'nêm nhỏ', 'nem nho')) return 3;
+        if (nm(ln, 'nêm lớn', 'nem lon')) return 4;
         return undefined;
       },
       maxQtyPerProduct: (p) => {
         const ln = p.name.toLowerCase();
         if (nm(ln, 'ruốc lớn', 'ruoc lon')) return 3;
-        if (nm(ln, 'ruốc trung', 'ruoc trung', 'nêm lớn', 'nem lon')) return 2;
-        return 1;
+        if (nm(ln, 'nêm lớn', 'nem lon')) return 3;
+        if (nm(ln, 'ruốc trung', 'ruoc trung', 'nêm nhỏ', 'nem nho')) return 2;
+        return 2;
       },
     };
   }
 
   if (has('giấm') || has('giam')) {
     return {
-      ordersCount: [1, 1],
+      ordersCount: [2, 2],
+      fixedOrdersCount: 2,
       allowedProducts: (p) => nm(p.name, 'tinh luyện', 'tinh luyen', 'nuôi', 'nuoi', 'cốt', 'cot'),
       maxQtyPerQuarter: (p) => {
         const ln = p.name.toLowerCase();
-        if (nm(ln, 'tinh luyện', 'tinh luyen')) return 2;
-        if (nm(ln, 'nuôi', 'nuoi')) return 1;
+        if (nm(ln, 'tinh luyện', 'tinh luyen')) return 4;
+        if (nm(ln, 'nuôi', 'nuoi')) return 2;
         if (nm(ln, 'cốt', 'cot')) return 10;
         return undefined;
       },
       maxQtyPerProduct: (p) => {
         const ln = p.name.toLowerCase();
-        if (nm(ln, 'cốt', 'cot')) return 10;
-        if (nm(ln, 'tinh luyện', 'tinh luyen')) return 2;
-        return 1;
+        if (nm(ln, 'cốt', 'cot')) return 6;
+        if (nm(ln, 'tinh luyện', 'tinh luyen')) return 3;
+        return 2;
       },
     };
   }
@@ -353,32 +357,31 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
 
   if (has('sen việt') || has('sen viet')) {
     return {
-      ordersCount: [1, 1],
+      ordersCount: [2, 2],
+      fixedOrdersCount: 2,
+      minItemsPerOrder: 4,
       allowedProducts: (p) => nm(p.name, 'bột chiên giòn', 'bot chien gion',
         'bơ thực vật 1kg', 'bo thuc vat 1kg', 'dầu nành', 'dau nanh'),
       maxQtyPerQuarter: (p) => {
         const ln = p.name.toLowerCase();
-        if (nm(ln, 'bột chiên giòn 1kg', 'bot chien gion 1kg')) return 1;
+        if (nm(ln, 'bột chiên giòn 1kg', 'bot chien gion 1kg')) return 2;
         if (nm(ln, 'bột chiên giòn 150', 'bot chien gion 150')) return 2;
-        if (nm(ln, 'bơ thực vật 1kg', 'bo thuc vat 1kg')) return 1;
-        if (nm(ln, 'dầu nành 1l', 'dau nanh 1l')) return 2;
-        if (nm(ln, 'dầu nành 2l', 'dau nanh 2l')) return 2;
+        if (nm(ln, 'bơ thực vật 1kg', 'bo thuc vat 1kg')) return 2;
+        if (nm(ln, 'dầu nành 1l', 'dau nanh 1l')) return 3;
+        if (nm(ln, 'dầu nành 2l', 'dau nanh 2l')) return 3;
         return undefined;
       },
-      maxQtyPerProduct: (p) => {
-        const ln = p.name.toLowerCase();
-        if (nm(ln, '150')) return 2;
-        if (nm(ln, 'dầu nành', 'dau nanh')) return 2;
-        return 1;
-      },
+      maxQtyPerProduct: () => 2,
     };
   }
 
   if (has('đậu') || has('dau')) {
     return {
       ordersCount: [1, 1],
+      fixedOrdersCount: 1,
+      requireAllInEveryOrder: true,
       allowedProducts: (p) => nm(p.name, 'đậu', 'dau', 'điều màu', 'dieu mau'),
-      maxQtyPerQuarter: (p) => {
+      fixedQtyPerOrder: (p) => {
         const ln = p.name.toLowerCase();
         if (nm(ln, 'đậu đen', 'dau den')) return 2;
         if (nm(ln, 'đậu đỏ', 'dau do')) return 1;
@@ -386,15 +389,10 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'đậu xanh tróc vỏ', 'dau xanh troc vo')) return 2;
         if (nm(ln, 'đậu xanh nửa vàng', 'dau xanh nua vang')) return 1;
         if (nm(ln, 'đậu phộng nhỏ', 'dau phong nho')) return 2;
-        if (nm(ln, 'điều màu', 'dieu mau')) return 5;
-        return undefined;
-      },
-      maxQtyPerProduct: (p) => {
-        const ln = p.name.toLowerCase();
-        if (nm(ln, 'điều màu', 'dieu mau')) return 5;
-        if (nm(ln, 'đậu đen', 'dau den', 'tróc vỏ', 'troc vo', 'phộng nhỏ', 'phong nho')) return 2;
+        if (nm(ln, 'điều màu', 'dieu mau')) return 10;
         return 1;
       },
+      maxQtyPerProduct: () => 10,
     };
   }
 
