@@ -574,15 +574,23 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       allowedProducts: isAllowed,
       maxQtyPerProduct: (p) => {
         const ln = p.name.toLowerCase();
+        if (nm(ln, 'hạt nêm 400', 'hat nem 400', 'hạt nêm 900', 'hat nem 900')) return 2;
         if (nm(ln, 'cooking oil 1l')) return 3;
         if (nm(ln, 'cooking oil 2l')) return 3;
-        if (nm(ln, 'bột ngọt 454', 'bot ngot 454')) return 2;
+        if (nm(ln, 'bột ngọt 454', 'bot ngot 454')) return 3;
         if (nm(ln, 'bột ngọt 400', 'bot ngot 400')) return 3;
         if (nm(ln, 'bột ngọt 1kg', 'bot ngot 1kg')) return 5;
         if (nm(ln, 'bột ngọt 5kg', 'bot ngot 5kg')) return 3;
         if (nm(ln, 'nam ngư 750', 'nam ngu 750')) return 3;
         if (nm(ln, 'đệ nhị', 'de nhi')) return 5;
+        if (nm(ln, 'nhị ca', 'nhi ca')) return 3;
         return 2;
+      },
+      minQtyPerOrder: (p) => {
+        const ln = p.name.toLowerCase();
+        // "Bắt buộc có 2 đơn vị lớn mỗi đơn" — khi có trong đơn, qty = 2
+        if (nm(ln, 'hạt nêm 400', 'hat nem 400', 'hạt nêm 900', 'hat nem 900')) return 2;
+        return undefined;
       },
       maxQtyPerQuarter: (p) => {
         const ln = p.name.toLowerCase();
