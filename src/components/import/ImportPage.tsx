@@ -273,7 +273,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
         <div className="flex items-center gap-2 text-[10px] md:text-xs text-muted-foreground flex-wrap">
           <span className="md:hidden">Σ <span className="font-bold text-foreground">{formatCompactVND(totalImport)}</span></span>
           {targetRev > 0 && !currentQLocked && (
-            <span>Tỉ lệ: <span className={`font-bold ${importRatio < 0.80 ? 'text-destructive' : importRatio > 1.20 ? 'text-amber-600' : 'text-emerald-600'}`}>{Math.round(importRatio * 100)}%</span></span>
+            <span>Tỉ lệ: <span className={`font-bold ${currentQTotalImport < minImportNeeded ? 'text-amber-600' : (selQ === 1 && isOverCeiling) ? 'text-blue-600' : 'text-emerald-600'}`}>{Math.round(importRatio * 100)}%</span> <span className="text-[10px]">(sàn {Math.round(floorRatio*100)}%{selQ===1?`, trần ${Math.round(Q1_CEILING_RATIO*100)}%`:''})</span></span>
           )}
         </div>
       </div>
