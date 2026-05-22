@@ -690,37 +690,108 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
                   </div>
 
                   {isCustom && (
-                    <div className="space-y-1.5 p-2 rounded bg-muted/30 border border-dashed">
-                      <Input className="h-8 text-xs" placeholder="Tên sản phẩm (vd: Nước mắm ABC)"
-                        value={sp.customName || ''}
-                        onChange={e => { const u = [...selectedProducts]; u[i].customName = e.target.value; setSelectedProducts(u); }} />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input className="h-8 text-xs" placeholder="Đơn vị lớn (vd: thùng)"
-                          value={sp.customUnit || ''}
-                          onChange={e => { const u = [...selectedProducts]; u[i].customUnit = e.target.value; setSelectedProducts(u); }} />
-                        <Input className="h-8 text-xs" placeholder="Đơn vị bé (vd: chai)"
-                          value={sp.customConversionUnit || ''}
-                          onChange={e => { const u = [...selectedProducts]; u[i].customConversionUnit = e.target.value; setSelectedProducts(u); }} />
+                    <div className="space-y-2 p-2 rounded bg-muted/30 border border-dashed">
+                      {/* Tên SP — bắt buộc */}
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Tên sản phẩm</Label>
+                        <Input className="h-8 text-xs mt-0.5" placeholder="vd: Nước mắm ABC"
+                          value={sp.customName || ''}
+                          onChange={e => { const u = [...selectedProducts]; u[i].customName = e.target.value; setSelectedProducts(u); }} />
                       </div>
+
+                      {/* Đơn vị lớn: select gợi ý + custom */}
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Đơn vị lớn</Label>
+                        <div className="flex gap-1.5 mt-0.5">
+                          <Select value={PARENT_UNITS.includes(sp.customUnit || '') ? (sp.customUnit || '') : '__custom__'}
+                            onValueChange={v => {
+                              const u = [...selectedProducts];
+                              u[i].customUnit = v === '__custom__' ? '' : v;
+                              setSelectedProducts(u);
+                            }}>
+                            <SelectTrigger className="h-8 text-xs w-32"><SelectValue placeholder="Chọn" /></SelectTrigger>
+                            <SelectContent>
+                              {PARENT_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                              <SelectItem value="__custom__">Khác (tự nhập)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input className="h-8 text-xs flex-1" placeholder="hoặc nhập thủ công"
+                            value={sp.customUnit || ''}
+                            onChange={e => { const u = [...selectedProducts]; u[i].customUnit = e.target.value; setSelectedProducts(u); }} />
+                        </div>
+                      </div>
+
+                      {/* Giá nhập + Giá bán của đơn vị lớn (full VND, không x1000) */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Qui đổi (1 lớn = ? bé)</Label>
-                          <Input className="h-8 text-xs" type="number" min={1}
-                            value={sp.customConversionRate ?? 1}
-                            onChange={e => { const u = [...selectedProducts]; u[i].customConversionRate = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
+                          <Label className="text-[10px] text-muted-foreground">Giá nhập / đv lớn (VND)</Label>
+                          <Input className="h-8 text-xs" type="text" inputMode="decimal" placeholder="vd: 1.002.222"
+                            value={formatFullVNDInput(sp.buyPrice ?? 0)}
+                            onChange={e => {
+                              const u = [...selectedProducts];
+                              u[i].buyPrice = parseFullVND(e.target.value);
+                              setSelectedProducts(u);
+                            }} />
                         </div>
                         <div>
-                          <Label className="text-[10px] text-muted-foreground">Giá bán/đv lớn (×1000)</Label>
-                          <Input className="h-8 text-xs" type="text" inputMode="decimal"
-                            value={(sp.customSellPrice ?? 0) > 0 ? ((sp.customSellPrice ?? 0) / 1000).toString() : ''}
+                          <Label className="text-[10px] text-muted-foreground">Giá bán / đv lớn (VND)</Label>
+                          <Input className="h-8 text-xs" type="text" inputMode="decimal" placeholder="vd: 1.200.000"
+                            value={formatFullVNDInput(sp.customSellPrice ?? 0)}
                             onChange={e => {
-                              const v = parseFloat(e.target.value.replace(/,/g, '.'));
                               const u = [...selectedProducts];
-                              u[i].customSellPrice = isNaN(v) ? 0 : Math.round(v * 1000);
+                              u[i].customSellPrice = parseFullVND(e.target.value);
                               setSelectedProducts(u);
                             }} />
                         </div>
                       </div>
+
+                      {/* Checkbox: có đơn vị bé? */}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox checked={!!sp.hasSubUnit} onCheckedChange={v => {
+                          const u = [...selectedProducts];
+                          u[i].hasSubUnit = !!v;
+                          if (!v) {
+                            u[i].customConversionUnit = u[i].customUnit;
+                            u[i].customConversionRate = 1;
+                          } else {
+                            u[i].customConversionUnit = u[i].customConversionUnit || '';
+                            u[i].customConversionRate = u[i].customConversionRate ?? 1;
+                          }
+                          setSelectedProducts(u);
+                        }} />
+                        <span className="text-xs">Có đơn vị bé (đơn vị bán lẻ)</span>
+                      </label>
+
+                      {sp.hasSubUnit && (
+                        <div className="grid grid-cols-2 gap-2 pl-6 border-l-2 border-primary/30">
+                          <div>
+                            <Label className="text-[10px] text-muted-foreground">Đơn vị bé</Label>
+                            <div className="flex gap-1.5 mt-0.5">
+                              <Select value={CHILD_UNITS.includes(sp.customConversionUnit || '') ? (sp.customConversionUnit || '') : '__custom__'}
+                                onValueChange={v => {
+                                  const u = [...selectedProducts];
+                                  u[i].customConversionUnit = v === '__custom__' ? '' : v;
+                                  setSelectedProducts(u);
+                                }}>
+                                <SelectTrigger className="h-8 text-xs w-28"><SelectValue placeholder="Chọn" /></SelectTrigger>
+                                <SelectContent>
+                                  {CHILD_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                                  <SelectItem value="__custom__">Khác</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input className="h-8 text-xs flex-1" placeholder="tự nhập"
+                                value={sp.customConversionUnit || ''}
+                                onChange={e => { const u = [...selectedProducts]; u[i].customConversionUnit = e.target.value; setSelectedProducts(u); }} />
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-muted-foreground">Qui cách (1 lớn = ? bé)</Label>
+                            <Input className="h-8 text-xs mt-0.5" type="number" min={1}
+                              value={sp.customConversionRate ?? 1}
+                              onChange={e => { const u = [...selectedProducts]; u[i].customConversionRate = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -732,15 +803,20 @@ function AddImportDialog({ open, onClose, suppliers, products, onSubmit }: {
                           onChange={e => { const u = [...selectedProducts]; u[i].quantity = Math.max(1, parseInt(e.target.value) || 1); setSelectedProducts(u); }} />
                       </div>
                       <div>
-                        <Label className="text-[10px] text-muted-foreground">Giá nhập (×1000)</Label>
-                        <Input className="h-8 text-xs" type="text" inputMode="decimal"
-                          value={price > 0 ? (price / 1000).toString() : ''}
-                          onChange={e => {
-                            const v = parseFloat(e.target.value.replace(/,/g, '.'));
-                            const u = [...selectedProducts];
-                            u[i].buyPrice = isNaN(v) ? 0 : Math.round(v * 1000);
-                            setSelectedProducts(u);
-                          }} />
+                        <Label className="text-[10px] text-muted-foreground">
+                          {isCustom ? 'Giá nhập (đã nhập ở trên)' : 'Giá nhập (VND)'}
+                        </Label>
+                        {isCustom ? (
+                          <div className="text-xs font-semibold tabular-nums text-muted-foreground py-2">{formatVND(price)}</div>
+                        ) : (
+                          <Input className="h-8 text-xs" type="text" inputMode="decimal" placeholder="vd: 1.002.222"
+                            value={formatFullVNDInput(price)}
+                            onChange={e => {
+                              const u = [...selectedProducts];
+                              u[i].buyPrice = parseFullVND(e.target.value);
+                              setSelectedProducts(u);
+                            }} />
+                        )}
                       </div>
                       <div className="text-right">
                         <Label className="text-[10px] text-muted-foreground">Thành tiền</Label>
