@@ -1442,7 +1442,8 @@ export function generateQuarterData(
   const ceilingRatio = quarter.quarter === 1 ? Q1_CEILING_RATIO : Infinity;
   if (floorRatio > 0) {
     const totalSalesTarget = quarter.targetRevenue;
-    const minImportNeeded = totalSalesTarget * minRatio;
+    const minImportNeeded = totalSalesTarget * floorRatio;
+    const maxImportAllowed = totalSalesTarget * ceilingRatio;
     let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
 
     if (currentImport < minImportNeeded) {
@@ -1456,7 +1457,7 @@ export function generateQuarterData(
         const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);
         let cursor = 0;
         let safety = 200;
-        while (currentImport < minImportNeeded && safety-- > 0) {
+        while (currentImport < minImportNeeded && currentImport + sortedBoost[0].total <= maxImportAllowed && safety-- > 0) {
           const src = sortedBoost[cursor % sortedBoost.length];
           cursor++;
           // Clone đơn (bỏ qua cap — yêu cầu nghiệp vụ).
