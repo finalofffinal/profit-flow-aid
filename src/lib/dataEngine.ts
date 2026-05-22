@@ -1089,34 +1089,15 @@ function getQuarterInventoryProfile(quarterNumber: number, rand: () => number) {
   //   • Q3: ≈ 1.55–1.65  (vẫn DƯƠNG cao, nhỉnh hơn Q2)
   //   • Q4: ≈ 1.20–1.30  (vẫn DƯƠNG rõ nhưng thấp hơn Q2/Q3)
   // ⇒ targetRatio đặt = mong muốn / 0.60.
-  switch (quarterNumber) {
-    case 1:
-      // Q1 bán xả tồn 2025, nhập rất ít.
-      return {
-        seasonalRatio: 0.30 + rand() * 0.10, // 30–40% doanh thu
-        endingStockRatio: 0.03 + rand() * 0.02, // 3–5% (cạn kho cuối Q1)
-      };
-    case 2:
-      return {
-        seasonalRatio: 2.10 + rand() * 0.15, // target ~210-225%, thực tế ≈125-135% sau cap
-        endingStockRatio: 0.18 + rand() * 0.04,
-      };
-    case 3:
-      return {
-        seasonalRatio: 2.05 + rand() * 0.15, // target ~205-220%, thực tế ≈123-133%
-        endingStockRatio: 0.20 + rand() * 0.04, // tồn cuối Q3 cao nhất do tích lũy
-      };
-    case 4:
-      return {
-        seasonalRatio: 2.00 + rand() * 0.15, // target ~200-215%, thực tế ≈120-130%
-        endingStockRatio: 0.12 + rand() * 0.04, // thấp hơn Q2/Q3 vì xả mạnh
-      };
-    default:
-      return {
-        seasonalRatio: 1.0,
-        endingStockRatio: 0.12,
-      };
-  }
+  // ====== NEW: floor-based (theo QUARTER_FLOOR_RATIO) ======
+  // Trả về seasonalRatio = floor ratio (sàn tối thiểu nhập/doanh thu).
+  // Auto generator phải sinh đủ để vượt sàn này; không có trần (trừ Q1 = 70%).
+  const floor = QUARTER_FLOOR_RATIO[quarterNumber] ?? 1.0;
+  const endingStockRatioByQ: Record<number, number> = { 1: 0.04, 2: 0.18, 3: 0.20, 4: 0.13 };
+  return {
+    seasonalRatio: floor,
+    endingStockRatio: endingStockRatioByQ[quarterNumber] ?? 0.12,
+  };
 }
 
 export function generateQuarterData(
