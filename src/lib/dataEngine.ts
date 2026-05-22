@@ -234,7 +234,8 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         || nm(ln, 'tương ớt 500ml', 'tuong ot 500ml');
     };
     return {
-      ordersCount: [3, 5],
+      ordersCount: [5, 5],
+      fixedOrdersCount: 5,
       allowedProducts: isAllowed,
       maxQtyPerQuarter: (p) => {
         const ln = p.name.toLowerCase();
@@ -242,7 +243,6 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'shiitake')) return 20;
         if (nm(ln, 'xúc xích', 'xuc xich', 'bin & bon', 'bin&bon')) return 20;
         if (nm(ln, 'nhất ca', 'nhat ca')) return 1;
-        if (nm(ln, 'tương ớt 500ml', 'tuong ot 500ml')) return 3;
         return undefined;
       },
       maxQtyPerProduct: (p) => {
@@ -251,13 +251,20 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
         if (nm(ln, 'đệ nhị', 'de nhi')) return 3;
         if (nm(ln, 'siêu tiết kiệm 5l', 'sieu tiet kiem 5l')) return 2;
         if (nm(ln, 'nhị ca', 'nhi ca')) return 3;
+        if (nm(ln, 'tương ớt 500ml', 'tuong ot 500ml')) return 3;
         if (nm(ln, 'shiitake')) return 10;
+        if (nm(ln, 'xúc xích', 'xuc xich', 'bin & bon', 'bin&bon')) return 10;
         return undefined;
       },
       minQtyPerOrder: (p) => {
         const ln = p.name.toLowerCase();
-        if (nm(ln, 'shiitake')) return 10;
         if (nm(ln, 'xúc xích', 'xuc xich', 'bin & bon', 'bin&bon')) return 5;
+        return undefined;
+      },
+      // Shiitake: bắt buộc 2 đơn × 10
+      splitAcrossOrders: (p) => {
+        const ln = p.name.toLowerCase();
+        if (nm(ln, 'shiitake')) return { orders: 2, qtyEach: 10 };
         return undefined;
       },
     };
