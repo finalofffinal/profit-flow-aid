@@ -803,11 +803,66 @@ function generateSupplierImports(
 
   const isLargeSupplier = eligible.length > 10;
 
-  // ===== Đối với NCC nhỏ (≤10 SP): phân bổ theo rule cũ =====
-  // ===== Đối với NCC lớn (>10 SP): bao phủ toàn bộ + cân bằng tiền =====
   const orderItems: ImportOrderItem[][] = Array.from({ length: autoCount }, () => []);
 
-  if (rule.uniqueAcrossOrders && autoCount > 0) {
+  // ===== Pre-pass: SP có splitAcrossOrders (HPV Shiitake) — phân vào N đơn cố định =====
+  const consumedIds = new Set<string>();
+  if (rule.splitAcrossOrders && autoCount > 0) {
+    for (const p of eligible) {
+      const split = rule.splitAcrossOrders(p);
+      if (!split) continue;
+      const orderIdxs = [...Array(autoCount).keys()]
+        .sort(() => rand() - 0.5)
+        .slice(0, Math.min(split.orders, autoCount));
+      let total = 0;
+      for (const oi of orderIdxs) {
+        orderItems[oi].push(buildItem(p, supplier, split.qtyEach));
+        total += split.qtyEach;
+      }
+      qtyUsedQuarter.set(p.id, total);
+      productsUsed.add(p.id);
+      consumedIds.add(p.id);
+    }
+  }
+
+  // ===== Pre-pass: SP single-order (TADA Aji-Mayo, Xì dầu đặc biệt, Sốt hải sản) =====
+  if (rule.singleOrderProducts && autoCount > 0) {
+    for (const p of eligible) {
+      if (consumedIds.has(p.id)) continue;
+      if (!rule.singleOrderProducts(p)) continue;
+      const totalQty = rule.maxQtyPerQuarter?.(p) ?? rule.maxQtyPerProduct?.(p) ?? 1;
+      const oi = Math.floor(rand() * autoCount);
+      orderItems[oi].push(buildItem(p, supplier, totalQty));
+      qtyUsedQuarter.set(p.id, totalQty);
+      productsUsed.add(p.id);
+      consumedIds.add(p.id);
+    }
+  }
+
+  // ===== requireAllInEveryOrder (Đường, Đậu, Cô Lan, Liên Thành): mỗi đơn = toàn bộ SP =====
+  if (rule.requireAllInEveryOrder && autoCount > 0) {
+    for (let oi = 0; oi < autoCount; oi++) {
+      for (const p of eligible) {
+        if (consumedIds.has(p.id)) continue;
+        const fixedQ = rule.fixedQtyPerOrder?.(p);
+        const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
+        let qty: number;
+        if (fixedQ !== undefined) qty = fixedQ;
+        else qty = Math.max(1, Math.floor(1 + rand() * ruleMax));
+        qty = Math.min(qty, ruleMax);
+        const qCap = rule.maxQtyPerQuarter?.(p);
+        if (qCap !== undefined) {
+          const used = qtyUsedQuarter.get(p.id) || 0;
+          qty = Math.min(qty, Math.max(0, qCap - used));
+        }
+        if (qty <= 0) continue;
+        orderItems[oi].push(buildItem(p, supplier, qty));
+        qtyUsedQuarter.set(p.id, (qtyUsedQuarter.get(p.id) || 0) + qty);
+        productsUsed.add(p.id);
+      }
+    }
+    // Skip phần còn lại — đã phủ
+  } else if (rule.uniqueAcrossOrders && autoCount > 0) {
     // Chợ Lớn: mỗi SP xuất hiện DUY NHẤT 1 lần trong toàn bộ N đơn,
     // phân phối ~đều ra các đơn (chênh lệch ≤1 SP giữa các đơn).
     const shuffled = [...eligible].sort(() => rand() - 0.5);
