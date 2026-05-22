@@ -637,49 +637,72 @@ function getSupplierRule(supplierName: string): SupplierRuleResult {
       'sen khô','sen kho','mè','me ','long nhãn','long nhan',
       'nho khô','nho kho','hạt điều','hat dieu',
       'cá hộp 3 cô gái','ca hop 3 co gai','bơ thực vật 80','bo thuc vat 80',
+      'bột chiên giòn gà giòn','bot chien gion ga gion','aji-quick',
+      'bột lẩu thái aji-quick','bot lau thai aji-quick',
+      'phổ tai','pho tai','phô mai gói','pho mai goi',
+      'bồ kết','bo ket','bột nghệ','bot nghe','bột bán','bot ban',
+      'sương sáo','suong sao','màu gạch tôm','mau gach tom',
+      'nấm đông cô','nam dong co','bò kho ly','bo kho ly',
+      'la gu ly','cà ri ly','ca ri ly',
     ];
     const isAllowed = (p: Product) => allowList.some(s => nm(p.name, s));
     return {
       ordersCount: [5, 5],
       fixedOrdersCount: 5,
-      minItemsPerOrder: 5,
+      minItemsPerOrder: 10,
       uniqueAcrossOrders: true,
       allowedProducts: isAllowed,
       maxQtyPerQuarter: (p) => {
         const ln = p.name.toLowerCase();
         if (nm(ln, 'bột chiên xù 100', 'bot chien xu 100')) return 20;
+        if (nm(ln, 'bột chiên giòn gà giòn', 'bot chien gion ga gion')) return 20;
+        if (nm(ln, 'bột lẩu thái aji-quick', 'bot lau thai aji-quick')) return 10;
+        if (nm(ln, 'táo đỏ', 'tao do')) return 4;
         if (nm(ln, 'nấm hương', 'nam huong') && !nm(ln, 'hạt nêm', 'hat nem')) return 2;
-        if (nm(ln, 'tiêu đen', 'tieu den')) return 3;
-        if (nm(ln, 'ớt hàn quốc', 'ot han quoc')) return 2;
+        if (nm(ln, 'tiêu đen', 'tieu den')) return 4;
+        if (nm(ln, 'tiêu sọ', 'tieu so')) return 3;
+        if (nm(ln, 'ớt hàn quốc', 'ot han quoc')) return 4;
         if (nm(ln, 'kỷ tử', 'ky tu')) return 4;
-        if (nm(ln, 'hoành thành', 'hoanh thanh')) return 10;
+        if (nm(ln, 'hoành thành', 'hoanh thanh')) return 4;
+        if (nm(ln, 'bơ thực vật 200', 'bo thuc vat 200')) return 2;
         if (nm(ln, 'vị rang phở', 'vi rang pho')) return 5;
-        if (nm(ln, 'bột sắn dây', 'bot san day')) return 2;
-        if (nm(ln, 'nhãn nhục', 'nhan nhuc')) return 2;
+        if (nm(ln, 'bột sắn dây', 'bot san day')) return 3;
         if (nm(ln, 'hạt chia', 'hat chia')) return 2;
         if (nm(ln, 'mai quế lộ', 'mai que lo')) return 3;
         if (nm(ln, 'óc chó', 'oc cho')) return 2;
         if (nm(ln, 'hạnh nhân', 'hanh nhan')) return 3;
         if (nm(ln, 'hạt é', 'hat e')) return 2;
+        if (nm(ln, 'soup bún bò chay', 'soup bun bo chay')) return 2;
         if (nm(ln, 'soup')) return 4;
         if (nm(ln, 'miến khô minh châu', 'mien kho minh chau')) return 2;
-        if (nm(ln, 'macca', 'rau câu', 'rau cau', 'râu câu')) return 2;
+        if (nm(ln, 'macca')) return 2;
+        if (nm(ln, 'rau câu giòn', 'rau cau gion', 'râu câu giòn')) return 2;
+        if (nm(ln, 'rau câu dẻo', 'rau cau deo', 'râu câu dẻo')) return 3;
         if (nm(ln, 'bột cà ri', 'bot ca ri', 'bột bò kho', 'bot bo kho',
           'bột la gu', 'bot la gu', 'bột bún bò', 'bot bun bo')) return 3;
         if (nm(ln, 'mè', 'me ')) return 2;
+        if (nm(ln, 'cá hộp 3 cô gái', 'ca hop 3 co gai')) return 2;
+        if (nm(ln, 'bơ thực vật 80', 'bo thuc vat 80')) return 2;
+        if (nm(ln, 'bột nghệ', 'bot nghe')) return 6;
+        if (nm(ln, 'sương sáo', 'suong sao')) return 2;
+        if (nm(ln, 'nấm đông cô', 'nam dong co')) return 2;
+        if (nm(ln, 'bò kho ly', 'bo kho ly', 'la gu ly', 'cà ri ly', 'ca ri ly')) return 2;
         return 1;
       },
       maxQtyPerProduct: (p) => {
         const ln = p.name.toLowerCase();
         if (nm(ln, 'bột chiên xù 100', 'bot chien xu 100')) return 20;
-        if (nm(ln, 'hoành thành', 'hoanh thanh')) return 10;
+        if (nm(ln, 'bột chiên giòn gà giòn', 'bot chien gion ga gion')) return 20;
+        if (nm(ln, 'bột lẩu thái aji-quick', 'bot lau thai aji-quick')) return 10;
+        if (nm(ln, 'bột nghệ', 'bot nghe')) return 6;
         if (nm(ln, 'vị rang phở', 'vi rang pho')) return 5;
-        if (nm(ln, 'kỷ tử', 'ky tu')) return 4;
-        if (nm(ln, 'tiêu đen', 'tieu den', 'mai quế lộ', 'mai que lo',
-          'hạnh nhân', 'hanh nhan',
+        if (nm(ln, 'táo đỏ', 'tao do', 'kỷ tử', 'ky tu', 'hoành thành', 'hoanh thanh',
+          'ớt hàn quốc', 'ot han quoc', 'tiêu đen', 'tieu den', 'soup')) return 4;
+        if (nm(ln, 'tiêu sọ', 'tieu so', 'mai quế lộ', 'mai que lo',
+          'hạnh nhân', 'hanh nhan', 'rau câu dẻo', 'rau cau deo',
+          'bột sắn dây', 'bot san day',
           'bột cà ri', 'bot ca ri', 'bột bò kho', 'bot bo kho',
           'bột la gu', 'bot la gu', 'bột bún bò', 'bot bun bo')) return 3;
-        if (nm(ln, 'soup')) return 4;
         return 2;
       },
     };
