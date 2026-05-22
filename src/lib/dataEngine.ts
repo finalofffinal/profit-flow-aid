@@ -1457,7 +1457,8 @@ export function generateQuarterData(
         const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);
         let cursor = 0;
         let safety = 200;
-        while (currentImport < minImportNeeded && currentImport + sortedBoost[0].total <= maxImportAllowed && safety-- > 0) {
+        const smallestBoostTotal = Math.min(...sortedBoost.map(o => o.total));
+        while (currentImport < minImportNeeded && currentImport + smallestBoostTotal <= maxImportAllowed && safety-- > 0) {
           const src = sortedBoost[cursor % sortedBoost.length];
           cursor++;
           // Clone đơn (bỏ qua cap — yêu cầu nghiệp vụ).
