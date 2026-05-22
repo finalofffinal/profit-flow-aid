@@ -219,19 +219,22 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
         )}
 
         {isShort && (
-          <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-2 py-1.5 text-[11px] flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-2 py-1.5 text-[11px] flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="font-semibold text-destructive">Nhập Q{selQ} thiếu ({Math.round(importRatio * 100)}%)</div>
+              <div className="font-semibold text-amber-700 dark:text-amber-400">
+                Q{selQ} chưa đạt sàn nhập tối thiểu {Math.round(floorRatio * 100)}% (hiện {Math.round(importRatio * 100)}%)
+              </div>
               <div className="text-muted-foreground truncate">
-                {formatCompactVND(currentQTotalImport)} / {formatCompactVND(targetRev)} · thiếu ~{formatCompactVND(shortfall)}
+                {formatCompactVND(currentQTotalImport)} / cần ≥{formatCompactVND(minImportNeeded)} · thiếu ~{formatCompactVND(shortfall)} — hãy thêm đơn bổ sung hoặc bấm "Ngẫu nhiên"
               </div>
             </div>
-            {onRebalanceQuarter && (
-              <Button size="sm" className="h-7 text-xs shrink-0 px-2" onClick={handleRebalance}>
-                <Scale className="mr-1 h-3.5 w-3.5" /> Cân bằng
-              </Button>
-            )}
+          </div>
+        )}
+
+        {isOverCeiling && selQ === 1 && (
+          <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 px-2 py-1 text-[11px] text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" /> Q1 đã vượt trần {Math.round(Q1_CEILING_RATIO * 100)}% — hãy xem lại
           </div>
         )}
 
