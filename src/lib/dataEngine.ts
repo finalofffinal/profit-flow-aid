@@ -1271,7 +1271,8 @@ export function generateQuarterData(
       const currentTotal = groupOrders.reduce((s, o) => s + o.total, 0);
       if (groupOrders.length === 0 || currentTotal <= 0 || targetTotal <= 0) return currentTotal;
       const scale = targetTotal / currentTotal;
-      if (Math.abs(scale - 1) < 0.05) return currentTotal;
+      // CHỈ SCALE LÊN — không scale xuống. Sàn quý là tối thiểu, không có trần.
+      if (scale <= 1.05) return currentTotal;
 
       const qUsed = new Map<string, number>();
       for (const o of groupOrders) for (const it of o.items) {
