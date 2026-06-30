@@ -857,33 +857,71 @@ function generateSupplierImports(
 
   // ===== requireAllInEveryOrder (Đường, Đậu, Cô Lan, Liên Thành): mỗi đơn = toàn bộ SP =====
   if (rule.requireAllInEveryOrder && autoCount > 0) {
-    for (let oi = 0; oi < autoCount; oi++) {
-      for (const p of eligible) {
-        if (consumedIds.has(p.id)) continue;
-        const fixedQ = rule.fixedQtyPerOrder?.(p);
-        const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
-        let qty: number;
-        if (fixedQ !== undefined) qty = fixedQ;
-        else qty = Math.max(1, Math.floor(1 + rand() * ruleMax));
-        qty = Math.min(qty, ruleMax);
-        const qCap = rule.maxQtyPerQuarter?.(p);
-        if (qCap !== undefined) {
-          const used = qtyUsedQuarter.get(p.id) || 0;
-          qty = Math.min(qty, Math.max(0, qCap - used));
+    // Distribute qty per product ACROSS orders with intentional variance để các đơn không identical.
+    for (const p of eligible) {
+      if (consumedIds.has(p.id)) continue;
+      const fixedQ = rule.fixedQtyPerOrder?.(p);
+      const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
+      const qCap = rule.maxQtyPerQuarter?.(p);
+
+      // Per-order qty array, ban đầu mỗi đơn = 1 (đảm bảo "có mặt trong mọi đơn")
+      const qtyPerOrder = Array(autoCount).fill(1);
+
+      if (fixedQ !== undefined) {
+        // Có fixedQty: dùng làm BASE rồi thêm ±1 jitter cho từng đơn (nếu fixedQ >= 2)
+        for (let oi = 0; oi < autoCount; oi++) {
+          let q = fixedQ;
+          if (fixedQ >= 2 && rand() < 0.45) q += Math.round((rand() - 0.5) * 2); // -1..+1
+          qtyPerOrder[oi] = Math.max(1, q);
         }
-        if (qty <= 0) continue;
+      } else if (ruleMax > 1) {
+        // Random 1..ruleMax mỗi đơn — không bias về 1 nữa
+        for (let oi = 0; oi < autoCount; oi++) {
+          qtyPerOrder[oi] = 1 + Math.floor(rand() * ruleMax);
+        }
+        // Shuffle lại để pattern không liên tiếp
+        for (let i = qtyPerOrder.length - 1; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          [qtyPerOrder[i], qtyPerOrder[j]] = [qtyPerOrder[j], qtyPerOrder[i]];
+        }
+      }
+      // Nếu ruleMax === 1 → qtyPerOrder all = 1 (không tránh được)
+
+      // Apply qCap
+      if (qCap !== undefined) {
+        let totalPlanned = qtyPerOrder.reduce((s, q) => s + q, 0);
+        while (totalPlanned > qCap) {
+          // Trừ 1 từ đơn lớn nhất (nhưng giữ >=1)
+          let maxIdx = -1, maxV = 1;
+          for (let oi = 0; oi < autoCount; oi++) {
+            if (qtyPerOrder[oi] > maxV) { maxV = qtyPerOrder[oi]; maxIdx = oi; }
+          }
+          if (maxIdx < 0) break;
+          qtyPerOrder[maxIdx]--;
+          totalPlanned--;
+        }
+      }
+
+      for (let oi = 0; oi < autoCount; oi++) {
+        const qty = Math.max(1, Math.min(qtyPerOrder[oi], ruleMax));
         orderItems[oi].push(buildItem(p, supplier, qty));
         qtyUsedQuarter.set(p.id, (qtyUsedQuarter.get(p.id) || 0) + qty);
-        productsUsed.add(p.id);
       }
+      productsUsed.add(p.id);
     }
     // Skip phần còn lại — đã phủ
   } else if (rule.uniqueAcrossOrders && autoCount > 0) {
     // Chợ Lớn: mỗi SP xuất hiện DUY NHẤT 1 lần trong toàn bộ N đơn,
     // phân phối ~đều ra các đơn (chênh lệch ≤1 SP giữa các đơn).
     const shuffled = [...eligible].filter(p => !consumedIds.has(p.id)).sort(() => rand() - 0.5);
-    shuffled.forEach((p, i) => {
-      const orderIdx = i % autoCount;
+    // Cân các đơn theo số SP (đếm slot trống) thay vì round-robin cứng
+    shuffled.forEach((p) => {
+      // Tìm đơn có ít item nhất, nếu nhiều đơn cùng số → chọn random
+      const counts = orderItems.map(its => its.length);
+      const minCount = Math.min(...counts);
+      const candidates = counts.map((c, i) => c === minCount ? i : -1).filter(i => i >= 0);
+      const orderIdx = candidates[Math.floor(rand() * candidates.length)];
+
       const ruleMax = rule.maxQtyPerProduct?.(p) ?? 1;
       const qCap = rule.maxQtyPerQuarter?.(p);
       const minReq = rule.minQtyPerOrder?.(p);
@@ -896,44 +934,77 @@ function generateSupplierImports(
       productsUsed.add(p.id);
     });
   } else if (isLargeSupplier) {
-    // NCC lớn (>10 SP): mỗi đơn 4-6 SP đa dạng, cân bằng tiền chặt, bao phủ TOÀN BỘ SP.
+    // NCC lớn (>10 SP): mỗi đơn 4-8 SP đa dạng, BAO PHỦ toàn bộ SP, các đơn KHÔNG identical.
     const distributable = eligible.filter(p => !consumedIds.has(p.id));
-    const targetItemsPerOrder = Math.max(
+
+    // Item count per order — có biến thiên ±2 quanh target
+    const baseItems = Math.max(
       rule.minItemsPerOrder ?? 4,
       Math.min(8, Math.ceil(distributable.length / autoCount) + 1)
     );
-    const totalSlots = targetItemsPerOrder * autoCount;
-    const passes = Math.max(1, Math.ceil(totalSlots / Math.max(1, distributable.length)));
+    const itemsPerOrder = Array.from({ length: autoCount }, () => {
+      const jitter = Math.floor((rand() - 0.5) * 4); // -2..+1
+      return Math.max(rule.minItemsPerOrder ?? 3, baseItems + jitter);
+    });
 
-    let slotCursor = 0;
-    for (let pass = 0; pass < passes; pass++) {
-      const passList = [...distributable].sort(() => rand() - 0.5);
-      for (const p of passList) {
-        if (slotCursor >= totalSlots) break;
-        const orderIdx = slotCursor % autoCount;
-        slotCursor++;
-
-        const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
-        const qCap = rule.maxQtyPerQuarter?.(p);
-        const minReq = rule.minQtyPerOrder?.(p);
-        const used = qtyUsedQuarter.get(p.id) || 0;
-        const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
-        if (remainCap === 0) continue;
-
-        // Tránh trùng SP trong cùng đơn (giữ đa dạng)
-        if (orderItems[orderIdx].some(x => x.productId === p.id)) continue;
-
-        let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * Math.max(1, ruleMax)));
-        qty = Math.min(qty, ruleMax, remainCap);
-        if (qty <= 0) continue;
-
-        orderItems[orderIdx].push(buildItem(p, supplier, qty));
-        qtyUsedQuarter.set(p.id, used + qty);
-        productsUsed.add(p.id);
+    // Pass 1: gán mỗi SP vào 1 đơn (đảm bảo cover) — chọn đơn còn slot trống random
+    const shuffledPass1 = [...distributable].sort(() => rand() - 0.5);
+    for (const p of shuffledPass1) {
+      const candidates: number[] = [];
+      for (let oi = 0; oi < autoCount; oi++) {
+        if (orderItems[oi].length < itemsPerOrder[oi] &&
+            !orderItems[oi].some(x => x.productId === p.id)) {
+          candidates.push(oi);
+        }
       }
+      const orderIdx = candidates.length > 0
+        ? candidates[Math.floor(rand() * candidates.length)]
+        : Math.floor(rand() * autoCount);
+
+      const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
+      const qCap = rule.maxQtyPerQuarter?.(p);
+      const minReq = rule.minQtyPerOrder?.(p);
+      const used = qtyUsedQuarter.get(p.id) || 0;
+      const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
+      if (remainCap === 0) continue;
+      if (orderItems[orderIdx].some(x => x.productId === p.id)) continue;
+
+      let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * Math.max(1, ruleMax)));
+      qty = Math.min(qty, ruleMax, remainCap);
+      if (qty <= 0) continue;
+      orderItems[orderIdx].push(buildItem(p, supplier, qty));
+      qtyUsedQuarter.set(p.id, used + qty);
+      productsUsed.add(p.id);
     }
 
-    // Cân bằng tiền: kéo các đơn lệch nhiều về quanh trung bình (chặt hơn)
+    // Pass 2+: lấp thêm slot trống bằng SP còn cap, tránh trùng SP trong cùng đơn
+    let safety = 0;
+    while (safety++ < 8) {
+      let anyAdded = false;
+      const shuffled = [...distributable].sort(() => rand() - 0.5);
+      for (let oi = 0; oi < autoCount; oi++) {
+        if (orderItems[oi].length >= itemsPerOrder[oi]) continue;
+        for (const p of shuffled) {
+          if (orderItems[oi].length >= itemsPerOrder[oi]) break;
+          if (orderItems[oi].some(x => x.productId === p.id)) continue;
+          const ruleMax = rule.maxQtyPerProduct?.(p) ?? 3;
+          const qCap = rule.maxQtyPerQuarter?.(p);
+          const minReq = rule.minQtyPerOrder?.(p);
+          const used = qtyUsedQuarter.get(p.id) || 0;
+          const remainCap = qCap !== undefined ? Math.max(0, qCap - used) : Infinity;
+          if (remainCap === 0) continue;
+          let qty = minReq ?? Math.max(1, Math.floor(1 + rand() * Math.max(1, ruleMax)));
+          qty = Math.min(qty, ruleMax, remainCap);
+          if (qty <= 0) continue;
+          orderItems[oi].push(buildItem(p, supplier, qty));
+          qtyUsedQuarter.set(p.id, used + qty);
+          anyAdded = true;
+        }
+      }
+      if (!anyAdded) break;
+    }
+
+    // Cân bằng tiền NHẸ: cho phép lệch ±30% so với trung bình (giữ đa dạng).
     const totals = orderItems.map(its => its.reduce((s, it) => s + it.total, 0));
     const avg = totals.reduce((a, b) => a + b, 0) / Math.max(1, totals.length);
     if (avg > 0) {
@@ -941,9 +1012,9 @@ function generateSupplierImports(
         const t = totals[idx];
         if (t === 0) return;
         const ratio = avg / t;
-        // Chặt: chỉ cho phép lệch ±15% so với trung bình → các đơn cùng NCC gần đồng đều
-        const clamped = Math.max(0.85, Math.min(1.15, ratio));
-        if (Math.abs(clamped - 1) < 0.03) return;
+        // Lỏng: chỉ chỉnh khi lệch > ±30% so với trung bình
+        if (ratio >= 0.7 && ratio <= 1.3) return;
+        const clamped = Math.max(0.7, Math.min(1.3, ratio));
         its.forEach(it => {
           const prod = eligible.find(p => p.id === it.productId);
           if (!prod) return;
