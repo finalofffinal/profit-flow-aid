@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { usePeriod } from '@/contexts/PeriodContext';
 import { TimeRangeFilter, TimeRange, filterByTimeRange } from '@/components/common/TimeRangeFilter';
 import { exportImportPdf } from '@/lib/exportImportPdf';
+import { isSupplierAutoBlocked } from '@/lib/dataEngine';
 
 interface ImportPageProps {
   importOrders: ImportOrder[];
