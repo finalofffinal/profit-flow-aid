@@ -1202,6 +1202,11 @@ export function generateSupplementaryAutoOrders(
   return generateSupplierImports(supplier, prods, 0, days, rand, stockMap, count);
 }
 
+/** True nếu NCC bị cấm sinh đơn tự động (chỉ nhập bằng đơn bổ sung thủ công). */
+export function isSupplierAutoBlocked(supplierName: string): boolean {
+  return !!getSupplierRule(supplierName).manualOnly;
+}
+
 // ============================================================================
 // MAIN GENERATOR
 // ============================================================================
