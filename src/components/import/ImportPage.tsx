@@ -475,7 +475,7 @@ export function ImportPage({ importOrders, activeOrders, deletedOrders, supplier
               <Select value={genSupplierId} onValueChange={setGenSupplierId}>
                 <SelectTrigger className="h-9"><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
                 <SelectContent>
-                  {suppliers.filter(s => !s.deletedAt).map(s => (
+                  {suppliers.filter(s => !s.deletedAt && !isSupplierAutoBlocked(s.name)).map(s => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
