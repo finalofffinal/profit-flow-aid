@@ -703,7 +703,7 @@ function generateSupplierImports(
   overrideOrdersCount?: number,
 ): { orders: ImportOrder[]; batches: InventoryBatch[] } {
   const rule = getSupplierRule(supplier.name);
-  if (rule.manualOnly && overrideOrdersCount === undefined) return { orders: [], batches: [] };
+  if (rule.manualOnly) return { orders: [], batches: [] };
 
   const eligible = prods.filter(p => {
     if (rule.excludeProduct?.(p)) return false;
