@@ -1,6 +1,6 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 import { getLunarParts } from '@/lib/lunar';
-import { QUARTER_FLOOR_RATIO, Q1_CEILING_RATIO } from '@/lib/constants';
+import { QUARTER_FLOOR_RATIO } from '@/lib/constants';
 
 export const DATA_ENGINE_VERSION = '2026-05-22-quarter-floor-v1';
 
@@ -1368,103 +1368,18 @@ export function generateQuarterData(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // ===== Mục tiêu nhập theo mùa vụ và tồn cuối quý =====
-  const { seasonalRatio, endingStockRatio } = getQuarterInventoryProfile(quarter.quarter, rand);
-  const targetQuarterImportTotal = quarter.targetRevenue * seasonalRatio;
-  const targetImportTotal = Math.max(0, targetQuarterImportTotal - manualImportTotal);
+  // ===== Mục tiêu tồn cuối quý (chỉ dùng cho phần kho) =====
+  const { endingStockRatio } = getQuarterInventoryProfile(quarter.quarter, rand);
 
-  const largeSupplierIds = new Set<string>();
-  const smallSupplierIds = new Set<string>();
-  const fixedSupplierIds = new Set<string>(); // NCC có rule cứng (như Vifon) — không scale
+
+  // ===== Sinh đơn nhập theo NCC — TUÂN THỦ CHẶT rule NCC, KHÔNG scale/clone để đạt sàn =====
   for (const [sid, prods] of supplierProducts) {
     const supplier = suppliers.find(s => s.id === sid);
     if (!supplier) continue;
-    const rule = getSupplierRule(supplier.name);
-    if (rule.manualOnly) continue;
-    // Vifon: 1 đơn/quý, ≤3 đơn vị → KHÔNG được scale
-    if (supplier.name.toLowerCase().includes('vifon')) {
-      fixedSupplierIds.add(sid);
-      continue;
-    }
-    const eligibleCount = prods.filter(p => !rule.excludeProduct?.(p)).length;
-    if (eligibleCount > 10) largeSupplierIds.add(sid);
-    else smallSupplierIds.add(sid);
-  }
-
-  if (targetImportTotal > 0) {
-    // ===== Sinh đơn nhập theo NCC =====
-    for (const [sid, prods] of supplierProducts) {
-      const supplier = suppliers.find(s => s.id === sid);
-      if (!supplier) continue;
-      const manualCount = activeManualImports.filter(o => o.supplierId === sid).length;
-      const { orders, batches } = generateSupplierImports(supplier, prods, manualCount, days, rand, stockMap);
-      importOrders.push(...orders);
-      inventoryBatches.push(...batches);
-    }
-
-    const smallShareRatio = 0.10 + rand() * 0.05; // 10–15%
-    const largeShareRatio = 1 - smallShareRatio;
-
-    /**
-     * Scale 1 nhóm NCC về targetTotal, CLAMP qty theo cap.
-     * Trả về tổng thực tế đạt được sau clamp (có thể < target nếu chạm cap).
-     */
-    const scaleGroup = (sids: Set<string>, targetTotal: number): number => {
-      const groupOrders = importOrders.filter(o => sids.has(o.supplierId));
-      const currentTotal = groupOrders.reduce((s, o) => s + o.total, 0);
-      if (groupOrders.length === 0 || currentTotal <= 0 || targetTotal <= 0) return currentTotal;
-      const scale = targetTotal / currentTotal;
-      // CHỈ SCALE LÊN — không scale xuống. Sàn quý là tối thiểu, không có trần.
-      if (scale <= 1.05) return currentTotal;
-
-      const qUsed = new Map<string, number>();
-      for (const o of groupOrders) for (const it of o.items) {
-        qUsed.set(it.productId, (qUsed.get(it.productId) || 0) + it.quantity);
-      }
-
-      for (const order of groupOrders) {
-        const supplier = suppliers.find(s => s.id === order.supplierId)!;
-        const rule = getSupplierRule(supplier.name);
-        for (const it of order.items) {
-          const prod = productById.get(it.productId);
-          if (!prod) continue;
-          const hardMaxPerOrder = rule.maxQtyPerProduct?.(prod);
-          const hardMaxPerQuarter = rule.maxQtyPerQuarter?.(prod);
-          const minReq = rule.minQtyPerOrder?.(prod);
-
-          let newQty = Math.max(minReq ?? 1, Math.round(it.quantity * scale));
-          if (hardMaxPerOrder !== undefined) {
-            newQty = Math.min(newQty, hardMaxPerOrder);
-          }
-          if (hardMaxPerQuarter !== undefined) {
-            const otherQ = (qUsed.get(it.productId) || 0) - it.quantity;
-            newQty = Math.min(newQty, Math.max(0, hardMaxPerQuarter - otherQ));
-          }
-          if (newQty < 1) newQty = 1;
-          const rate = it.conversionRate || 1;
-          stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + (newQty - it.quantity) * rate);
-          qUsed.set(it.productId, (qUsed.get(it.productId) || 0) + (newQty - it.quantity));
-          it.quantity = newQty;
-          it.total = it.buyPrice * newQty;
-        }
-        order.total = order.items.reduce((s, it) => s + it.total, 0);
-      }
-      return groupOrders.reduce((s, o) => s + o.total, 0);
-    };
-
-    scaleGroup(smallSupplierIds, targetImportTotal * smallShareRatio);
-    const smallActual = importOrders.filter(o => smallSupplierIds.has(o.supplierId)).reduce((s, o) => s + o.total, 0);
-    const largeTarget = Math.max(targetImportTotal - smallActual, targetImportTotal * largeShareRatio);
-    scaleGroup(largeSupplierIds, largeTarget);
-
-    for (const batch of inventoryBatches) {
-      const order = importOrders.find(o => o.id === batch.importOrderId);
-      const it = order?.items.find(x => x.productId === batch.productId);
-      if (it) {
-        batch.quantity = it.quantity;
-        batch.originalQuantity = it.quantity;
-      }
-    }
+    const manualCount = activeManualImports.filter(o => o.supplierId === sid).length;
+    const { orders, batches } = generateSupplierImports(supplier, prods, manualCount, days, rand, stockMap);
+    importOrders.push(...orders);
+    inventoryBatches.push(...batches);
   }
 
   // BƠM KHO bị tắt: hệ số seasonalRatio + tồn mở đầu Q1 đã đủ cung cấp hàng cho doanh thu mục tiêu.
@@ -1575,75 +1490,10 @@ export function generateQuarterData(
   }
 
   // ==========================================================================
-  // POST-CLAMP IMPORT BOOST — đảm bảo TỔNG NHẬP ≥ SÀN QUÝ (QUARTER_FLOOR_RATIO)
-  //   • Q1: sàn 60%, trần 70% (đặc biệt)
-  //   • Q2: sàn 140%, không trần
-  //   • Q3: sàn 110%, không trần
-  //   • Q4: sàn 120%, không trần
+  // Sàn quý (QUARTER_FLOOR_RATIO) CHỈ dùng để hiển thị cảnh báo trong UI.
+  // KHÔNG tự động clone/scale đơn để đạt sàn — luôn tôn trọng rule NCC.
   // ==========================================================================
-  const floorRatio = QUARTER_FLOOR_RATIO[quarter.quarter] ?? 1.0;
-  const ceilingRatio = quarter.quarter === 1 ? Q1_CEILING_RATIO : Infinity;
-  if (floorRatio > 0) {
-    const totalSalesTarget = quarter.targetRevenue;
-    const minImportNeeded = totalSalesTarget * floorRatio;
-    const maxImportAllowed = totalSalesTarget * ceilingRatio;
-    let currentImport = importOrders.reduce((s, o) => s + o.total, 0);
 
-    if (currentImport < minImportNeeded) {
-      const autoOrdersForBoost = importOrders.filter(o =>
-        o.tag === 'auto' && o.total > 0 &&
-        !o.supplierName.toLowerCase().includes('vifon') &&
-        o.supplierId !== '__opening_2025__'
-      );
-      if (autoOrdersForBoost.length > 0) {
-        // Sort: đơn lớn nhất trước (clone hiệu quả hơn).
-        const sortedBoost = [...autoOrdersForBoost].sort((a, b) => b.total - a.total);
-        let cursor = 0;
-        let safety = 200;
-        const smallestBoostTotal = Math.min(...sortedBoost.map(o => o.total));
-        while (currentImport < minImportNeeded && currentImport + smallestBoostTotal <= maxImportAllowed && safety-- > 0) {
-          const src = sortedBoost[cursor % sortedBoost.length];
-          cursor++;
-          // Clone đơn (bỏ qua cap — yêu cầu nghiệp vụ).
-          const clonedId = generateId();
-          const clonedItems: ImportOrderItem[] = src.items.map(it => ({
-            ...it,
-            quantity: it.quantity,
-            total: it.total,
-          }));
-          const clonedOrder: ImportOrder = {
-            ...src,
-            id: clonedId,
-            items: clonedItems,
-            total: src.total,
-            createdAt: src.createdAt,
-          };
-          importOrders.push(clonedOrder);
-          // Thêm batch tồn kho tương ứng.
-          for (const it of clonedItems) {
-            const rate = it.conversionRate || 1;
-            inventoryBatches.push({
-              id: generateId(),
-              importOrderId: clonedId,
-              productId: it.productId,
-              productName: it.productName,
-              supplierId: src.supplierId,
-              supplierName: it.supplierName,
-              unit: it.unit,
-              quantity: it.quantity,
-              originalQuantity: it.quantity,
-              buyPrice: it.buyPrice,
-              date: src.date,
-              quarter: quarter.quarter,
-              year: quarter.year,
-            });
-            stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + it.quantity * rate);
-          }
-          currentImport += src.total;
-        }
-      }
-    }
-  }
 
   // ==========================================================================
   // SALES — bán dựa trên kho thực, không bù doanh thu ảo vượt kho.
