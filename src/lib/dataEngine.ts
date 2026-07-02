@@ -1368,28 +1368,9 @@ export function generateQuarterData(
     supplierProducts.get(p.supplierId)!.push(p);
   });
 
-  // ===== Mục tiêu nhập theo mùa vụ và tồn cuối quý =====
-  const { seasonalRatio, endingStockRatio } = getQuarterInventoryProfile(quarter.quarter, rand);
-  const targetQuarterImportTotal = quarter.targetRevenue * seasonalRatio;
-  const targetImportTotal = Math.max(0, targetQuarterImportTotal - manualImportTotal);
+  // ===== Mục tiêu tồn cuối quý (chỉ dùng cho phần kho) =====
+  const { endingStockRatio } = getQuarterInventoryProfile(quarter.quarter, rand);
 
-  const largeSupplierIds = new Set<string>();
-  const smallSupplierIds = new Set<string>();
-  const fixedSupplierIds = new Set<string>(); // NCC có rule cứng (như Vifon) — không scale
-  for (const [sid, prods] of supplierProducts) {
-    const supplier = suppliers.find(s => s.id === sid);
-    if (!supplier) continue;
-    const rule = getSupplierRule(supplier.name);
-    if (rule.manualOnly) continue;
-    // Vifon: 1 đơn/quý, ≤3 đơn vị → KHÔNG được scale
-    if (supplier.name.toLowerCase().includes('vifon')) {
-      fixedSupplierIds.add(sid);
-      continue;
-    }
-    const eligibleCount = prods.filter(p => !rule.excludeProduct?.(p)).length;
-    if (eligibleCount > 10) largeSupplierIds.add(sid);
-    else smallSupplierIds.add(sid);
-  }
 
   // ===== Sinh đơn nhập theo NCC — TUÂN THỦ CHẶT rule NCC, KHÔNG scale/clone để đạt sàn =====
   for (const [sid, prods] of supplierProducts) {
