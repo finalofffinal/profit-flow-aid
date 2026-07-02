@@ -1391,80 +1391,14 @@ export function generateQuarterData(
     else smallSupplierIds.add(sid);
   }
 
-  if (targetImportTotal > 0) {
-    // ===== Sinh đơn nhập theo NCC =====
-    for (const [sid, prods] of supplierProducts) {
-      const supplier = suppliers.find(s => s.id === sid);
-      if (!supplier) continue;
-      const manualCount = activeManualImports.filter(o => o.supplierId === sid).length;
-      const { orders, batches } = generateSupplierImports(supplier, prods, manualCount, days, rand, stockMap);
-      importOrders.push(...orders);
-      inventoryBatches.push(...batches);
-    }
-
-    const smallShareRatio = 0.10 + rand() * 0.05; // 10–15%
-    const largeShareRatio = 1 - smallShareRatio;
-
-    /**
-     * Scale 1 nhóm NCC về targetTotal, CLAMP qty theo cap.
-     * Trả về tổng thực tế đạt được sau clamp (có thể < target nếu chạm cap).
-     */
-    const scaleGroup = (sids: Set<string>, targetTotal: number): number => {
-      const groupOrders = importOrders.filter(o => sids.has(o.supplierId));
-      const currentTotal = groupOrders.reduce((s, o) => s + o.total, 0);
-      if (groupOrders.length === 0 || currentTotal <= 0 || targetTotal <= 0) return currentTotal;
-      const scale = targetTotal / currentTotal;
-      // CHỈ SCALE LÊN — không scale xuống. Sàn quý là tối thiểu, không có trần.
-      if (scale <= 1.05) return currentTotal;
-
-      const qUsed = new Map<string, number>();
-      for (const o of groupOrders) for (const it of o.items) {
-        qUsed.set(it.productId, (qUsed.get(it.productId) || 0) + it.quantity);
-      }
-
-      for (const order of groupOrders) {
-        const supplier = suppliers.find(s => s.id === order.supplierId)!;
-        const rule = getSupplierRule(supplier.name);
-        for (const it of order.items) {
-          const prod = productById.get(it.productId);
-          if (!prod) continue;
-          const hardMaxPerOrder = rule.maxQtyPerProduct?.(prod);
-          const hardMaxPerQuarter = rule.maxQtyPerQuarter?.(prod);
-          const minReq = rule.minQtyPerOrder?.(prod);
-
-          let newQty = Math.max(minReq ?? 1, Math.round(it.quantity * scale));
-          if (hardMaxPerOrder !== undefined) {
-            newQty = Math.min(newQty, hardMaxPerOrder);
-          }
-          if (hardMaxPerQuarter !== undefined) {
-            const otherQ = (qUsed.get(it.productId) || 0) - it.quantity;
-            newQty = Math.min(newQty, Math.max(0, hardMaxPerQuarter - otherQ));
-          }
-          if (newQty < 1) newQty = 1;
-          const rate = it.conversionRate || 1;
-          stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + (newQty - it.quantity) * rate);
-          qUsed.set(it.productId, (qUsed.get(it.productId) || 0) + (newQty - it.quantity));
-          it.quantity = newQty;
-          it.total = it.buyPrice * newQty;
-        }
-        order.total = order.items.reduce((s, it) => s + it.total, 0);
-      }
-      return groupOrders.reduce((s, o) => s + o.total, 0);
-    };
-
-    scaleGroup(smallSupplierIds, targetImportTotal * smallShareRatio);
-    const smallActual = importOrders.filter(o => smallSupplierIds.has(o.supplierId)).reduce((s, o) => s + o.total, 0);
-    const largeTarget = Math.max(targetImportTotal - smallActual, targetImportTotal * largeShareRatio);
-    scaleGroup(largeSupplierIds, largeTarget);
-
-    for (const batch of inventoryBatches) {
-      const order = importOrders.find(o => o.id === batch.importOrderId);
-      const it = order?.items.find(x => x.productId === batch.productId);
-      if (it) {
-        batch.quantity = it.quantity;
-        batch.originalQuantity = it.quantity;
-      }
-    }
+  // ===== Sinh đơn nhập theo NCC — TUÂN THỦ CHẶT rule NCC, KHÔNG scale/clone để đạt sàn =====
+  for (const [sid, prods] of supplierProducts) {
+    const supplier = suppliers.find(s => s.id === sid);
+    if (!supplier) continue;
+    const manualCount = activeManualImports.filter(o => o.supplierId === sid).length;
+    const { orders, batches } = generateSupplierImports(supplier, prods, manualCount, days, rand, stockMap);
+    importOrders.push(...orders);
+    inventoryBatches.push(...batches);
   }
 
   // BƠM KHO bị tắt: hệ số seasonalRatio + tồn mở đầu Q1 đã đủ cung cấp hàng cho doanh thu mục tiêu.
