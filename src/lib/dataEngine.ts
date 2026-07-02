@@ -1,6 +1,6 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 import { getLunarParts } from '@/lib/lunar';
-import { QUARTER_FLOOR_RATIO, Q1_CEILING_RATIO } from '@/lib/constants';
+import { QUARTER_FLOOR_RATIO } from '@/lib/constants';
 
 export const DATA_ENGINE_VERSION = '2026-05-22-quarter-floor-v1';
 
