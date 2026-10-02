@@ -171,9 +171,7 @@ function IndexInner() {
       setImportOrders(ci);
       setInventoryBatches(prev => prev.filter(b => !b.importOrderId || keep.has(b.importOrderId) || !importOrders.some(o => o.id === b.importOrderId)));
     }
-    const cs = dedupeAutoOrders(salesOrders);
-    if (cs.length !== salesOrders.length) setSalesOrders(cs);
-  }, [initialSyncDone, importOrders, salesOrders, setImportOrders, setSalesOrders, setInventoryBatches]);
+  }, [initialSyncDone, importOrders, setImportOrders, setInventoryBatches]);
 
   // Auto-generate import/sales/batches whenever quarters or active products change.
   // CHỈ regen quý có sig khác với generatedQuarters đã lưu trên Supabase.
@@ -291,7 +289,7 @@ function IndexInner() {
     }
 
     const finalImports = dedupeAutoOrders([...manualImports, ...lockedAutoImports, ...preservedAutoImports, ...allAutoImports]);
-    const finalSales = dedupeAutoOrders([...manualSales, ...lockedAutoSales, ...preservedAutoSales, ...allAutoSales]);
+    const finalSales = [...manualSales, ...lockedAutoSales, ...preservedAutoSales, ...allAutoSales];
 
     // Inventory snapshot CHỈ tính lại cho các quý regen (giữ batch quý không regen)
     const recomputedBatches = sortedRegen.flatMap(q =>
