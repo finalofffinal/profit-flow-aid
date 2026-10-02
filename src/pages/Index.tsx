@@ -162,6 +162,17 @@ function IndexInner() {
     [quarterSigs]
   );
 
+  // Dọn đơn auto bị nhân đôi (cùng NCC/ngày/sản phẩm/số lượng) đã lưu trước đó
+  useEffect(() => {
+    if (!initialSyncDone) return;
+    const ci = dedupeAutoOrders(importOrders);
+    if (ci.length !== importOrders.length) {
+      const keep = new Set(ci.map(o => o.id));
+      setImportOrders(ci);
+      setInventoryBatches(prev => prev.filter(b => !b.importOrderId || keep.has(b.importOrderId) || !importOrders.some(o => o.id === b.importOrderId)));
+    }
+  }, [initialSyncDone, importOrders, setImportOrders, setInventoryBatches]);
+
   // Auto-generate import/sales/batches whenever quarters or active products change.
   // CHỈ regen quý có sig khác với generatedQuarters đã lưu trên Supabase.
   useEffect(() => {
@@ -277,7 +288,7 @@ function IndexInner() {
       allAutoSales.push(...generated.salesOrders);
     }
 
-    const finalImports = [...manualImports, ...lockedAutoImports, ...preservedAutoImports, ...allAutoImports];
+    const finalImports = dedupeAutoOrders([...manualImports, ...lockedAutoImports, ...preservedAutoImports, ...allAutoImports]);
     const finalSales = [...manualSales, ...lockedAutoSales, ...preservedAutoSales, ...allAutoSales];
 
     // Inventory snapshot CHỈ tính lại cho các quý regen (giữ batch quý không regen)
@@ -541,5 +552,16 @@ const Index = () => (
     <IndexInner />
   </PeriodProvider>
 );
+
+function dedupeAutoOrders<T extends { id: string; tag?: string; date: string; supplierId?: string; items: any[] }>(list: T[]): T[] {
+  const seen = new Set<string>();
+  return list.filter(o => {
+    if (o.tag !== 'auto') return true;
+    const k = `${o.supplierId || ''}|${o.date}|${JSON.stringify((o.items || []).map((i: any) => [i.productId, i.quantity]))}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
 export default Index;
