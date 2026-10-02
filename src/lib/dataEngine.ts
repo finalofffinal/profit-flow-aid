@@ -1,6 +1,6 @@
 import { Product, Supplier, QuarterData, ImportOrder, ImportOrderItem, SaleOrder, SaleItem, InventoryBatch } from '@/types';
 import { getLunarParts } from '@/lib/lunar';
-import { QUARTER_FLOOR_RATIO } from '@/lib/constants';
+import { QUARTER_FLOOR_RATIO, Q1_CEILING_RATIO } from '@/lib/constants';
 
 export const DATA_ENGINE_VERSION = '2026-05-22-quarter-floor-v1';
 
@@ -1490,9 +1490,37 @@ export function generateQuarterData(
   }
 
   // ==========================================================================
-  // Sàn quý (QUARTER_FLOOR_RATIO) CHỈ dùng để hiển thị cảnh báo trong UI.
-  // KHÔNG tự động clone/scale đơn để đạt sàn — luôn tôn trọng rule NCC.
+  // BÙ SÀN QUÝ: nếu tổng nhập (thủ công + auto) < sàn → THÊM ĐƠN MỚI KHÁC NHAU
+  // (mỗi đơn sinh theo rule sản phẩm/số lượng của NCC, không clone, không trùng).
+  // Q1 không vượt trần Q1_CEILING_RATIO.
   // ==========================================================================
+  {
+    const floorTarget = quarter.targetRevenue * (QUARTER_FLOOR_RATIO[quarter.quarter] ?? 1);
+    const ceiling = quarter.quarter === 1 ? quarter.targetRevenue * Q1_CEILING_RATIO : Infinity;
+    const sigOf = (o: ImportOrder) => o.supplierId + '|' + o.items.map(i => i.productId + ':' + i.quantity).sort().join(',');
+    const sigs = new Set<string>([...activeManualImports, ...importOrders].map(sigOf));
+    let total = [...activeManualImports, ...importOrders].reduce((a, o) => a + (o.total || 0), 0);
+    const pool = [...supplierProducts.entries()]
+      .map(([sid, prods]) => ({ supplier: suppliers.find(s => s.id === sid), prods }))
+      .filter(x => x.supplier && !getSupplierRule(x.supplier.name).manualOnly) as { supplier: Supplier; prods: Product[] }[];
+    let guard = 0, idx = Math.floor(rand() * Math.max(1, pool.length)), fails = 0;
+    while (pool.length > 0 && total < floorTarget && guard++ < 600 && fails < pool.length * 6) {
+      const { supplier, prods } = pool[idx++ % pool.length];
+      const subRand = seededRandom(Math.floor(rand() * 1e9) + guard);
+      const { orders, batches } = generateSupplierImports(supplier, prods, 0, days, subRand, new Map(), 1);
+      const o = orders[0];
+      if (!o || sigs.has(sigOf(o)) || total + o.total > ceiling) { fails++; continue; }
+      fails = 0;
+      sigs.add(sigOf(o));
+      importOrders.push(o);
+      inventoryBatches.push(...batches.filter(b => b.importOrderId === o.id));
+      o.items.forEach(it => {
+        const rate = (it as any).conversionRate || 1;
+        stockMap.set(it.productId, (stockMap.get(it.productId) || 0) + it.quantity * rate);
+      });
+      total += o.total;
+    }
+  }
 
 
   // ==========================================================================
