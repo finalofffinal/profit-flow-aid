@@ -2,6 +2,12 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Product, Supplier, Notification, QuarterData, ImportOrder, SaleOrder, InventoryBatch } from '@/types';
 import * as storage from '@/lib/storage';
 import { subscribeRealtime } from '@/lib/supabase';
+import {
+  archiveSupplementaryOrder,
+  loadSupplementaryOrderArchives,
+  mergeSupplementaryOrders,
+  removeSupplementaryOrderArchive,
+} from '@/lib/supplementaryOrderArchive';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -26,16 +32,40 @@ function useSyncedState<T>(
 
   // Subscribe to realtime updates + initial-sync event for this key
   useEffect(() => {
+    const applyRemoteValue = (value: unknown) => {
+      const apply = (archivedOrders: ImportOrder[]) => {
+        let nextValue = value as T;
+        if (storageKey === 'scp_import_orders' && Array.isArray(value)) {
+          const remoteOrders = value as ImportOrder[];
+          const localSupplementary = Array.isArray(state)
+            ? (state as ImportOrder[]).filter(order => order.tag === 'supplementary')
+            : [];
+          const merged = mergeSupplementaryOrders(remoteOrders, [...archivedOrders, ...localSupplementary]);
+          nextValue = merged as T;
+          if (merged.length > remoteOrders.length) storage.saveImportOrders(merged);
+        }
+        incomingFromRemote.current = true;
+        try {
+          const trimmed = storage.trimForLocal(storageKey, nextValue);
+          localStorage.setItem(storageKey, JSON.stringify(trimmed));
+        } catch {}
+        setState(nextValue);
+      };
+
+      if (storageKey === 'scp_import_orders' && Array.isArray(value)) {
+        void loadSupplementaryOrderArchives().then(apply).catch(error => {
+          console.warn('Không thể khôi phục bản dự phòng đơn bổ sung:', error);
+          apply([]);
+        });
+      } else {
+        apply([]);
+      }
+    };
+
     const unsub = subscribeRealtime((key, value) => {
       if (key !== storageKey) return;
       if (value === null || value === undefined) return;
-      incomingFromRemote.current = true;
-      // Trim before persisting locally; React state holds the FULL data.
-      try {
-        const trimmed = storage.trimForLocal(storageKey, value);
-        localStorage.setItem(storageKey, JSON.stringify(trimmed));
-      } catch {}
-      setState(value as T);
+      applyRemoteValue(value);
     });
 
     // Initial-sync custom event: pushes FULL Supabase data into React state on mount
@@ -43,8 +73,7 @@ function useSyncedState<T>(
       const detail = (e as CustomEvent<{ key: string; value: unknown }>).detail;
       if (!detail || detail.key !== storageKey) return;
       if (detail.value === null || detail.value === undefined) return;
-      incomingFromRemote.current = true;
-      setState(detail.value as T);
+      applyRemoteValue(detail.value);
     };
     window.addEventListener('supabase-initial-sync-data', onInitialSync as EventListener);
 
@@ -52,7 +81,7 @@ function useSyncedState<T>(
       unsub();
       window.removeEventListener('supabase-initial-sync-data', onInitialSync as EventListener);
     };
-  }, [storageKey]);
+  }, [state, storageKey]);
 
   return [state, setState];
 }
@@ -316,6 +345,21 @@ export function useQuarters() {
 export function useImportOrders() {
   const [orders, setOrders] = useSyncedState<ImportOrder[]>('scp_import_orders', storage.loadImportOrders, storage.saveImportOrders);
 
+  const archivedOrderSnapshots = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const order of orders) {
+      if (order.tag !== 'supplementary') continue;
+      const signature = JSON.stringify(order);
+      if (archivedOrderSnapshots.current.get(order.id) === signature) continue;
+      archivedOrderSnapshots.current.set(order.id, signature);
+      void archiveSupplementaryOrder(order);
+    }
+    const currentIds = new Set(orders.map(order => order.id));
+    for (const id of archivedOrderSnapshots.current.keys()) {
+      if (!currentIds.has(id)) archivedOrderSnapshots.current.delete(id);
+    }
+  }, [orders]);
+
   const addOrder = useCallback((order: Omit<ImportOrder, 'id' | 'createdAt' | 'deletedAt'>) => {
     const newOrder: ImportOrder = { ...order, id: generateId(), deletedAt: null, createdAt: new Date().toISOString() };
     setOrders(prev => [...prev, newOrder]);
@@ -328,6 +372,7 @@ export function useImportOrders() {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, deletedAt: null } : o));
   }, [setOrders]);
   const permanentDeleteOrder = useCallback((id: string) => {
+    void removeSupplementaryOrderArchive(id);
     setOrders(prev => prev.filter(o => o.id !== id));
   }, [setOrders]);
   const updateOrder = useCallback((id: string, updates: Partial<ImportOrder>) => {
