@@ -2,7 +2,10 @@ import type { ImportOrder } from '@/types';
 import { supabase } from '@/lib/supabase';
 
 const ARCHIVE_PREFIX = 'scp_supplementary_import_order_';
-const QUEUE_KEY = 'scp_supplementary_import_archive_queue_v1';
+const LEGACY_QUEUE_KEY = 'scp_supplementary_import_archive_queue_v1';
+const QUEUE_DB_NAME = 'scp-supplementary-order-archive';
+const QUEUE_STORE_NAME = 'pending-actions';
+const PAGE_SIZE = 1000;
 
 type ArchiveAction =
   | { kind: 'upsert'; id: string; order: ImportOrder }
@@ -10,27 +13,96 @@ type ArchiveAction =
 
 const serialWrites = new Map<string, Promise<boolean>>();
 let flushing: Promise<void> | null = null;
+let queueDatabase: Promise<IDBDatabase | null> | null = null;
 
-function readQueue(): Record<string, ArchiveAction> {
+function openQueueDatabase(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  if (queueDatabase) return queueDatabase;
+  queueDatabase = new Promise(resolve => {
+    const request = indexedDB.open(QUEUE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(QUEUE_STORE_NAME)) {
+        db.createObjectStore(QUEUE_STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => {
+      console.warn('Không mở được hàng chờ lưu đơn bổ sung trên thiết bị.');
+      resolve(null);
+    };
+  });
+  return queueDatabase;
+}
+
+function readLegacyQueue(): Record<string, ArchiveAction> {
   try {
-    const raw = localStorage.getItem(QUEUE_KEY);
+    const raw = localStorage.getItem(LEGACY_QUEUE_KEY);
     return raw ? JSON.parse(raw) as Record<string, ArchiveAction> : {};
   } catch {
     return {};
   }
 }
 
-function writeQueue(queue: Record<string, ArchiveAction>): void {
+async function storePendingAction(action: ArchiveAction): Promise<boolean> {
+  const db = await openQueueDatabase();
+  if (db) {
+    return new Promise(resolve => {
+      const transaction = db.transaction(QUEUE_STORE_NAME, 'readwrite');
+      transaction.objectStore(QUEUE_STORE_NAME).put(action);
+      transaction.oncomplete = () => resolve(true);
+      transaction.onerror = () => resolve(false);
+      transaction.onabort = () => resolve(false);
+    });
+  }
+
   try {
-    if (Object.keys(queue).length === 0) localStorage.removeItem(QUEUE_KEY);
-    else localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    const queue = readLegacyQueue();
+    queue[action.id] = action;
+    localStorage.setItem(LEGACY_QUEUE_KEY, JSON.stringify(queue));
+    return true;
   } catch (error) {
-    console.warn('Không lưu được hàng chờ dự phòng đơn bổ sung trên thiết bị.', error);
+    console.warn('Không thể tạo bản chờ lưu cho đơn bổ sung trên thiết bị.', error);
+    return false;
   }
 }
 
-function queueAction(action: ArchiveAction): void {
-  writeQueue({ ...readQueue(), [action.id]: action });
+async function getPendingActions(): Promise<ArchiveAction[]> {
+  const db = await openQueueDatabase();
+  if (!db) return Object.values(readLegacyQueue());
+  const stored = await new Promise<ArchiveAction[]>(resolve => {
+    const request = db.transaction(QUEUE_STORE_NAME, 'readonly').objectStore(QUEUE_STORE_NAME).getAll();
+    request.onsuccess = () => resolve(request.result as ArchiveAction[]);
+    request.onerror = () => resolve([]);
+  });
+
+  const legacy = Object.values(readLegacyQueue());
+  for (const action of legacy) await storePendingAction(action);
+  try { localStorage.removeItem(LEGACY_QUEUE_KEY); } catch {}
+  const byId = new Map(stored.map(action => [action.id, action]));
+  legacy.forEach(action => byId.set(action.id, action));
+  return [...byId.values()];
+}
+
+async function removePendingAction(id: string): Promise<void> {
+  const db = await openQueueDatabase();
+  if (db) {
+    await new Promise<void>(resolve => {
+      const transaction = db.transaction(QUEUE_STORE_NAME, 'readwrite');
+      transaction.objectStore(QUEUE_STORE_NAME).delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    });
+  }
+  const legacy = readLegacyQueue();
+  if (legacy[id]) {
+    delete legacy[id];
+    try {
+      if (Object.keys(legacy).length === 0) localStorage.removeItem(LEGACY_QUEUE_KEY);
+      else localStorage.setItem(LEGACY_QUEUE_KEY, JSON.stringify(legacy));
+    } catch {}
+  }
 }
 
 async function sendAction(action: ArchiveAction): Promise<boolean> {
@@ -57,15 +129,8 @@ async function sendAction(action: ArchiveAction): Promise<boolean> {
 
 function runSerial(action: ArchiveAction): Promise<boolean> {
   const previous = serialWrites.get(action.id) || Promise.resolve(true);
-  const next = previous.catch(() => false).then(() => sendAction(action)).then(success => {
-    if (success) {
-      const queue = readQueue();
-      const current = queue[action.id];
-      if (current && JSON.stringify(current) === JSON.stringify(action)) {
-        delete queue[action.id];
-        writeQueue(queue);
-      }
-    }
+  const next = previous.catch(() => false).then(() => sendAction(action)).then(async success => {
+    if (success) await removePendingAction(action.id);
     return success;
   }).finally(() => {
     if (serialWrites.get(action.id) === next) serialWrites.delete(action.id);
@@ -74,42 +139,49 @@ function runSerial(action: ArchiveAction): Promise<boolean> {
   return next;
 }
 
-export function archiveSupplementaryOrder(order: ImportOrder): Promise<boolean> {
-  if (order.tag !== 'supplementary') return Promise.resolve(true);
+export async function archiveSupplementaryOrder(order: ImportOrder): Promise<boolean> {
+  if (order.tag !== 'supplementary') return true;
   const action: ArchiveAction = { kind: 'upsert', id: order.id, order };
-  queueAction(action);
+  const queued = await storePendingAction(action);
+  if (!queued) return false;
   return runSerial(action);
 }
 
-export function removeSupplementaryOrderArchive(id: string): Promise<boolean> {
+export async function removeSupplementaryOrderArchive(id: string): Promise<boolean> {
   const action: ArchiveAction = { kind: 'delete', id };
-  queueAction(action);
+  const queued = await storePendingAction(action);
+  if (!queued) return false;
   return runSerial(action);
 }
 
 export async function flushSupplementaryOrderArchiveQueue(): Promise<void> {
   if (flushing) return flushing;
   flushing = (async () => {
-    for (const action of Object.values(readQueue())) {
-      await runSerial(action);
-    }
+    for (const action of await getPendingActions()) await runSerial(action);
   })().finally(() => { flushing = null; });
   return flushing;
 }
 
 export async function loadSupplementaryOrderArchives(): Promise<ImportOrder[]> {
   await flushSupplementaryOrderArchiveQueue();
-  const { data, error } = await supabase
-    .from('app_data')
-    .select('value')
-    .like('key', `${ARCHIVE_PREFIX}%`);
-  if (error) {
-    console.warn('Không tải được bản dự phòng đơn bổ sung:', error.message);
-    return [];
+  const orders: ImportOrder[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('app_data')
+      .select('value')
+      .like('key', `${ARCHIVE_PREFIX}%`)
+      .order('key')
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) {
+      console.warn('Không tải được bản dự phòng đơn bổ sung:', error.message);
+      return orders;
+    }
+    const page = (data || [])
+      .map(row => row.value as ImportOrder)
+      .filter(order => order && order.tag === 'supplementary' && typeof order.id === 'string');
+    orders.push(...page);
+    if ((data || []).length < PAGE_SIZE) return orders;
   }
-  return (data || [])
-    .map(row => row.value as ImportOrder)
-    .filter(order => order && order.tag === 'supplementary' && typeof order.id === 'string');
 }
 
 export function mergeSupplementaryOrders(
