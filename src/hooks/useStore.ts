@@ -362,6 +362,7 @@ export function useImportOrders() {
 
   const addOrder = useCallback((order: Omit<ImportOrder, 'id' | 'createdAt' | 'deletedAt'>) => {
     const newOrder: ImportOrder = { ...order, id: generateId(), deletedAt: null, createdAt: new Date().toISOString() };
+    if (newOrder.tag === 'supplementary') void archiveSupplementaryOrder(newOrder);
     setOrders(prev => [...prev, newOrder]);
     return newOrder;
   }, [setOrders]);
